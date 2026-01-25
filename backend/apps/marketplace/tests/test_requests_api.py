@@ -1,0 +1,75 @@
+import pytest
+from rest_framework.test import APIClient
+
+from apps.accounts.models import OTP
+from apps.marketplace.models import RequestStatus, ServiceRequest
+from apps.providers.models import Category, SubCategory
+
+
+@pytest.mark.django_db
+def test_create_urgent_service_request_auto_sends_and_sets_expiry():
+    # Arrange: create a subcategory to reference
+    cat = Category.objects.create(name="تصميم", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="شعارات", is_active=True)
+
+    client = APIClient()
+
+    # Arrange: get JWT via OTP flow
+    send = client.post(
+        "/api/accounts/otp/send/",
+        {"phone": "0500000001"},
+        format="json",
+    )
+    assert send.status_code == 200
+    payload = send.json()
+    dev_code = payload.get("dev_code") or OTP.objects.filter(phone="0500000001").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert dev_code
+
+    verify = client.post(
+        "/api/accounts/otp/verify/",
+        {"phone": "0500000001", "code": dev_code},
+        format="json",
+    )
+    assert verify.status_code == 200
+    access = verify.json()["access"]
+
+    # Act: create urgent request
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    # Complete registration (level 3) before creating requests
+    complete = client.post(
+        "/api/accounts/complete/",
+        {
+            "first_name": "عميل",
+            "last_name": "اختبار",
+            "username": "user_0500000001",
+            "email": "0500000001@example.com",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+            "accept_terms": True,
+        },
+        format="json",
+    )
+    assert complete.status_code == 200
+
+    res = client.post(
+        "/api/marketplace/requests/create/",
+        {
+            "subcategory": sub.id,
+            "title": "تصميم شعار",
+            "description": "أحتاج تصميم شعار احترافي",
+            "request_type": "urgent",
+            "city": "الرياض",
+        },
+        format="json",
+    )
+
+    # Assert
+    assert res.status_code == 201
+
+    sr = ServiceRequest.objects.get(id=res.json()["id"])
+    assert sr.status == RequestStatus.SENT
+    assert sr.is_urgent is True
+    assert sr.expires_at is not None

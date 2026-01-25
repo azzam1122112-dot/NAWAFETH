@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.log
+
+# Django / SQLite
+*.sqlite3
+backend/db.sqlite3
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+backend/.venv/
+backend/venv/
+
+# Environment files / secrets
+.env
+.env.*
+*.env
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+
+# Flutter build outputs
+build/
+mobile/build/
+
+# Android local config
+mobile/android/local.properties
+mobile/android/key.properties
+mobile/android/.gradle/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip

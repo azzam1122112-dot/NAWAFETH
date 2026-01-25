@@ -1,0 +1,108 @@
+import re
+
+from rest_framework import serializers
+
+class OTPSendSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+
+class OTPVerifySerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    code = serializers.CharField(max_length=4)
+
+
+class CompleteRegistrationSerializer(serializers.Serializer):
+    first_name = serializers.CharField(
+        max_length=150,
+        error_messages={
+            "required": "الاسم الأول مطلوب",
+            "blank": "الاسم الأول مطلوب",
+        },
+    )
+    last_name = serializers.CharField(
+        max_length=150,
+        error_messages={
+            "required": "الاسم الأخير مطلوب",
+            "blank": "الاسم الأخير مطلوب",
+        },
+    )
+    username = serializers.CharField(
+        max_length=50,
+        error_messages={
+            "required": "اسم المستخدم مطلوب",
+            "blank": "اسم المستخدم مطلوب",
+        },
+    )
+    email = serializers.EmailField(
+        error_messages={
+            "required": "البريد الإلكتروني مطلوب",
+            "blank": "البريد الإلكتروني مطلوب",
+            "invalid": "البريد الإلكتروني غير صالح",
+        }
+    )
+    password = serializers.CharField(
+        min_length=8,
+        max_length=128,
+        write_only=True,
+        error_messages={
+            "required": "كلمة المرور مطلوبة",
+            "blank": "كلمة المرور مطلوبة",
+            "min_length": "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
+        },
+    )
+    password_confirm = serializers.CharField(
+        min_length=8,
+        max_length=128,
+        write_only=True,
+        error_messages={
+            "required": "تأكيد كلمة المرور مطلوب",
+            "blank": "تأكيد كلمة المرور مطلوب",
+            "min_length": "تأكيد كلمة المرور يجب أن يكون 8 أحرف على الأقل",
+        },
+    )
+    accept_terms = serializers.BooleanField(
+        error_messages={
+            "required": "يجب الموافقة على الشروط والأحكام",
+            "invalid": "يجب الموافقة على الشروط والأحكام",
+        }
+    )
+
+    def validate_username(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("اسم المستخدم مطلوب")
+        return value
+
+    def validate_first_name(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("الاسم الأول مطلوب")
+        # Arabic/English letters + spaces only
+        if not re.match(r"^[A-Za-z\u0600-\u06FF ]+$", value):
+            raise serializers.ValidationError("الاسم الأول يجب أن يحتوي على أحرف عربية/إنجليزية فقط")
+        return value
+
+    def validate_last_name(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("الاسم الأخير مطلوب")
+        if not re.match(r"^[A-Za-z\u0600-\u06FF ]+$", value):
+            raise serializers.ValidationError("الاسم الأخير يجب أن يحتوي على أحرف عربية/إنجليزية فقط")
+        return value
+
+    def validate_accept_terms(self, value: bool) -> bool:
+        if value is not True:
+            raise serializers.ValidationError("يجب الموافقة على اتفاقية الاستخدام")
+        return value
+
+    def validate(self, attrs):
+        password = (attrs.get("password") or "").strip()
+        password_confirm = (attrs.get("password_confirm") or "").strip()
+        if password != password_confirm:
+            raise serializers.ValidationError({"password_confirm": "كلمة المرور وتأكيدها غير متطابقين"})
+        return attrs
+
+
+class WalletSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    balance = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)

@@ -1,0 +1,33 @@
+<form method="post" action="{% url 'marketplace:request_action' obj.id %}" class="flex flex-wrap gap-2">
+  {% csrf_token %}
+
+  {% if can_send %}
+    <button name="action" value="send" type="submit" class="px-3 py-2 rounded-xl bg-indigo-600 text-white">
+      إرسال
+    </button>
+  {% endif %}
+
+  {% if can_accept %}
+    <button name="action" value="accept" type="submit" class="px-3 py-2 rounded-xl bg-emerald-600 text-white">
+      قبول
+    </button>
+  {% endif %}
+
+  {% if can_start %}
+    <button name="action" value="start" type="submit" class="px-3 py-2 rounded-xl bg-sky-600 text-white">
+      بدء التنفيذ
+    </button>
+  {% endif %}
+
+  {% if can_complete %}
+    <button name="action" value="complete" type="submit" class="px-3 py-2 rounded-xl bg-green-700 text-white">
+      إكمال
+    </button>
+  {% endif %}
+
+  {% if can_cancel %}
+    <button name="action" value="cancel" type="submit" class="px-3 py-2 rounded-xl bg-rose-600 text-white">
+      إلغاء
+    </button>
+  {% endif %}
+</form>

@@ -1,0 +1,124 @@
+<div class="bg-gray-50 border border-gray-200 rounded-2xl p-4">
+  <div class="text-sm text-gray-600 mb-3">إجراءات الطلب</div>
+
+  <div class="flex flex-wrap gap-2">
+    {% if actions.can_send %}
+      <form method="post" action="{% url 'dashboard:request_send' obj.id %}">
+        {% csrf_token %}
+        <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" type="submit">
+          إرسال
+        </button>
+      </form>
+    {% endif %}
+
+    {% if actions.can_accept %}
+      {% if request.user.is_staff %}
+        <button
+          type="button"
+          id="openAcceptModal"
+          class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+        >
+          قبول + اختيار مزود
+        </button>
+      {% else %}
+        <form method="post" action="{% url 'dashboard:request_accept' obj.id %}">
+          {% csrf_token %}
+          <button class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700" type="submit">
+            قبول
+          </button>
+        </form>
+      {% endif %}
+    {% endif %}
+
+    {% if actions.can_start %}
+      <form method="post" action="{% url 'dashboard:request_start' obj.id %}">
+        {% csrf_token %}
+        <button class="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700" type="submit">
+          بدء التنفيذ
+        </button>
+      </form>
+    {% endif %}
+
+    {% if actions.can_complete %}
+      <form method="post" action="{% url 'dashboard:request_complete' obj.id %}">
+        {% csrf_token %}
+        <button class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700" type="submit">
+          إكمال الطلب
+        </button>
+      </form>
+    {% endif %}
+
+    {% if actions.can_cancel %}
+      <form method="post" action="{% url 'dashboard:request_cancel' obj.id %}">
+        {% csrf_token %}
+        <button class="px-4 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700" type="submit">
+          إلغاء الطلب
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="text-xs text-gray-500 mt-3">
+    تظهر الأزرار حسب حالة الطلب وصلاحيات المستخدم.
+  </div>
+</div>
+
+{% if actions.can_accept and request.user.is_staff %}
+  <div id="acceptModal" class="fixed inset-0 hidden z-50">
+    <div class="absolute inset-0 bg-black/40"></div>
+
+    <div class="relative mx-auto mt-24 w-[95%] max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-lg font-semibold">قبول الطلب وإسناده لمزود</div>
+        <button type="button" id="closeAcceptModal" class="text-gray-500 hover:text-gray-700">✕</button>
+      </div>
+
+      <form method="post" action="{% url 'dashboard:request_accept' obj.id %}" class="space-y-4">
+        {% csrf_token %}
+
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">اختر المزود</label>
+          <select name="provider" class="w-full rounded-xl border border-gray-200 px-3 py-2">
+            {% for p in providers %}
+              <option value="{{ p.id }}">{{ p.user.phone|default:"—" }}</option>
+            {% empty %}
+              <option value="">لا يوجد مزودون</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="flex gap-2 justify-end">
+          <button type="button" id="cancelAcceptModal" class="px-4 py-2 rounded-xl border border-gray-200">
+            إلغاء
+          </button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white">
+            تأكيد القبول
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const openBtn = document.getElementById("openAcceptModal");
+      const modal = document.getElementById("acceptModal");
+      const closeBtn = document.getElementById("closeAcceptModal");
+      const cancelBtn = document.getElementById("cancelAcceptModal");
+
+      function open() { if (modal) modal.classList.remove("hidden"); }
+      function close() { if (modal) modal.classList.add("hidden"); }
+
+      if (openBtn) openBtn.addEventListener("click", open);
+      if (closeBtn) closeBtn.addEventListener("click", close);
+      if (cancelBtn) cancelBtn.addEventListener("click", close);
+
+      // اغلاق بالنقر على الخلفية
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal.firstElementChild) close();
+        });
+      }
+    })();
+  </script>
+{% endif %}

@@ -1,0 +1,73 @@
+{% load static %}
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}لوحة التحكم{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'app.css' %}">
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-900">
+  <div class="min-h-screen flex">
+
+    <!-- Sidebar -->
+    <aside class="w-72 hidden lg:flex flex-col bg-white border-l border-gray-200">
+      <div class="px-6 py-5 border-b border-gray-200">
+        <div class="text-lg font-bold">لوحة «نوافذ»</div>
+        <div class="text-sm text-gray-500 mt-1">تشغيل ومتابعة النظام</div>
+      </div>
+
+      <nav class="p-4 space-y-1">
+        <a href="{% url 'dashboard:home' %}"
+           class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">
+          <span>🏠</span>
+          <span>الرئيسية</span>
+        </a>
+
+        <a href="{% url 'dashboard:requests_list' %}"
+           class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">
+          <span>🧾</span>
+          <span>الطلبات</span>
+        </a>
+      </nav>
+
+      <div class="mt-auto p-4 border-t border-gray-200 text-sm text-gray-500">
+        <div>تسجيل الدخول: {{ request.user.phone|default:"" }}</div>
+        <a class="inline-block mt-2 text-indigo-600 hover:underline" href="{% url 'admin:logout' %}">تسجيل الخروج</a>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1">
+      <!-- Topbar -->
+      <div class="bg-white border-b border-gray-200">
+        <div class="px-4 lg:px-8 py-4 flex items-center justify-between">
+          <div class="lg:hidden font-bold">لوحة «نوافذ»</div>
+          <div class="text-sm text-gray-500">
+            {% if request.user.is_staff %}
+              وضع التشغيل (Staff)
+            {% else %}
+              مستخدم
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div class="px-4 lg:px-8 py-6">
+        {% if messages %}
+          <div class="space-y-2 mb-5">
+            {% for message in messages %}
+              <div class="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+"""
+URL configuration for config project.
+
+The `urlpatterns` list routes URLs to views. For more information please see:
+    https://docs.djangoproject.com/en/5.1/topics/http/urls/
+Examples:
+Function views
+    1. Add an import:  from my_app import views
+    2. Add a URL to urlpatterns:  path('', views.home, name='home')
+Class-based views
+    1. Add an import:  from other_app.views import Home
+    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
+Including another URLconf
+    1. Import the include() function: from django.urls import include, path
+    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+"""
+from django.urls import include, path
+from django.contrib import admin
+
+from apps.core.health import HealthCheckView
+
+urlpatterns = [
+    path("health/", HealthCheckView.as_view(), name="health"),
+    path("admin/", admin.site.urls),
+    path("api/accounts/", include(("apps.accounts.urls", "accounts"), namespace="accounts")),
+    path("api/providers/", include(("apps.providers.urls", "providers"), namespace="providers")),
+    path("api/marketplace/", include(("apps.marketplace.urls", "marketplace"), namespace="marketplace")),
+    path("api/messaging/", include(("apps.messaging.urls", "messaging"), namespace="messaging")),
+    path(
+        "api/notifications/",
+        include(("apps.notifications.urls", "notifications"), namespace="notifications"),
+    ),
+    path("api/reviews/", include(("apps.reviews.urls", "reviews"), namespace="reviews")),
+
+    path(
+        "dashboard/",
+        include(("apps.dashboard.urls", "dashboard"), namespace="dashboard"),
+    ),
+    path("api/backoffice/", include(("apps.backoffice.urls", "backoffice"), namespace="backoffice")),
+    path("api/support/", include(("apps.support.urls", "support"), namespace="support")),
+    path("api/billing/", include(("apps.billing.urls", "billing"), namespace="billing")),
+    path("api/verification/", include(("apps.verification.urls", "verification"), namespace="verification")),
+    path("api/promo/", include(("apps.promo.urls", "promo"), namespace="promo")),
+    path("api/subscriptions/", include(("apps.subscriptions.urls", "subscriptions"), namespace="subscriptions")),
+    path("api/extras/", include(("apps.extras.urls", "extras"), namespace="extras")),
+
+    path("api/features/", include(("apps.features.urls", "features"), namespace="features")),
+
+    path("api/analytics/", include(("apps.analytics.urls", "analytics"), namespace="analytics")),
+
+]

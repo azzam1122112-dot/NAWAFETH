@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+from datetime import timedelta
+from decimal import Decimal
+
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+
+from apps.billing.models import Invoice, InvoiceStatus
+
+from .models import Subscription, SubscriptionPlan, SubscriptionStatus
+
+
+def _grace_days() -> int:
+    return int(getattr(settings, "SUBS_GRACE_DAYS", 7))
+
+
+@transaction.atomic
+def start_subscription_checkout(*, user, plan: SubscriptionPlan) -> Subscription:
+    """
+    إنشاء اشتراك + فاتورة تلقائيًا
+    """
+    sub = Subscription.objects.create(
+        user=user,
+        plan=plan,
+        status=SubscriptionStatus.PENDING_PAYMENT,
+    )
+
+    inv = Invoice.objects.create(
+        user=user,
+        title="فاتورة اشتراك",
+        description=f"اشتراك باقة {plan.title} ({plan.get_period_display()})",
+        subtotal=Decimal(sub.plan.price),
+        reference_type="subscription",
+        reference_id=str(sub.pk),
+        status=InvoiceStatus.DRAFT,
+    )
+    inv.mark_pending()
+    inv.save(update_fields=["status", "subtotal", "vat_percent", "vat_amount", "total", "updated_at"])
+
+    sub.invoice = inv
+    sub.save(update_fields=["invoice", "updated_at"])
+    return sub
+
+
+@transaction.atomic
+def activate_subscription_after_payment(*, sub: Subscription) -> Subscription:
+    """
+    تفعيل الاشتراك بعد الدفع
+    """
+    sub = Subscription.objects.select_for_update().select_related("plan").get(pk=sub.pk)
+
+    if not sub.invoice or sub.invoice.status != "paid":
+        raise ValueError("الفاتورة غير مدفوعة بعد.")
+
+    if sub.status == SubscriptionStatus.ACTIVE:
+        return sub
+
+    now = timezone.now()
+    sub.start_at = now
+    sub.end_at = sub.calc_end_date(now)
+    sub.grace_end_at = sub.end_at + timedelta(days=_grace_days())
+    sub.status = SubscriptionStatus.ACTIVE
+    sub.save(update_fields=["start_at", "end_at", "grace_end_at", "status", "updated_at"])
+
+    # Audit
+    try:
+        from apps.audit.services import log_action
+        from apps.audit.models import AuditAction
+
+        log_action(
+            actor=sub.user,
+            action=AuditAction.SUBSCRIPTION_ACTIVE,
+            reference_type="subscription",
+            reference_id=str(sub.pk),
+            extra={"plan": sub.plan.code},
+        )
+    except Exception:
+        pass
+
+    return sub
+
+
+@transaction.atomic
+def refresh_subscription_status(*, sub: Subscription) -> Subscription:
+    """
+    تحديث حالة الاشتراك حسب الوقت:
+    ACTIVE -> GRACE -> EXPIRED
+    """
+    sub = Subscription.objects.select_for_update().get(pk=sub.pk)
+    now = timezone.now()
+
+    if sub.status in (SubscriptionStatus.CANCELLED, SubscriptionStatus.PENDING_PAYMENT):
+        return sub
+
+    if sub.end_at and now > sub.end_at and sub.status == SubscriptionStatus.ACTIVE:
+        sub.status = SubscriptionStatus.GRACE
+        sub.save(update_fields=["status", "updated_at"])
+        return sub
+
+    if sub.grace_end_at and now > sub.grace_end_at and sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.GRACE):
+        sub.status = SubscriptionStatus.EXPIRED
+        sub.save(update_fields=["status", "updated_at"])
+        return sub
+
+    return sub
+
+
+def user_has_feature(user, key: str) -> bool:
+    """
+    هل المستخدم لديه ميزة ضمن اشتراكه النشط؟
+    """
+    active = Subscription.objects.filter(user=user, status=SubscriptionStatus.ACTIVE).select_related("plan").order_by("-id").first()
+    if not active:
+        return False
+    features = active.plan.features or []
+    return key in features

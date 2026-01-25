@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from datetime import timedelta
+from decimal import Decimal
+
+from django.conf import settings
+from django.db import models, transaction
+from django.utils import timezone
+
+
+class ExtraPurchaseStatus(models.TextChoices):
+    PENDING_PAYMENT = "pending_payment", "بانتظار الدفع"
+    ACTIVE = "active", "نشط"
+    CONSUMED = "consumed", "مستهلك"
+    EXPIRED = "expired", "منتهي"
+    CANCELLED = "cancelled", "ملغي"
+
+
+class ExtraType(models.TextChoices):
+    TIME_BASED = "time_based", "زمني (مدة)"
+    CREDIT_BASED = "credit_based", "رصيد (Credits)"
+
+
+class ExtraPurchase(models.Model):
+    """
+    عملية شراء Add-on
+    reference_type=extra_purchase
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="extra_purchases")
+
+    sku = models.CharField(max_length=80)  # uploads_10gb_month...
+    title = models.CharField(max_length=160)
+    extra_type = models.CharField(max_length=20, choices=ExtraType.choices, default=ExtraType.TIME_BASED)
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    currency = models.CharField(max_length=10, default="SAR")
+
+    # Time-based
+    start_at = models.DateTimeField(null=True, blank=True)
+    end_at = models.DateTimeField(null=True, blank=True)
+
+    # Credit-based
+    credits_total = models.PositiveIntegerField(default=0)
+    credits_used = models.PositiveIntegerField(default=0)
+
+    status = models.CharField(max_length=20, choices=ExtraPurchaseStatus.choices, default=ExtraPurchaseStatus.PENDING_PAYMENT)
+
+    invoice = models.ForeignKey(
+        "billing.Invoice",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="extra_purchases",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def credits_left(self) -> int:
+        return max(0, int(self.credits_total) - int(self.credits_used))
+
+    def is_time_active(self) -> bool:
+        if not self.start_at or not self.end_at:
+            return False
+        now = timezone.now()
+        return self.start_at <= now < self.end_at
+
+    def __str__(self):
+        return f"EXTRA#{self.pk} {self.sku} {self.status}"

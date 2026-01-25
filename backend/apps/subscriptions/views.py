@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from rest_framework import generics, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from django.shortcuts import get_object_or_404
+
+from .models import SubscriptionPlan, Subscription
+from .serializers import PlanSerializer, SubscriptionSerializer
+from .services import start_subscription_checkout
+
+
+class PlansListView(generics.ListAPIView):
+    serializer_class = PlanSerializer
+
+    def get_queryset(self):
+        return SubscriptionPlan.objects.filter(is_active=True).order_by("price", "id")
+
+
+class MySubscriptionsView(generics.ListAPIView):
+    serializer_class = SubscriptionSerializer
+
+    def get_queryset(self):
+        return Subscription.objects.filter(user=self.request.user).order_by("-id")
+
+
+class SubscribeView(APIView):
+    """
+    إنشاء اشتراك + فاتورة
+    """
+    def post(self, request, plan_id: int):
+        plan = get_object_or_404(SubscriptionPlan, pk=plan_id, is_active=True)
+
+        sub = start_subscription_checkout(user=request.user, plan=plan)
+
+        return Response(SubscriptionSerializer(sub).data, status=status.HTTP_201_CREATED)

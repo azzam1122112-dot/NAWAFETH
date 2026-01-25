@@ -1,0 +1,127 @@
+import pytest
+from rest_framework.test import APIClient
+
+from apps.accounts.models import User, UserRole
+from apps.providers.models import Category, SubCategory, ProviderProfile, ProviderCategory
+from apps.marketplace.models import ServiceRequest, RequestType, RequestStatus
+from apps.reviews.models import Review
+
+
+@pytest.mark.django_db
+def test_review_only_after_completed_and_only_owner_and_no_duplicate():
+    client_user = User.objects.create_user(phone="0510000001", role_state=UserRole.CLIENT)
+    other_user = User.objects.create_user(phone="0510000002")
+    provider_user = User.objects.create_user(phone="0510000003")
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="تصميم")
+    sub = SubCategory.objects.create(category=cat, name="شعار")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.IN_PROGRESS,  # ليس مكتمل
+        city="الرياض",
+    )
+
+    api = APIClient()
+
+    # غير المالك ممنوع
+    api.force_authenticate(user=other_user)
+    r0 = api.post(
+        f"/api/reviews/requests/{sr.id}/review/",
+        {"rating": 5, "comment": "x"},
+        format="json",
+    )
+    assert r0.status_code in (400, 403)
+
+    # المالك لكن قبل COMPLETED ممنوع
+    api.force_authenticate(user=client_user)
+    r1 = api.post(
+        f"/api/reviews/requests/{sr.id}/review/",
+        {"rating": 5, "comment": "ممتاز"},
+        format="json",
+    )
+    assert r1.status_code == 400
+
+    # اجعل الطلب مكتمل ثم قيّم
+    sr.status = RequestStatus.COMPLETED
+    sr.save(update_fields=["status"])
+
+    r2 = api.post(
+        f"/api/reviews/requests/{sr.id}/review/",
+        {"rating": 4, "comment": "جيد"},
+        format="json",
+    )
+    assert r2.status_code == 201
+    assert Review.objects.filter(request=sr).count() == 1
+
+    provider.refresh_from_db()
+    assert provider.rating_count == 1
+    assert float(provider.rating_avg) == 4.0
+
+    # منع التكرار
+    r3 = api.post(f"/api/reviews/requests/{sr.id}/review/", {"rating": 5}, format="json")
+    assert r3.status_code == 400
+
+
+@pytest.mark.django_db
+def test_provider_rating_summary_and_reviews_list():
+    client_user = User.objects.create_user(phone="0510000101", role_state=UserRole.CLIENT)
+    provider_user = User.objects.create_user(phone="0510000102")
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="برمجة")
+    sub = SubCategory.objects.create(category=cat, name="ويب")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.COMPLETED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    api.post(
+        f"/api/reviews/requests/{sr.id}/review/",
+        {"rating": 5, "comment": "ممتاز"},
+        format="json",
+    )
+
+    api2 = APIClient()
+    r_sum = api2.get(f"/api/reviews/providers/{provider.id}/rating/")
+    assert r_sum.status_code == 200
+    assert int(r_sum.data["rating_count"]) == 1
+
+    r_list = api2.get(f"/api/reviews/providers/{provider.id}/reviews/")
+    assert r_list.status_code == 200
+    assert len(r_list.data) >= 1
