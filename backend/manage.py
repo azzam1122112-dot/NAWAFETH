@@ -15,8 +15,9 @@ def main() -> None:
     """
     Run administrative tasks.
     """
-    # ✅ Default to dev settings (local)
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
+    # ✅ Use the settings package (config/settings/) which selects dev/prod via DJANGO_ENV
+    # Render should set DJANGO_ENV=prod.
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
     try:
         from django.core.management import execute_from_command_line

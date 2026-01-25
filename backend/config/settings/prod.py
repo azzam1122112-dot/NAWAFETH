@@ -7,6 +7,8 @@ from sentry_sdk.integrations.django import DjangoIntegration
 
 DEBUG = False
 
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
@@ -25,7 +27,17 @@ CORS_ALLOWED_ORIGINS = [
 	"https://admin.nawafeth.app",
 ]
 
-# CSP (Production) - requires django-csp
+# CSRF trusted origins (Render/custom domains)
+_csrf_env = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").strip()
+CSRF_TRUSTED_ORIGINS = [
+	"https://*.onrender.com",
+	"https://nawafeth.app",
+	"https://admin.nawafeth.app",
+]
+if _csrf_env:
+	CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_env.split(",") if o.strip()]
+
+# CSP (Production) - django-csp v4+ format
 INSTALLED_APPS += ["csp"]
 if "csp.middleware.CSPMiddleware" not in MIDDLEWARE:
 	# Place near the top (after SecurityMiddleware is typical)
@@ -35,10 +47,14 @@ if "csp.middleware.CSPMiddleware" not in MIDDLEWARE:
 	except ValueError:
 		MIDDLEWARE.insert(0, "csp.middleware.CSPMiddleware")
 
-CSP_DEFAULT_SRC = ("'self'",)
-CSP_IMG_SRC = ("'self'", "data:", "https:")
-CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https:")
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https:")
+CONTENT_SECURITY_POLICY = {
+	"DIRECTIVES": {
+		"default-src": ("'self'",),
+		"img-src": ("'self'", "data:", "https:"),
+		"style-src": ("'self'", "'unsafe-inline'", "https:"),
+		"script-src": ("'self'", "'unsafe-inline'", "https:"),
+	}
+}
 
 # Sentry
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")

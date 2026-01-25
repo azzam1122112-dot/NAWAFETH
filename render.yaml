@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: nawafeth-backend
+    env: python
+    plan: starter
+    rootDir: backend
+    buildCommand: |
+      pip install -r requirements/prod.txt
+      python manage.py collectstatic --noinput
+    startCommand: |
+      python manage.py migrate
+      daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    envVars:
+      - key: DJANGO_ENV
+        value: prod
+      - key: DJANGO_DEBUG
+        value: "0"
+      # Set these in Render dashboard as Secrets/Variables:
+      # - DJANGO_SECRET_KEY
+      # - DATABASE_URL (from a Render Postgres)
+      # - REDIS_URL (from a Render Redis, required for websockets)
+      # Optional:
+      # - SENTRY_DSN
+      # - DJANGO_ALLOWED_HOSTS (comma-separated)
+      # - CORS_ALLOW_ALL (0/1)
+      # - CORS_ALLOWED_ORIGINS (comma-separated)
+      # - DJANGO_CSRF_TRUSTED_ORIGINS (comma-separated)
