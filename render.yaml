@@ -1,15 +1,11 @@
 services:
   - type: web
     name: nawafeth-backend
-    env: python
+    runtime: python
     plan: starter
     rootDir: backend
-    buildCommand: |
-      pip install -r requirements/prod.txt
-      python manage.py collectstatic --noinput
-    startCommand: |
-      python manage.py migrate
-      daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    buildCommand: bash -lc "pip install -r requirements/prod.txt && python manage.py collectstatic --noinput"
+    startCommand: bash -lc "python manage.py migrate && daphne -b 0.0.0.0 -p $PORT config.asgi:application"
     envVars:
       - key: DJANGO_ENV
         value: prod
