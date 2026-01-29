@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import '../models/offer.dart';
 import 'api_config.dart';
-import 'api_dio.dart';
+import '../core/network/api_dio.dart';
 import 'dio_proxy.dart';
 import 'session_storage.dart';
 

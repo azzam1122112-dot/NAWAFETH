@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import '../models/category.dart';
 import '../models/provider.dart';
 import 'api_config.dart';
-import 'api_dio.dart';
+import '../core/network/api_dio.dart';
 import 'dio_proxy.dart';
 
 class ProvidersApi {
