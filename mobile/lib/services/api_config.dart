@@ -1,6 +1,8 @@
 class ApiConfig {
-  static const int _defaultPort = 8000;
-  static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  static const String _baseUrlOverride = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://nawafeth-backend.onrender.com',
+  );
 
   /// Local development base URL.
   ///
@@ -17,10 +19,8 @@ class ApiConfig {
       return override.endsWith('/') ? override.substring(0, override.length - 1) : override;
     }
 
-    // Default to localhost. On Android physical devices use `adb reverse`.
-    // If you're using an Android emulator, change this to `10.0.2.2`.
-    // FOR CLIENT DEMO (LAN): Use PC IP
-    return 'http://192.168.3.2:$_defaultPort';
+    // Production-safe default.
+    return 'https://nawafeth-backend.onrender.com';
   }
 
   static const String apiPrefix = '/api';

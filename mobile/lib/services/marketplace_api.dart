@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import '../models/offer.dart';
 import 'api_config.dart';
+import 'api_dio.dart';
 import 'dio_proxy.dart';
 import 'session_storage.dart';
 
@@ -11,15 +12,7 @@ class MarketplaceApi {
   final SessionStorage _session;
 
   MarketplaceApi({Dio? dio, SessionStorage? session})
-      : _dio = dio ??
-            Dio(
-              BaseOptions(
-                baseUrl: ApiConfig.baseUrl,
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(seconds: 20),
-                sendTimeout: const Duration(seconds: 20),
-              ),
-            ),
+      : _dio = dio ?? ApiDio.dio,
         _session = session ?? const SessionStorage() {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }

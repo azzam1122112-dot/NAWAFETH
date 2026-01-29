@@ -1,33 +1,25 @@
 import 'package:dio/dio.dart';
 
 import 'api_config.dart';
+import 'api_dio.dart';
 import 'dio_proxy.dart';
 
 class AccountApi {
   final Dio _dio;
 
   AccountApi({Dio? dio})
-      : _dio =
-            dio ??
-            Dio(
-              BaseOptions(
-                baseUrl: ApiConfig.baseUrl,
-                connectTimeout: const Duration(seconds: 10),
-                receiveTimeout: const Duration(seconds: 20),
-                sendTimeout: const Duration(seconds: 20),
-                headers: {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
-              ),
-            ) {
+      : _dio = dio ?? ApiDio.dio {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }
 
-  Future<Map<String, dynamic>> me({required String accessToken}) async {
+  Future<Map<String, dynamic>> me({String? accessToken}) async {
+    final options = (accessToken != null && accessToken.trim().isNotEmpty)
+        ? Options(headers: {'Authorization': 'Bearer $accessToken'})
+        : null;
+
     final res = await _dio.get(
       '${ApiConfig.apiPrefix}/accounts/me/',
-      options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      options: options,
     );
 
     if (res.data is Map<String, dynamic>) {
@@ -36,10 +28,14 @@ class AccountApi {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
-  Future<void> deleteMe({required String accessToken}) async {
+  Future<void> deleteMe({String? accessToken}) async {
+    final options = (accessToken != null && accessToken.trim().isNotEmpty)
+        ? Options(headers: {'Authorization': 'Bearer $accessToken'})
+        : null;
+
     await _dio.delete(
       '${ApiConfig.apiPrefix}/accounts/me/',
-      options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      options: options,
     );
   }
 }

@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter: API Test (Render)",
+      "request": "launch",
+      "type": "dart",
+      "program": "mobile/lib/api_test_main.dart",
+      "args": [
+        "--dart-define=API_BASE_URL=https://nawafeth-backend.onrender.com",
+        "--dart-define=TEST_PHONE=+9665XXXXXXXX",
+        "--dart-define=TEST_CODE=1234"
+      ]
+    },
+    {
+      "name": "Flutter: API Test (Staging)",
+      "request": "launch",
+      "type": "dart",
+      "program": "mobile/lib/api_test_main.dart",
+      "args": [
+        "--dart-define=API_BASE_URL=https://nawafeth-backend-staging.onrender.com",
+        "--dart-define=TEST_PHONE=+9665XXXXXXXX",
+        "--dart-define=TEST_CODE=1234"
+      ]
+    },
+    {
+      "name": "Flutter: Mobile App (main.dart)",
+      "request": "launch",
+      "type": "dart",
+      "program": "mobile/lib/main.dart",
+      "args": [
+        "--dart-define=API_BASE_URL=https://nawafeth-backend.onrender.com"
+      ]
+    }
+  ]
+}

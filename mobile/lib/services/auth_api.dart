@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 
 import 'api_config.dart';
+import 'api_dio.dart';
 import 'dio_proxy.dart';
+import 'session_storage.dart';
 
 class OtpVerifyResult {
   final bool ok;
@@ -33,20 +35,19 @@ class AuthApi {
   final Dio _dio;
 
   AuthApi({Dio? dio})
-      : _dio = dio ??
-            Dio(
-              BaseOptions(
-                baseUrl: ApiConfig.baseUrl,
-                connectTimeout: const Duration(seconds: 10),
-                receiveTimeout: const Duration(seconds: 20),
-                sendTimeout: const Duration(seconds: 20),
-                headers: {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
-              ),
-            ) {
+      : _dio = dio ?? ApiDio.dio {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
+  }
+
+  // New API requested (keeps existing method names for compatibility).
+  Future<String?> otpSend({required String phone}) => sendOtp(phone: phone);
+
+  Future<OtpVerifyResult> otpVerify({required String phone, required String code}) async {
+    final result = await verifyOtp(phone: phone, code: code);
+    if (result.access.trim().isNotEmpty && result.refresh.trim().isNotEmpty) {
+      await ApiDio.setTokens(result.access, result.refresh);
+    }
+    return result;
   }
 
   Future<String?> sendOtp({required String phone}) async {
@@ -72,6 +73,11 @@ class AuthApi {
     }
 
     return OtpVerifyResult.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  /// Used by the API test screen to corrupt access while preserving refresh.
+  Future<String?> getRefreshForDebug() async {
+    return const SessionStorage().readRefreshToken();
   }
 
   Future<void> completeRegistration({
