@@ -6,6 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import OTP, User, UserRole, Wallet
 from .serializers import (
@@ -17,6 +18,18 @@ from .serializers import (
 
 from .permissions import IsAtLeastPhoneOnly
 from .otp import generate_otp_code, otp_expiry
+
+
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "refresh"
 
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])

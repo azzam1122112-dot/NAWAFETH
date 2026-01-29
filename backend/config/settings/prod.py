@@ -81,11 +81,24 @@ if SENTRY_DSN:
 		pass
 
 # Structured logging
+_log_level = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper().strip()
 LOGGING = {
 	"version": 1,
 	"disable_existing_loggers": False,
-	"handlers": {
-		"console": {"class": "logging.StreamHandler"},
+	"formatters": {
+		"standard": {
+			"format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+		}
 	},
-	"root": {"handlers": ["console"], "level": "INFO"},
+	"handlers": {
+		"console": {
+			"class": "logging.StreamHandler",
+			"formatter": "standard",
+		},
+	},
+	"root": {"handlers": ["console"], "level": _log_level},
+	"loggers": {
+		"django.request": {"handlers": ["console"], "level": _log_level, "propagate": False},
+		"django.security": {"handlers": ["console"], "level": _log_level, "propagate": False},
+	},
 }

@@ -1,5 +1,6 @@
 -r base.txt
 gunicorn>=22.0
+uvicorn>=0.30
 whitenoise>=6.7
 celery>=5.4
 redis>=5.0

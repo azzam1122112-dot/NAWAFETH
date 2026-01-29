@@ -153,6 +153,9 @@ REST_FRAMEWORK = {
         "user": "200/min",
         "anon": "60/min",
         "otp": "5/min",
+		# Sensitive endpoints
+		"auth": "15/min",
+		"refresh": "60/min",
     },
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
 }
