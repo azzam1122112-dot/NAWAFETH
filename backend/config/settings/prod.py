@@ -2,10 +2,11 @@ from .base import *  # noqa
 
 import os
 
-import sentry_sdk
-from sentry_sdk.integrations.django import DjangoIntegration
-
 DEBUG = False
+
+# Render (and similar PaaS) hostnames
+if ".onrender.com" not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
+	ALLOWED_HOSTS.append(".onrender.com")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -26,6 +27,10 @@ CORS_ALLOWED_ORIGINS = [
 	"https://nawafeth.app",
 	"https://admin.nawafeth.app",
 ]
+
+_cors_env = os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "").strip()
+if _cors_env:
+	CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
 
 # CSRF trusted origins (Render/custom domains)
 _csrf_env = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").strip()
@@ -59,12 +64,21 @@ CONTENT_SECURITY_POLICY = {
 # Sentry
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 if SENTRY_DSN:
-	sentry_sdk.init(
-		dsn=SENTRY_DSN,
-		integrations=[DjangoIntegration()],
-		traces_sample_rate=0.2,
-		send_default_pii=False,
-	)
+	try:
+		import importlib
+
+		sentry_sdk = importlib.import_module("sentry_sdk")
+		django_integration = importlib.import_module("sentry_sdk.integrations.django")
+		DjangoIntegration = getattr(django_integration, "DjangoIntegration")
+		sentry_sdk.init(
+			dsn=SENTRY_DSN,
+			integrations=[DjangoIntegration()],
+			traces_sample_rate=0.2,
+			send_default_pii=False,
+		)
+	except Exception:
+		# Sentry is optional; ignore if it's not installed or fails to init.
+		pass
 
 # Structured logging
 LOGGING = {

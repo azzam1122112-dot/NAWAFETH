@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: nawafeth-backend
+    runtime: python
+    plan: free
+    buildCommand: bash scripts/render_build.sh
+    startCommand: bash scripts/render_start.sh
+    autoDeployTrigger: commit
+    healthCheckPath: /health/
+    envVars:
+      - key: DJANGO_ENV
+        value: prod
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      # Add your Render service hostname + custom domains when you have them.
+      # Example: nawafeth-backend.onrender.com,nawafeth.app,admin.nawafeth.app
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nawafeth-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: nawafeth-redis
+          type: keyvalue
+          property: connectionString
+      # Optional overrides:
+      # - key: DJANGO_CSRF_TRUSTED_ORIGINS
+      #   value: https://*.onrender.com,https://nawafeth.app,https://admin.nawafeth.app
+      # - key: DJANGO_CORS_ALLOWED_ORIGINS
+      #   value: https://nawafeth.app,https://admin.nawafeth.app
+
+  # Redis/Valkey (Render Key Value) for Channels (recommended in production)
+  - type: keyvalue
+    name: nawafeth-redis
+    plan: free
+    ipAllowList: []
+
+databases:
+  - name: nawafeth-db
+    plan: free
+    ipAllowList: []
