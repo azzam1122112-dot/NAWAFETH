@@ -29,3 +29,22 @@ Recommended production setup:
 - `pg_dump "<connection_string>" --format=custom --file backup.dump`
 
 Keep the dump file in a safe location.
+
+## OTP staging test mode (internal QA)
+
+Production should use a real SMS provider.
+
+For staging/internal testing only, you can enable a guarded test mode that returns `dev_code` from `POST /api/accounts/otp/send/` **only** when a secret header matches.
+
+- Set env vars on the Render service (staging only):
+	- `OTP_TEST_MODE=1`
+	- `OTP_TEST_KEY=<random-long-secret>`
+	- (optional) `OTP_TEST_HEADER=X-OTP-TEST-KEY`
+
+Then call:
+
+- `POST /api/accounts/otp/send/` with header `X-OTP-TEST-KEY: <OTP_TEST_KEY>`
+
+Safety:
+
+- This is forced off in production settings.

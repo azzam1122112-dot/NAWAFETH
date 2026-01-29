@@ -76,6 +76,7 @@ class Wallet(models.Model):
 
 class OTP(models.Model):
     phone = models.CharField(max_length=20)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
     code = models.CharField(max_length=6)
     expires_at = models.DateTimeField()
     attempts = models.PositiveIntegerField(default=0)
@@ -85,4 +86,6 @@ class OTP(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["phone"]),
+			models.Index(fields=["phone", "created_at"]),
+			models.Index(fields=["ip_address", "created_at"]),
         ]

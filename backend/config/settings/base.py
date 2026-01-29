@@ -230,3 +230,16 @@ NOTIFICATIONS_RETENTION_DAYS = int(os.getenv("NOTIFICATIONS_RETENTION_DAYS", "90
 # ✅ OTP (Development)
 # When enabled (and DEBUG=True), any 4-digit code will be accepted by /otp/verify.
 OTP_DEV_ACCEPT_ANY_CODE = os.getenv("OTP_DEV_ACCEPT_ANY_CODE", "0") == "1"
+
+# ✅ OTP (Testing/Staging)
+# For internal testing only: return the generated OTP code when a secret header matches.
+# NOTE: This is forcibly disabled in production settings.
+OTP_TEST_MODE = (os.getenv("OTP_TEST_MODE", os.getenv("OTP_DEV_MODE", "0")) == "1")
+OTP_TEST_KEY = os.getenv("OTP_TEST_KEY", "").strip()
+OTP_TEST_HEADER = os.getenv("OTP_TEST_HEADER", "X-OTP-TEST-KEY").strip() or "X-OTP-TEST-KEY"
+
+# ✅ OTP limits (defense-in-depth)
+OTP_COOLDOWN_SECONDS = int(os.getenv("OTP_COOLDOWN_SECONDS", "60"))
+OTP_PHONE_HOURLY_LIMIT = int(os.getenv("OTP_PHONE_HOURLY_LIMIT", "5"))
+OTP_PHONE_DAILY_LIMIT = int(os.getenv("OTP_PHONE_DAILY_LIMIT", "10"))
+OTP_IP_HOURLY_LIMIT = int(os.getenv("OTP_IP_HOURLY_LIMIT", "50"))

@@ -4,6 +4,10 @@ import os
 
 DEBUG = False
 
+# Never allow OTP test helpers in production.
+OTP_TEST_MODE = False
+OTP_TEST_KEY = ""
+
 # Render (and similar PaaS) hostnames
 if ".onrender.com" not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
 	ALLOWED_HOSTS.append(".onrender.com")

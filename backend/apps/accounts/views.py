@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.utils import timezone
+from django.utils.timezone import timedelta
+import secrets
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -18,6 +20,14 @@ from .serializers import (
 
 from .permissions import IsAtLeastPhoneOnly
 from .otp import generate_otp_code, otp_expiry
+
+
+def _client_ip(request) -> str | None:
+    xff = (request.META.get("HTTP_X_FORWARDED_FOR") or "").strip()
+    if xff:
+        # First IP is the original client
+        return xff.split(",")[0].strip() or None
+    return (request.META.get("REMOTE_ADDR") or "").strip() or None
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
@@ -61,6 +71,7 @@ def otp_send(request):
     s.is_valid(raise_exception=True)
 
     phone = s.validated_data["phone"].strip()
+    client_ip = _client_ip(request)
 
     # Basic cooldown to prevent spam (professional default)
     cooldown_seconds = int(getattr(settings, "OTP_COOLDOWN_SECONDS", 60))
@@ -71,11 +82,45 @@ def otp_send(request):
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
+    # Per-phone hourly limit
+    phone_hourly_limit = int(getattr(settings, "OTP_PHONE_HOURLY_LIMIT", 0) or 0)
+    if phone_hourly_limit > 0:
+        since = timezone.now() - timedelta(hours=1)
+        cnt = OTP.objects.filter(phone=phone, created_at__gte=since).count()
+        if cnt >= phone_hourly_limit:
+            return Response(
+                {"detail": "تم تجاوز حد إرسال الرموز لهذا الرقم مؤقتًا"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+    # Per-phone daily limit
+    phone_daily_limit = int(getattr(settings, "OTP_PHONE_DAILY_LIMIT", 0) or 0)
+    if phone_daily_limit > 0:
+        today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        cnt = OTP.objects.filter(phone=phone, created_at__gte=today_start).count()
+        if cnt >= phone_daily_limit:
+            return Response(
+                {"detail": "تم تجاوز الحد اليومي لإرسال الرموز لهذا الرقم"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+    # Per-IP hourly limit (best-effort)
+    ip_hourly_limit = int(getattr(settings, "OTP_IP_HOURLY_LIMIT", 0) or 0)
+    if ip_hourly_limit > 0 and client_ip:
+        since = timezone.now() - timedelta(hours=1)
+        cnt = OTP.objects.filter(ip_address=client_ip, created_at__gte=since).count()
+        if cnt >= ip_hourly_limit:
+            return Response(
+                {"detail": "تم تجاوز حد إرسال الرموز من هذا الجهاز/الشبكة مؤقتًا"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
     # توليد كود جديد
     # ملاحظة: لا نستخدم كود ثابت (مثل 1234). في التطوير يمكن تفعيل قبول أي 4 أرقام عبر OTP_DEV_ACCEPT_ANY_CODE.
     code = generate_otp_code()
     OTP.objects.create(
         phone=phone,
+        ip_address=client_ip,
         code=code,
         expires_at=otp_expiry(5),
     )
@@ -96,11 +141,19 @@ def otp_send(request):
     except Exception:
         pass
 
-    # ✅ في التطوير فقط نُرجع الكود لتسهيل الاختبار
-    # في الإنتاج: اربط بمزود SMS ولا تُرجع الرمز.
+    # ✅ Dev/Test helpers
+    # - DEBUG: return dev_code for local development only.
+    # - OTP_TEST_MODE: staging-only helper guarded by a secret header.
     payload = {"ok": True}
     if bool(getattr(settings, "DEBUG", False)):
         payload["dev_code"] = code
+    else:
+        test_mode = bool(getattr(settings, "OTP_TEST_MODE", False))
+        test_key = (getattr(settings, "OTP_TEST_KEY", "") or "").strip()
+        test_header = (getattr(settings, "OTP_TEST_HEADER", "X-OTP-TEST-KEY") or "X-OTP-TEST-KEY").strip()
+        provided = (request.headers.get(test_header) or "").strip()
+        if test_mode and test_key and provided and secrets.compare_digest(provided, test_key):
+            payload["dev_code"] = code
     return Response(payload, status=status.HTTP_200_OK)
 
 
