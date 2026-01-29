@@ -237,6 +237,17 @@ OTP_DEV_ACCEPT_ANY_CODE = os.getenv("OTP_DEV_ACCEPT_ANY_CODE", "0") == "1"
 OTP_TEST_MODE = (os.getenv("OTP_TEST_MODE", os.getenv("OTP_DEV_MODE", "0")) == "1")
 OTP_TEST_KEY = os.getenv("OTP_TEST_KEY", "").strip()
 OTP_TEST_HEADER = os.getenv("OTP_TEST_HEADER", "X-OTP-TEST-KEY").strip() or "X-OTP-TEST-KEY"
+OTP_TEST_CODE = os.getenv("OTP_TEST_CODE", "").strip()
+
+# ✅ OTP (App QA bypass - Staging only)
+# For QA builds (Flutter), allow /otp/verify to accept any 4-digit code WITHOUT headers.
+# NOTE: Must be forcibly disabled in production settings.
+OTP_APP_BYPASS = os.getenv("OTP_APP_BYPASS", "0") == "1"
+OTP_APP_BYPASS_ALLOWLIST = [
+    p.strip()
+    for p in os.getenv("OTP_APP_BYPASS_ALLOWLIST", "").split(",")
+    if p.strip()
+]
 
 # ✅ OTP limits (defense-in-depth)
 OTP_COOLDOWN_SECONDS = int(os.getenv("OTP_COOLDOWN_SECONDS", "60"))

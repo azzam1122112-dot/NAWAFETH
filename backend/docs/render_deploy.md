@@ -39,6 +39,7 @@ For staging/internal testing only, you can enable a guarded test mode that retur
 - Set env vars on the Render service (staging only):
 	- `OTP_TEST_MODE=1`
 	- `OTP_TEST_KEY=<random-long-secret>`
+	- (optional) `OTP_TEST_CODE=0000` (forces a fixed code for QA)
 	- (optional) `OTP_TEST_HEADER=X-OTP-TEST-KEY`
 
 Then call:
@@ -48,3 +49,36 @@ Then call:
 Safety:
 
 - This is forced off in production settings.
+
+## OTP app bypass (Flutter QA, staging only)
+
+If your QA testers use the real Flutter app, sending a secret header is not practical.
+For staging only, you can enable an app bypass where `POST /api/accounts/otp/verify/` accepts **any** 4-digit code and issues JWT tokens **without headers**.
+
+- Set env vars on the Render service (staging only):
+	- `OTP_APP_BYPASS=1`
+	- (optional but recommended) `OTP_APP_BYPASS_ALLOWLIST=+9665xxxxxxx,+9665yyyyyyy`
+
+Behavior:
+
+- When allowlist is set, bypass works **only** for those phone numbers.
+- Bypass requires an existing OTP record, so the client must still call `POST /api/accounts/otp/send/` first (this keeps cooldown/limits meaningful).
+- Each bypass usage is logged with phone + IP for monitoring.
+
+Safety:
+
+- This is forced off in production settings.
+
+## Flutter QA test steps
+
+1. `POST /api/accounts/otp/send/` with `{ "phone": "+9665..." }`
+	- Expect `{ "ok": true }`
+2. `POST /api/accounts/otp/verify/` with `{ "phone": "+9665...", "code": "1234" }`
+	- In staging with `OTP_APP_BYPASS=1`, any 4 digits work
+	- Expect `{ "access": "...", "refresh": "...", ... }`
+3. `GET /api/accounts/me/` with header `Authorization: Bearer <access>`
+	- Expect user profile JSON
+
+Important:
+
+- `OTP_TEST_MODE`, `OTP_TEST_CODE`, and `OTP_APP_BYPASS` must never be enabled in production.

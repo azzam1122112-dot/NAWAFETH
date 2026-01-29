@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import timedelta
+import logging
 import secrets
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
@@ -21,6 +22,8 @@ from .serializers import (
 from .permissions import IsAtLeastPhoneOnly
 from .otp import generate_otp_code, otp_expiry
 
+logger = logging.getLogger(__name__)
+
 
 def _client_ip(request) -> str | None:
     xff = (request.META.get("HTTP_X_FORWARDED_FOR") or "").strip()
@@ -28,6 +31,45 @@ def _client_ip(request) -> str | None:
         # First IP is the original client
         return xff.split(",")[0].strip() or None
     return (request.META.get("REMOTE_ADDR") or "").strip() or None
+
+
+def _otp_test_authorized(request) -> bool:
+    test_mode = bool(getattr(settings, "OTP_TEST_MODE", False))
+    if not test_mode:
+        return False
+
+    test_key = (getattr(settings, "OTP_TEST_KEY", "") or "").strip()
+    if not test_key:
+        return False
+
+    test_header = (
+        getattr(settings, "OTP_TEST_HEADER", "X-OTP-TEST-KEY")
+        or "X-OTP-TEST-KEY"
+    ).strip()
+    provided = (request.headers.get(test_header) or "").strip()
+    return bool(provided) and secrets.compare_digest(provided, test_key)
+
+
+def _issue_tokens_for_phone(phone: str):
+    user, created = User.objects.get_or_create(
+        phone=phone,
+        defaults={"role_state": UserRole.PHONE_ONLY},
+    )
+
+    if not user.is_active:
+        return None, created
+
+    refresh = RefreshToken.for_user(user)
+    payload = {
+        "ok": True,
+        "user_id": user.id,
+        "role_state": user.role_state,
+        "is_new_user": bool(created),
+        "needs_completion": user.role_state in (UserRole.VISITOR, UserRole.PHONE_ONLY),
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
+    }
+    return payload, created
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
@@ -115,9 +157,14 @@ def otp_send(request):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
-    # توليد كود جديد
-    # ملاحظة: لا نستخدم كود ثابت (مثل 1234). في التطوير يمكن تفعيل قبول أي 4 أرقام عبر OTP_DEV_ACCEPT_ANY_CODE.
-    code = generate_otp_code()
+    # Generate a new code.
+    # For staging QA only, you can force a fixed OTP via OTP_TEST_CODE (e.g. 0000)
+    # but only when OTP_TEST_MODE is enabled and the secret header matches.
+    test_code = (getattr(settings, "OTP_TEST_CODE", "") or "").strip()
+    if test_code and _otp_test_authorized(request):
+        code = test_code
+    else:
+        code = generate_otp_code()
     OTP.objects.create(
         phone=phone,
         ip_address=client_ip,
@@ -147,13 +194,8 @@ def otp_send(request):
     payload = {"ok": True}
     if bool(getattr(settings, "DEBUG", False)):
         payload["dev_code"] = code
-    else:
-        test_mode = bool(getattr(settings, "OTP_TEST_MODE", False))
-        test_key = (getattr(settings, "OTP_TEST_KEY", "") or "").strip()
-        test_header = (getattr(settings, "OTP_TEST_HEADER", "X-OTP-TEST-KEY") or "X-OTP-TEST-KEY").strip()
-        provided = (request.headers.get(test_header) or "").strip()
-        if test_mode and test_key and provided and secrets.compare_digest(provided, test_key):
-            payload["dev_code"] = code
+    elif _otp_test_authorized(request):
+        payload["dev_code"] = code
     return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -166,6 +208,56 @@ def otp_verify(request):
 
     phone = s.validated_data["phone"].strip()
     code = s.validated_data["code"].strip()
+    client_ip = _client_ip(request)
+
+    # Staging-only fixed code bypass (QA): accept OTP_TEST_CODE when authorized.
+    test_code = (getattr(settings, "OTP_TEST_CODE", "") or "").strip()
+    if test_code and code == test_code and _otp_test_authorized(request):
+        # Validate format only
+        if not (len(code) == 4 and code.isdigit()):
+            return Response({"detail": "الكود يجب أن يكون 4 أرقام"}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload, created = _issue_tokens_for_phone(phone)
+        if payload is None:
+            return Response({"detail": "الحساب غير نشط"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Best-effort cleanup: mark last OTP as used.
+        otp = OTP.objects.filter(phone=phone, is_used=False).order_by("-id").first()
+        if otp:
+            otp.is_used = True
+            otp.save(update_fields=["is_used"])
+
+        return Response(payload, status=status.HTTP_200_OK)
+
+    # Staging-only app QA bypass (no headers): accept ANY 4-digit code.
+    # - Must be explicitly enabled via OTP_APP_BYPASS=1
+    # - If allowlist is provided, only allow those phone numbers
+    # - Requires an existing OTP record to keep send limits/cooldowns meaningful
+    app_bypass = bool(getattr(settings, "OTP_APP_BYPASS", False))
+    bypass_allowlist = list(getattr(settings, "OTP_APP_BYPASS_ALLOWLIST", []) or [])
+    bypass_allowed_for_phone = (not bypass_allowlist) or (phone in bypass_allowlist)
+
+    if app_bypass and bypass_allowed_for_phone:
+        if not (len(code) == 4 and code.isdigit()):
+            return Response({"detail": "الكود يجب أن يكون 4 أرقام"}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp = OTP.objects.filter(phone=phone, is_used=False).order_by("-id").first()
+        if not otp or otp.expires_at < timezone.now():
+            return Response(
+                {"detail": "أعد طلب رمز جديد"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        otp.is_used = True
+        otp.save(update_fields=["is_used"])
+
+        logger.warning("OTP_APP_BYPASS used phone=%s ip=%s", phone, client_ip)
+
+        payload, created = _issue_tokens_for_phone(phone)
+        if payload is None:
+            return Response({"detail": "الحساب غير نشط"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(payload, status=status.HTTP_200_OK)
 
     # FORCE BYPASS if configured (Resolves user frustration with Development/Testing)
     # Check settings directly, default to False.
@@ -184,27 +276,11 @@ def otp_verify(request):
             otp.is_used = True
             otp.save(update_fields=["is_used"])
 
-        user, created = User.objects.get_or_create(
-            phone=phone,
-            defaults={"role_state": UserRole.PHONE_ONLY},
-        )
-
-        if not user.is_active:
+        payload, created = _issue_tokens_for_phone(phone)
+        if payload is None:
             return Response({"detail": "الحساب غير نشط"}, status=status.HTTP_400_BAD_REQUEST)
 
-        refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "ok": True,
-                "user_id": user.id,
-                "role_state": user.role_state,
-                "is_new_user": bool(created),
-                "needs_completion": user.role_state in (UserRole.VISITOR, UserRole.PHONE_ONLY),
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(payload, status=status.HTTP_200_OK)
 
     # Normal Production Logic
 
@@ -241,16 +317,9 @@ def otp_verify(request):
     otp.is_used = True
     otp.save(update_fields=["is_used"])
 
-    # إنشاء المستخدم لو غير موجود
-    user, created = User.objects.get_or_create(
-        phone=phone,
-        defaults={"role_state": UserRole.PHONE_ONLY},
-    )
-
-    if not user.is_active:
+    payload, created = _issue_tokens_for_phone(phone)
+    if payload is None:
         return Response({"detail": "الحساب غير نشط"}, status=status.HTTP_400_BAD_REQUEST)
-
-    refresh = RefreshToken.for_user(user)
 
     # Audit (اختياري)
     try:
@@ -258,28 +327,17 @@ def otp_verify(request):
         from apps.audit.models import AuditAction
 
         log_action(
-            actor=user,
+            actor=User.objects.filter(phone=phone).first(),
             action=AuditAction.LOGIN_OTP_VERIFIED,
             reference_type="user",
-            reference_id=str(user.id),
+            reference_id=str(payload.get("user_id")),
             request=request,
         )
     except Exception:
         pass
 
-    return Response(
-        {
-            "ok": True,
-            "user_id": user.id,
-            "role_state": user.role_state,
-            "is_new_user": bool(created),
-            # Frontend can use this to decide whether to show a completion step (level 3)
-            "needs_completion": user.role_state in (UserRole.VISITOR, UserRole.PHONE_ONLY),
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
-        },
-        status=status.HTTP_200_OK,
-    )
+    payload["is_new_user"] = bool(created)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 # Needed for ScopedRateThrottle on function-based views

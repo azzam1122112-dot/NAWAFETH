@@ -7,6 +7,11 @@ DEBUG = False
 # Never allow OTP test helpers in production.
 OTP_TEST_MODE = False
 OTP_TEST_KEY = ""
+OTP_TEST_CODE = ""
+
+# Never allow app QA bypass in production.
+OTP_APP_BYPASS = False
+OTP_APP_BYPASS_ALLOWLIST = []
 
 # Render (and similar PaaS) hostnames
 if ".onrender.com" not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
