@@ -36,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final code = candidate.isNotEmpty ? candidate : '0000';
 
     try {
-      final result = await AuthApi().verifyOtp(phone: phone, code: code);
+      final result = await AuthApi().otpVerify(phone: phone, code: code);
       await const SessionStorage().saveTokens(access: result.access, refresh: result.refresh);
 
       // Best-effort: refresh user identity for UI.
@@ -86,14 +86,26 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  String _normalizePhone(String input) {
-    // Keep digits only (allows user to paste with spaces/dashes).
-    return input.replaceAll(RegExp(r'[^0-9]'), '');
-  }
+  String _keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
 
-  bool _isValidSaudiLocalMobile(String phoneDigits) {
-    // المطلوب حالياً: 10 أرقام تبدأ بـ 05
-    return RegExp(r'^05\d{8}$').hasMatch(phoneDigits);
+  /// Normalizes Saudi numbers to E.164: +9665XXXXXXXX
+  /// Accepts inputs like: 05XXXXXXXX, +9665XXXXXXXX, 9665XXXXXXXX.
+  String? _normalizeSaudiToE164(String input) {
+    final raw = input.trim();
+    final digits = _keepDigits(raw);
+
+    // Local: 05XXXXXXXX (10 digits)
+    if (RegExp(r'^05\d{8}$').hasMatch(digits)) {
+      return '+966${digits.substring(1)}';
+    }
+
+    // International without plus: 9665XXXXXXXX (12 digits)
+    if (RegExp(r'^9665\d{8}$').hasMatch(digits)) {
+      return '+$digits';
+    }
+
+    // International with plus: +9665XXXXXXXX (we stripped '+', so same as above)
+    return null;
   }
 
   @override
@@ -103,18 +115,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _onLoginPressed(BuildContext context) async {
-    final phoneDigits = _normalizePhone(_phoneCtrl.text.trim());
-    if (phoneDigits.isEmpty) {
+    final input = _phoneCtrl.text.trim();
+    final phoneE164 = _normalizeSaudiToE164(input);
+    if (input.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('أدخل رقم الجوال أولاً')),
       );
       return;
     }
 
-    if (!_isValidSaudiLocalMobile(phoneDigits)) {
+    if (phoneE164 == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('رقم الجوال يجب أن يكون 10 أرقام ويبدأ بـ 05'),
+          content: Text('رقم الجوال غير صحيح. مثال: 05xxxxxxxx أو +9665xxxxxxxx'),
         ),
       );
       return;
@@ -128,9 +141,12 @@ class _LoginScreenState extends State<LoginScreen> {
     // إرسال OTP من السيرفر يحاول، لكن فشله لا يمنع الانتقال.
     try {
       final api = AuthApi();
-      await const SessionStorage().savePhone(phoneDigits);
+      // Store a readable local format when possible.
+      final digits = _keepDigits(input);
+      final local = RegExp(r'^05\d{8}$').hasMatch(digits) ? digits : digits;
+      await const SessionStorage().savePhone(local);
       try {
-        await api.sendOtp(phone: phoneDigits);
+        await api.sendOtp(phone: phoneE164);
       } catch (_) {
         // ignore
       }
@@ -138,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // ✅ If enabled, try to verify and navigate immediately (no OTP screen).
       // If it fails (network/server), we fall back to OTP screen.
       final didNavigate = await _autoVerifyAndNavigateIfEnabled(
-        phone: phoneDigits,
+        phone: phoneE164,
         devCode: null,
       );
       if (didNavigate) return;
@@ -163,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => TwoFAScreen(
-          phone: phoneDigits,
+          phone: phoneE164,
           redirectTo: widget.redirectTo,
           initialDevCode: null,
         ),

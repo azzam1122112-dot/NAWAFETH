@@ -125,68 +125,46 @@ class _TwoFAScreenState extends State<TwoFAScreen> {
 
     setState(() => _loading = true);
 
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
-
     try {
-      // ✅ OFFLINE 2FA LOGIC (Disconnected from Server)
-      // We cannot check the real DB without connection, so we SIMULATE it:
-      // If phone ends with '9' -> Treat as New User (Not Registered/Incomplete).
-      // If phone ends with any other digit -> Treat as Existing User (Registered).
-      
-      final isNewUser = widget.phone.trim().endsWith('9');
-      
-      // Generate a Fake Token so the app "thinks" it's logged in.
-      // Note: Real API calls in Home/Profile will fail with this token unless Backend is also mocked.
-      final fakeToken = "OFFLINE_DEMO_TOKEN_${DateTime.now().millisecondsSinceEpoch}";
-      
-      await const SessionStorage().saveTokens(
-        access: fakeToken,
-        refresh: "OFFLINE_REFRESH",
-      );
+      final result = await AuthApi().otpVerify(phone: widget.phone, code: code);
 
-      if (!isNewUser) {
-        // EXISTING USER SIMULATION
-        // We set a fake profile so the Home Screen works locally.
+      await const SessionStorage().saveTokens(access: result.access, refresh: result.refresh);
+
+      // Best-effort: refresh user identity for UI.
+      try {
+        final me = await AccountApi().me();
+
+        String? nonEmpty(dynamic v) {
+          final s = (v ?? '').toString().trim();
+          return s.isEmpty ? null : s;
+        }
+
         await const SessionStorage().saveProfile(
-          username: "client_demo",
-          email: "client@nawafeth.com",
-          firstName: "عميل",
-          lastName: "نوافذ",
+          username: nonEmpty(me['username']),
+          email: nonEmpty(me['email']),
+          firstName: nonEmpty(me['first_name']),
+          lastName: nonEmpty(me['last_name']),
         );
-      } else {
-         // NEW USER SIMULATION
-         // Clear profile to force "Incomplete" state perception if checked manually
-         await const SessionStorage().saveProfile(
-          username: "", email: "", firstName: "", lastName: ""
-        );
+      } catch (_) {
+        // ignore
       }
-      
+
       if (!mounted) return;
 
-      if (isNewUser) {
-        // Route to Signup (Simulating "Not Registered/Incomplete")
+      if (result.isNewUser || result.needsCompletion) {
         AppSnackBar.success('أهلاً بك! يرجى استكمال تسجيل بياناتك.');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const SignUpScreen()),
         );
-      } else {
-        // Route to Home (Simulating "Registered & Complete")
-        AppSnackBar.success('أهلاً عميل نوافذ، تم تسجيل الدخول بنجاح.');
-        if (widget.redirectTo != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => widget.redirectTo!),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
-        }
+        return;
       }
 
+      AppSnackBar.success('تم تسجيل الدخول بنجاح.');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => widget.redirectTo ?? const HomeScreen()),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
