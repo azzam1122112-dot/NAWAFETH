@@ -16,17 +16,12 @@ class AdditionalDetailsStep extends StatefulWidget {
 
 class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   // نبذة عامة عن المزود وخدماته
-  final TextEditingController aboutController = TextEditingController(
-    text:
-        "مزود خدمات متخصص في تقديم حلول رقمية مخصصة، مع التركيز على الجودة والالتزام بمواعيد التسليم.",
-  );
+  final TextEditingController aboutController = TextEditingController();
 
   // قوائم ديناميكية للمؤهلات والخبرات
-  final List<String> qualifications = ["بكالوريوس في علوم الحاسب"];
+  final List<String> qualifications = [];
 
-  final List<String> experiences = [
-    "أكثر من 3 سنوات في تطوير الأنظمة والمنصات الخدمية.",
-  ];
+  final List<String> experiences = [];
 
   final TextEditingController _dialogController = TextEditingController();
 

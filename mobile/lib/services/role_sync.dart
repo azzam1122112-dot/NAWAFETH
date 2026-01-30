@@ -19,7 +19,9 @@ class RoleSync {
     final hasProviderProfile = me['has_provider_profile'] == true;
     final isProviderFlag = me['is_provider'] == true;
 
-    final isProviderRegistered = isProviderFlag || hasProviderProfile || role == 'provider';
+    // Only consider the user "provider-registered" if a provider profile exists.
+    // This keeps pure-client accounts from seeing/entering provider mode.
+    final isProviderRegistered = hasProviderProfile;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isProviderRegistered', isProviderRegistered);

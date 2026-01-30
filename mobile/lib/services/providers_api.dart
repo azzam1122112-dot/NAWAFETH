@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../models/category.dart';
 import '../models/provider.dart';
+import '../models/user_summary.dart';
 import 'api_config.dart';
 import '../core/network/api_dio.dart';
 import 'dio_proxy.dart';
@@ -40,6 +41,46 @@ class ProvidersApi {
       return ProviderProfile.fromJson(res.data);
     } catch (e) {
       return null;
+    }
+  }
+
+  Future<List<ProviderProfile>> getMyFollowingProviders() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/following/');
+      final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<ProviderProfile>> getMyLikedProviders() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/likes/');
+      final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<UserSummary>> getMyProviderFollowers() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/followers/');
+      final list = (res.data as List).map((e) => UserSummary.fromJson(e)).toList();
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<UserSummary>> getMyProviderLikers() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/likers/');
+      final list = (res.data as List).map((e) => UserSummary.fromJson(e)).toList();
+      return list;
+    } catch (e) {
+      return [];
     }
   }
 

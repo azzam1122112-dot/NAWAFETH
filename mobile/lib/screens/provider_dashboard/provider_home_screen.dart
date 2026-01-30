@@ -5,6 +5,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/account_api.dart';
+import '../../services/api_config.dart';
+
 import '../../widgets/app_bar.dart';
 import '../../widgets/bottom_nav.dart';
 import '../../widgets/custom_drawer.dart';
@@ -16,6 +19,7 @@ import '../verification_screen.dart';
 import '../plans_screen.dart';
 import '../additional_services_screen.dart';
 import '../registration/steps/content_step.dart';
+import '../interactive_screen.dart';
 
 // ✅ شاشة إكمال الملف التعريفي (تكون موجودة عندك وتستدعي فيها القوالب)
 import 'provider_profile_completion_screen.dart';
@@ -37,7 +41,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
   late AnimationController _controller;
 
-  final String _currentPlanName = "الباقة المجانية";
+  final String _currentPlanName = "—";
+
+  String? _providerShareLink;
+
+  int? _followersCount;
+  int? _likesReceivedCount;
   
   // ✅ متغيرات لتتبع إكمال الأقسام الإضافية
   bool _hasServiceDetails = false; // تفاصيل الخدمة
@@ -97,6 +106,39 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       vsync: this,
       duration: const Duration(seconds: 6),
     )..repeat();
+
+    _loadProviderHeaderData();
+  }
+
+  Future<void> _loadProviderHeaderData() async {
+    try {
+      final me = await AccountApi().me();
+      final id = me['provider_profile_id'];
+      final int? providerId = id is int ? id : int.tryParse((id ?? '').toString());
+
+      int? asInt(dynamic v) {
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        return int.tryParse((v ?? '').toString());
+      }
+
+      final followersCount = asInt(me['provider_followers_count']);
+      final likesReceivedCount = asInt(me['provider_likes_received_count']);
+
+      String? link;
+      if (providerId != null) {
+        // Public link (API endpoint is guaranteed to exist today).
+        link = '${ApiConfig.baseUrl}${ApiConfig.apiPrefix}/providers/$providerId/';
+      }
+      if (!mounted) return;
+      setState(() {
+        _providerShareLink = link;
+        _followersCount = followersCount;
+        _likesReceivedCount = likesReceivedCount;
+      });
+    } catch (_) {
+      // Best-effort.
+    }
   }
 
   @override
@@ -125,6 +167,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     final picker = ImagePicker();
     final picked = await picker.pickVideo(source: ImageSource.gallery);
     if (picked != null) {
+      if (!context.mounted) return;
       setState(() {
         _reelVideo = File(picked.path);
       });
@@ -136,6 +179,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
   // نافذة QR
   void _showQrDialog() {
+    final link = _providerShareLink;
     showDialog(
       context: context,
       builder:
@@ -167,12 +211,16 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                         borderRadius: BorderRadius.circular(16),
                       ),
                       alignment: Alignment.center,
-                      child: const Text(
-                        "QR CODE",
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          link ?? 'لم يتم العثور على رابط الملف حالياً',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.deepPurple,
+                          ),
                         ),
                       ),
                     ),
@@ -182,8 +230,14 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                       children: [
                         IconButton(
                           onPressed: () {
+                            if (link == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('الرابط غير متوفر حالياً')),
+                              );
+                              return;
+                            }
                             Clipboard.setData(
-                              const ClipboardData(text: "QR-CODE-DATA"),
+                              ClipboardData(text: link),
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text("تم نسخ الكود")),
@@ -197,7 +251,13 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                         ),
                         IconButton(
                           onPressed: () {
-                            Share.share("QR-CODE-DATA");
+                            if (link == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('الرابط غير متوفر حالياً')),
+                              );
+                              return;
+                            }
+                            Share.share(link);
                           },
                           icon: const Icon(
                             Icons.share,
@@ -288,7 +348,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black12.withOpacity(0.05),
+                color: Colors.black12.withValues(alpha: 0.05),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -403,7 +463,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                 Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 14,
-                  color: mainColor.withOpacity(0.8),
+                  color: mainColor.withValues(alpha: 0.8),
                 ),
               ],
             ),
@@ -448,7 +508,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                       ? LinearGradient(
                         colors: [
                           mainColor,
-                          mainColor.withOpacity(0.6),
+                          mainColor.withValues(alpha: 0.6),
                         ],
                         begin: Alignment.topRight,
                         end: Alignment.bottomLeft,
@@ -493,11 +553,11 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             bottom: false,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(25),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -591,7 +651,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black12.withOpacity(0.3),
+                          color: Colors.black12.withValues(alpha: 0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -709,9 +769,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: color.withOpacity(0.35)),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -744,7 +804,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black12.withOpacity(0.04),
+              color: Colors.black12.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -871,7 +931,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black12.withOpacity(0.04),
+                            color: Colors.black12.withValues(alpha: 0.04),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -885,14 +945,18 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('قائمة المتابعين'),
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const InteractiveScreen(
+                                        mode: InteractiveMode.provider,
+                                        initialTabIndex: 0,
+                                      ),
                                     ),
                                   );
                                 },
                                 child: Column(
-                                  children: const [
+                                  children: [
                                     Icon(
                                       Icons.groups_rounded,
                                       size: 18,
@@ -900,7 +964,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                                     ),
                                     SizedBox(height: 6),
                                     Text(
-                                      '542',
+                                      _followersCount == null ? '—' : _followersCount.toString(),
                                       style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
@@ -921,22 +985,26 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                               const SizedBox(width: 40),
                               GestureDetector(
                                 onTap: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('قائمة المتابَعون'),
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const InteractiveScreen(
+                                        mode: InteractiveMode.provider,
+                                        initialTabIndex: 1,
+                                      ),
                                     ),
                                   );
                                 },
                                 child: Column(
-                                  children: const [
+                                  children: [
                                     Icon(
-                                      Icons.person_add_alt_1_rounded,
+                                      Icons.thumb_up_alt_outlined,
                                       size: 18,
                                       color: Colors.grey,
                                     ),
                                     SizedBox(height: 6),
                                     Text(
-                                      '98',
+                                      _likesReceivedCount == null ? '—' : _likesReceivedCount.toString(),
                                       style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
@@ -945,7 +1013,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                                     ),
                                     SizedBox(height: 2),
                                     Text(
-                                      'يتابع',
+                                      'معجب',
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: Colors.grey,
@@ -962,19 +1030,41 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                               _statItem(
                                 icon: Icons.thumb_up_alt_outlined,
                                 label: "إعجابات",
-                                value: "21",
+                                value: _likesReceivedCount == null ? "—" : _likesReceivedCount.toString(),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const InteractiveScreen(
+                                        mode: InteractiveMode.provider,
+                                        initialTabIndex: 1,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                               const SizedBox(width: 6),
                               _statItem(
                                 icon: Icons.person_outline,
                                 label: "عملاء",
-                                value: "33",
+                                value: "—",
                               ),
                               const SizedBox(width: 6),
                               _statItem(
-                                icon: Icons.bookmark_border,
-                                label: "محفوظ",
-                                value: "79",
+                                icon: Icons.groups_rounded,
+                                label: "متابعون",
+                                value: _followersCount == null ? "—" : _followersCount.toString(),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const InteractiveScreen(
+                                        mode: InteractiveMode.provider,
+                                        initialTabIndex: 0,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                               const SizedBox(width: 6),
                               _statItem(

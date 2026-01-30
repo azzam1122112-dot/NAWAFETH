@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.accounts.models import User
+
 from .models import Category, ProviderProfile, SubCategory
 
 
@@ -45,3 +47,23 @@ class ProviderPublicSerializer(serializers.ModelSerializer):
             "followers_count",
             "likes_count",
         )
+
+
+class UserPublicSerializer(serializers.ModelSerializer):
+    display_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "username",
+            "display_name",
+        )
+
+    def get_display_name(self, obj: User) -> str:
+        first = (getattr(obj, "first_name", "") or "").strip()
+        last = (getattr(obj, "last_name", "") or "").strip()
+        if first or last:
+            return (f"{first} {last}").strip()
+        username = (getattr(obj, "username", "") or "").strip()
+        return username or "مستخدم"

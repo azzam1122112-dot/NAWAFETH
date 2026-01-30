@@ -20,17 +20,11 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
   @override
   void initState() {
     super.initState();
-    // ✅ خدمة افتراضية مضافة مسبقًا
+    // ✅ بدون بيانات وهمية: نبدأ بسجل فارغ قابل للتعديل
     _services.add(
       _ServiceItem(
-        initialName: "تصميم واجهات تطبيق خدمات",
-        initialDescription:
-            "تصميم واجهات عصرية لتطبيقات الخدمات:\n"
-            "• واجهة أنيقة متوافقة مع الهوية البصرية\n"
-            "• تجربة مستخدم سلسة ومناسبة للجوال\n"
-            "• تسليم سريع مع إمكانية التعديل",
-        isUrgent: true,
-        isEditing: false, // افتراضيًا ملخّصة، ليست في وضع تحرير
+        isUrgent: false,
+        isEditing: true,
       ),
     );
   }

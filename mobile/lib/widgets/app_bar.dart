@@ -4,6 +4,74 @@ import '../constants/colors.dart';
 // ✅ استدعاء شاشة الإشعارات
 import '../screens/notifications_screen.dart';
 import '../screens/my_chats_screen.dart';
+import '../services/notifications_badge_controller.dart';
+
+class NotificationsIconButton extends StatefulWidget {
+  final Color iconColor;
+
+  const NotificationsIconButton({super.key, required this.iconColor});
+
+  @override
+  State<NotificationsIconButton> createState() => _NotificationsIconButtonState();
+}
+
+class _NotificationsIconButtonState extends State<NotificationsIconButton> {
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int?>(
+      valueListenable: NotificationsBadgeController.instance.unreadNotifier,
+      builder: (context, unread, _) {
+        final showBadge = unread != null && unread > 0;
+        final label = (unread ?? 0) > 99 ? '99+' : (unread ?? 0).toString();
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              icon: Icon(
+                Icons.notifications_none,
+                color: widget.iconColor,
+              ),
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                );
+                await NotificationsBadgeController.instance.refresh();
+              },
+            ),
+            if (showBadge)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
@@ -148,20 +216,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               const Spacer(),
 
               // ✅ أيقونة الإشعارات
-              IconButton(
-                icon: Icon(
-                  Icons.notifications_none,
-                  color: iconColor,
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationsScreen(),
-                    ),
-                  );
-                },
-              ),
+              NotificationsIconButton(iconColor: iconColor),
 
               const SizedBox(width: 8),
 

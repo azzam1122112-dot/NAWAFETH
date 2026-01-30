@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/colors.dart';
+
+import '../../services/account_api.dart';
+import '../../services/session_storage.dart';
 
 // ⬇️ استيراد القوالب الموجودة
 import '../registration/steps/service_details_step.dart';
@@ -19,8 +23,17 @@ class ProviderProfileCompletionScreen extends StatefulWidget {
 
 class _ProviderProfileCompletionScreenState
     extends State<ProviderProfileCompletionScreen> {
-  // ✅ النسبة الأساسية القادمة من التسجيل الأولي (3 خطوات تسجيل)
-  static const double _baseCompletion = 0.30; // 30%
+  // ✅ الحد الأعلى للجزء الأساسي (بيانات التسجيل الأساسية)
+  static const double _baseCompletionMax = 0.30; // 30%
+  static const int _optionalTotalPercent = 70; // 70%
+
+  bool _loading = true;
+  Map<String, dynamic>? _me;
+
+  String? _fullName;
+  String? _username;
+  String? _phone;
+  String? _email;
 
   // الأقسام الاختيارية (6 أقسام = 70%)
   final Map<String, bool> _sections = {
@@ -32,18 +45,40 @@ class _ProviderProfileCompletionScreenState
     "seo": false,
   };
 
-  double get _perSectionWeight => 0.70 / _sections.length;
+  // ✅ أوزان صحيحة (integers) مجموعها 70% تماماً (بدون تجاوز 100% بسبب التقريب)
+  late final Map<String, int> _sectionWeights;
+
+  double get _baseCompletion {
+    // يعكس فعلياً ما هو موجود في الباكند (بدون بيانات وهمية).
+    final me = _me;
+    if (me == null) return 0.0;
+
+    bool hasName() {
+      final first = (me['first_name'] ?? '').toString().trim();
+      final last = (me['last_name'] ?? '').toString().trim();
+      final user = (me['username'] ?? '').toString().trim();
+      return first.isNotEmpty || last.isNotEmpty || user.isNotEmpty;
+    }
+
+    bool hasPhone() => (me['phone'] ?? '').toString().trim().isNotEmpty;
+    bool hasEmail() => (me['email'] ?? '').toString().trim().isNotEmpty;
+
+    final parts = <bool>[hasName(), hasPhone(), hasEmail()];
+    final done = parts.where((v) => v).length;
+    final ratio = done / parts.length;
+    return (_baseCompletionMax * ratio).clamp(0.0, _baseCompletionMax);
+  }
 
   double get _completionPercent {
-    final done = _sections.values.where((v) => v).length;
-    final dynamicPart = done * _perSectionWeight;
+    final completedOptional = _sections.entries
+        .where((e) => e.value)
+        .fold<int>(0, (sum, e) => sum + (_sectionWeights[e.key] ?? 0));
+
+    final dynamicPart = completedOptional / 100.0;
     return (_baseCompletion + dynamicPart).clamp(0.0, 1.0);
   }
 
-  int _sectionPercent() {
-    // كل قسم من الاختياري يمثل نفس النسبة تقريباً
-    return (_perSectionWeight * 100).round();
-  }
+  int _sectionPercent(String id) => _sectionWeights[id] ?? 0;
 
   // فتح شاشة القسم ثم تحديده كمكتمل إذا رجع بقيمة true
   Future<void> _openSection(String id) async {
@@ -51,14 +86,20 @@ class _ProviderProfileCompletionScreenState
 
     switch (id) {
       case "basic":
-        // عرض البيانات الأساسية (عرض فقط أو تعديل بسيط)
+        // عرض البيانات الأساسية (عرض فقط)
         await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder: (_) => const _BasicInfoPlaceholderScreen(),
+            builder:
+                (_) => _BasicInfoScreen(
+                  fullName: _fullName,
+                  username: _username,
+                  phone: _phone,
+                  email: _email,
+                ),
           ),
         );
-        // قسم الأساسيات دائماً مكتمل (30%) – لا نغير حالة
+        // قسم الأساسيات محسوب من الباكند
         return;
 
       case "service_details":
@@ -159,13 +200,106 @@ class _ProviderProfileCompletionScreenState
       setState(() {
         _sections[id] = true;
       });
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('provider_section_done_$id', true);
+      } catch (_) {
+        // ignore
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _sectionWeights = _buildSectionWeights();
+    _bootstrap();
+  }
+
+  Map<String, int> _buildSectionWeights() {
+    // توزيع 70% على 6 أقسام بدون كسور:
+    // 70 / 6 = 11 والباقي 4 → 4 أقسام = 12% و قسمين = 11% (المجموع 70%)
+    final keys = _sections.keys.toList(growable: false);
+    final base = _optionalTotalPercent ~/ keys.length; // 11
+    var remainder = _optionalTotalPercent - (base * keys.length); // 4
+
+    final weights = <String, int>{};
+    for (final k in keys) {
+      final extra = remainder > 0 ? 1 : 0;
+      if (remainder > 0) remainder -= 1;
+      weights[k] = base + extra;
+    }
+    return weights;
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final id in _sections.keys) {
+        _sections[id] = prefs.getBool('provider_section_done_$id') ?? false;
+      }
+
+      final loggedIn = await const SessionStorage().isLoggedIn();
+      if (!loggedIn) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+        });
+        return;
+      }
+
+      final me = await AccountApi().me();
+
+      String? nonEmpty(dynamic v) {
+        final s = (v ?? '').toString().trim();
+        return s.isEmpty ? null : s;
+      }
+
+      final first = nonEmpty(me['first_name']);
+      final last = nonEmpty(me['last_name']);
+      final username = nonEmpty(me['username']);
+      final email = nonEmpty(me['email']);
+      final phone = nonEmpty(me['phone']);
+
+      final fullNameParts = [
+        if (first != null) first,
+        if (last != null) last,
+      ];
+      final fullName = fullNameParts.isEmpty ? null : fullNameParts.join(' ');
+
+      if (!mounted) return;
+      setState(() {
+        _me = me;
+        _fullName = fullName;
+        _username = username;
+        _email = email;
+        _phone = phone;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final percent = (_completionPercent * 100).round();
-    final sectionPercent = _sectionPercent();
+    final percent = (_completionPercent * 100).clamp(0.0, 100.0).round();
+
+    if (_loading) {
+      return const Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: Color(0xFFF3F4FC),
+          body: Center(
+            child: CircularProgressIndicator(color: AppColors.deepPurple),
+          ),
+        ),
+      );
+    }
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -204,7 +338,7 @@ class _ProviderProfileCompletionScreenState
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black12.withOpacity(0.05),
+                        color: Colors.black12.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 5),
                       ),
@@ -277,7 +411,8 @@ class _ProviderProfileCompletionScreenState
                       id: "service_details",
                       title: "تفاصيل الخدمة",
                       subtitle: "اسم الخدمة ووصف مختصر.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
+                        extra:
+                          "يمثل ${_sectionPercent('service_details')}٪ من اكتمال الملف.",
                       icon: Icons.home_repair_service_outlined,
                       color: Colors.indigo,
                     ),
@@ -285,7 +420,8 @@ class _ProviderProfileCompletionScreenState
                       id: "additional",
                       title: "معلومات إضافية عنك وخدماتك",
                       subtitle: "تفاصيل موسّعة عن خدماتك ومؤهلاتك وخبراتك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
+                        extra:
+                          "يمثل ${_sectionPercent('additional')}٪ من اكتمال الملف.",
                       icon: Icons.notes_outlined,
                       color: Colors.teal,
                     ),
@@ -294,7 +430,8 @@ class _ProviderProfileCompletionScreenState
                       title: "معلومات التواصل الكاملة",
                       subtitle:
                           "روابط التواصل الاجتماعي، واتساب، موقع إلكتروني، رابط موقعك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
+                        extra:
+                          "يمثل ${_sectionPercent('contact_full')}٪ من اكتمال الملف.",
                       icon: Icons.call_outlined,
                       color: Colors.blue,
                     ),
@@ -302,7 +439,8 @@ class _ProviderProfileCompletionScreenState
                       id: "lang_loc",
                       title: "اللغة ونطاق الخدمة",
                       subtitle: "اللغات التي تجيدها ونطاق تقديم خدماتك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
+                        extra:
+                          "يمثل ${_sectionPercent('lang_loc')}٪ من اكتمال الملف.",
                       icon: Icons.language_outlined,
                       color: Colors.orange,
                     ),
@@ -310,7 +448,8 @@ class _ProviderProfileCompletionScreenState
                       id: "content",
                       title: "محتوى أعمالك (Portfolio)",
                       subtitle: "أضف صوراً أو نماذج من أعمالك السابقة.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
+                        extra:
+                          "يمثل ${_sectionPercent('content')}٪ من اكتمال الملف.",
                       icon: Icons.image_outlined,
                       color: Colors.purple,
                     ),
@@ -318,7 +457,8 @@ class _ProviderProfileCompletionScreenState
                       id: "seo",
                       title: "SEO والكلمات المفتاحية",
                       subtitle: "تعريف محركات البحث بنوعية خدمتك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
+                      extra:
+                          "يمثل ${_sectionPercent('seo')}٪ من اكتمال الملف.",
                       icon: Icons.search,
                       color: Colors.blueGrey,
                     ),
@@ -333,15 +473,16 @@ class _ProviderProfileCompletionScreenState
     );
   }
 
-  // 🔷 كرت الأساسيات (دايمًا مكتمل – 30%)
+  // 🔷 كرت الأساسيات (محسوب من بيانات الحساب)
   Widget _basicSectionTile() {
+    final basePercent = (_baseCompletion * 100).round();
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFEEF2FF),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.deepPurple.withOpacity(0.4),
+          color: AppColors.deepPurple.withValues(alpha: 0.4),
           width: 1.4,
         ),
       ),
@@ -372,7 +513,14 @@ class _ProviderProfileCompletionScreenState
             height: 1.4,
           ),
         ),
-        trailing: const Icon(Icons.check_circle, color: Colors.green, size: 22),
+        trailing: Text(
+          "$basePercent%",
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.w800,
+            color: Colors.green,
+          ),
+        ),
       ),
     );
   }
@@ -395,13 +543,13 @@ class _ProviderProfileCompletionScreenState
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black12.withOpacity(0.04),
+                        color: Colors.black12.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
-          color: done ? color.withOpacity(0.4) : Colors.grey.shade200,
+          color: done ? color.withValues(alpha: 0.4) : Colors.grey.shade200,
           width: done ? 1.4 : 1,
         ),
       ),
@@ -409,7 +557,7 @@ class _ProviderProfileCompletionScreenState
         onTap: () => _openSection(id),
         leading: CircleAvatar(
           radius: 20,
-          backgroundColor: color.withOpacity(0.08),
+          backgroundColor: color.withValues(alpha: 0.08),
           child: Icon(icon, color: color, size: 20),
         ),
         title: Text(
@@ -452,9 +600,19 @@ class _ProviderProfileCompletionScreenState
   }
 }
 
-/// 🔹 شاشة بسيطة لمعاينة/تعديل البيانات الأساسية (محاكاة)
-class _BasicInfoPlaceholderScreen extends StatelessWidget {
-  const _BasicInfoPlaceholderScreen();
+/// 🔹 شاشة لمعاينة البيانات الأساسية (من الباكند)
+class _BasicInfoScreen extends StatelessWidget {
+  final String? fullName;
+  final String? username;
+  final String? phone;
+  final String? email;
+
+  const _BasicInfoScreen({
+    required this.fullName,
+    required this.username,
+    required this.phone,
+    required this.email,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -469,26 +627,52 @@ class _BasicInfoPlaceholderScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              "هذه البيانات تم إدخالها أثناء التسجيل الأولي.",
+          children: [
+            const Text(
+              "هذه البيانات تُجلب من حسابك في النظام.",
               style: TextStyle(fontFamily: "Cairo", color: Colors.black54),
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             ListTile(
-              leading: Icon(Icons.person),
-              title: Text("الاسم / اسم الحساب"),
-              subtitle: Text("سيتم جلبه من قاعدة البيانات لاحقاً."),
+              leading: const Icon(Icons.person),
+              title: const Text("الاسم", style: TextStyle(fontFamily: 'Cairo')),
+              subtitle: Text(
+                fullName ?? '—',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
             ),
             ListTile(
-              leading: Icon(Icons.category_outlined),
-              title: Text("تصنيف الاختصاص"),
-              subtitle: Text("يُعرض هنا التصنيف الرئيسي والتخصصات."),
+              leading: const Icon(Icons.alternate_email),
+              title: const Text(
+                "اسم المستخدم",
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+              subtitle: Text(
+                username == null ? '—' : '@$username',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
             ),
             ListTile(
-              leading: Icon(Icons.phone),
-              title: Text("بيانات التواصل الأساسية"),
-              subtitle: Text("رقم الجوال / واتساب الأساسي."),
+              leading: const Icon(Icons.phone),
+              title: const Text(
+                "رقم الجوال",
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+              subtitle: Text(
+                phone ?? '—',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.email_outlined),
+              title: const Text(
+                "البريد الإلكتروني",
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+              subtitle: Text(
+                email ?? '—',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
             ),
           ],
         ),

@@ -99,6 +99,38 @@ def me_view(request):
     except Exception:
         has_provider_profile = False
 
+    # Counts for client-side profile (best-effort)
+    following_count = 0
+    likes_count = 0
+    try:
+        following_count = user.provider_follows.count()
+    except Exception:
+        following_count = 0
+    try:
+        likes_count = user.provider_likes.count()
+    except Exception:
+        likes_count = 0
+
+    provider_profile_id = None
+    provider_display_name = None
+    provider_city = None
+    provider_followers_count = 0
+    provider_likes_received_count = 0
+    provider_rating_avg = None
+    provider_rating_count = 0
+    if has_provider_profile:
+        try:
+            pp = user.provider_profile
+            provider_profile_id = pp.id
+            provider_display_name = pp.display_name
+            provider_city = pp.city
+            provider_followers_count = pp.followers.count()
+            provider_likes_received_count = pp.likes.count()
+            provider_rating_avg = pp.rating_avg
+            provider_rating_count = pp.rating_count
+        except Exception:
+            pass
+
     role_state = getattr(user, "role_state", None)
     is_provider = bool(role_state == UserRole.PROVIDER) or has_provider_profile
 
@@ -113,6 +145,15 @@ def me_view(request):
             "role_state": role_state,
             "has_provider_profile": has_provider_profile,
             "is_provider": is_provider,
+            "following_count": following_count,
+            "likes_count": likes_count,
+            "provider_profile_id": provider_profile_id,
+            "provider_display_name": provider_display_name,
+            "provider_city": provider_city,
+            "provider_followers_count": provider_followers_count,
+            "provider_likes_received_count": provider_likes_received_count,
+            "provider_rating_avg": provider_rating_avg,
+            "provider_rating_count": provider_rating_count,
         }
     )
 

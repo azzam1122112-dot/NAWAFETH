@@ -19,6 +19,7 @@ import 'screens/orders_hub_screen.dart';
 import 'screens/onboarding_screen.dart';
 
 import 'services/app_snackbar.dart';
+import 'services/notifications_badge_controller.dart';
 
 /// 🌙 وحدة تحكم للثيم واللغة
 class MyThemeController extends InheritedWidget {
@@ -45,6 +46,8 @@ class MyThemeController extends InheritedWidget {
 }
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  NotificationsBadgeController.instance.initialize();
   runApp(const NawafethApp());
 }
 

@@ -1,9 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
+import 'interactive_screen.dart';
 import 'registration/register_service_provider.dart';
 import 'provider_dashboard/provider_home_screen.dart';
 import '../widgets/custom_drawer.dart';
@@ -22,22 +26,22 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   final Color mainColor = Colors.deepPurple;
   File? _profileImage;
   File? _coverImage;
-  late AnimationController _controller;
   bool isProvider = false;
   bool isProviderRegistered = false;
   bool _isLoading = true;
   String? _fullName;
   String? _username;
+  String? _phone;
+  String? _email;
+  int? _followingCount;
+  int? _likesCount;
+  int? _userId;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
+    _loadIdentityFromStorage();
     _refreshRoleAndUserType();
-    _loadIdentity();
   }
 
   Future<void> _refreshRoleAndUserType() async {
@@ -55,7 +59,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
       final hasProviderProfile = me['has_provider_profile'] == true;
       final isProviderFlag = me['is_provider'] == true;
 
-      final isProviderRegisteredBackend = isProviderFlag || hasProviderProfile || role == 'provider';
+      // We only allow switching to provider mode when a provider profile exists.
+      // This avoids showing/allowing the provider account for pure-client users.
+      final isProviderRegisteredBackend = hasProviderProfile;
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isProviderRegistered', isProviderRegisteredBackend);
@@ -64,19 +70,69 @@ class _MyProfileScreenState extends State<MyProfileScreen>
       if (!isProviderRegisteredBackend) {
         await prefs.setBool('isProvider', false);
       }
+
+      // Sync identity + real counters (best-effort)
+      String? nonEmpty(dynamic v) {
+        final s = (v ?? '').toString().trim();
+        return s.isEmpty ? null : s;
+      }
+
+      final firstName = nonEmpty(me['first_name']);
+      final lastName = nonEmpty(me['last_name']);
+      final username = nonEmpty(me['username']);
+      final email = nonEmpty(me['email']);
+      final phone = nonEmpty(me['phone']);
+
+      final fullNameParts = [
+        if (firstName != null) firstName,
+        if (lastName != null) lastName,
+      ];
+      final fullName = fullNameParts.isEmpty ? null : fullNameParts.join(' ');
+
+      await const SessionStorage().saveProfile(
+        username: username,
+        email: email,
+        firstName: firstName,
+        lastName: lastName,
+      );
+      if (phone != null) {
+        await const SessionStorage().savePhone(phone);
+      }
+
+      int? asInt(dynamic v) {
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        final s = (v ?? '').toString().trim();
+        return int.tryParse(s);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _userId = asInt(me['id']);
+        _fullName = fullName;
+        _username = username;
+        _email = email;
+        _phone = phone;
+        _followingCount = asInt(me['following_count']);
+        _likesCount = asInt(me['likes_count']);
+      });
     } catch (_) {
       // Best-effort: keep local state if backend call fails.
     }
   }
 
-  Future<void> _loadIdentity() async {
+  Future<void> _loadIdentityFromStorage() async {
     const storage = SessionStorage();
     final fullName = (await storage.readFullName())?.trim();
     final username = (await storage.readUsername())?.trim();
+    final email = (await storage.readEmail())?.trim();
+    final phone = (await storage.readPhone())?.trim();
     if (!mounted) return;
     setState(() {
       _fullName = (fullName == null || fullName.isEmpty) ? null : fullName;
       _username = (username == null || username.isEmpty) ? null : username;
+      _email = (email == null || email.isEmpty) ? null : email;
+      _phone = (phone == null || phone.isEmpty) ? null : phone;
     });
   }
 
@@ -88,7 +144,8 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     
     if (mounted) {
       setState(() {
-        isProvider = isProviderUser;
+        // Never enter provider mode unless provider profile exists.
+        isProvider = isProviderUser && isRegistered;
         isProviderRegistered = isRegistered;
         _isLoading = false;
       });
@@ -97,7 +154,6 @@ class _MyProfileScreenState extends State<MyProfileScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
     super.dispose();
   }
 
@@ -113,36 +169,177 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     }
   }
 
-  Widget _iconButtonCircle(IconData icon, String label, bool isDark) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isDark ? Colors.grey[850] : Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: isDark ? Colors.black45 : Colors.black12,
-                blurRadius: 4,
+  String? _buildClientShareLink() {
+    final id = _userId;
+    if (id == null) return null;
+
+    // Deep-link style payload (real, deterministic, no fake numbers).
+    // If/when a public web profile exists, this can be swapped to https URL.
+    return 'nawafeth://user/$id';
+  }
+
+  void _showClientQrDialog() {
+    final link = _buildClientShareLink();
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.qr_code_2, size: 22, color: Colors.deepPurple),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'QR نافذتي',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'إغلاق',
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 190,
+                    height: 190,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child:
+                        link == null
+                            ? const Center(
+                              child: Text(
+                                'غير متوفر حالياً',
+                                style: TextStyle(fontFamily: 'Cairo'),
+                              ),
+                            )
+                            : QrImageView(
+                              data: link,
+                              padding: EdgeInsets.zero,
+                            ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    link ?? '—',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              link == null
+                                  ? null
+                                  : () async {
+                                    await Clipboard.setData(ClipboardData(text: link));
+                                    if (!context.mounted) return;
+                                    Navigator.pop(dialogContext);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('تم نسخ الرابط')),
+                                    );
+                                  },
+                          icon: const Icon(Icons.copy, size: 18),
+                          label: const Text(
+                            'نسخ الرابط',
+                            style: TextStyle(fontFamily: 'Cairo'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              link == null
+                                  ? null
+                                  : () async {
+                                    // share_plus already in dependencies.
+                                    // ignore: avoid_dynamic_calls
+                                    await Share.share(link);
+                                  },
+                          icon: const Icon(Icons.share, size: 18),
+                          label: const Text(
+                            'مشاركة',
+                            style: TextStyle(fontFamily: 'Cairo'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: isDark ? Colors.deepPurple.shade300 : Colors.deepPurple,
+        );
+      },
+    );
+  }
+
+  Widget _statCircle({
+    required IconData icon,
+    required String value,
+    VoidCallback? onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? Colors.grey.shade900 : Colors.white;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Column(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: bg,
+              shape: BoxShape.circle,
+              border: Border.all(color: mainColor.withValues(alpha: 0.18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: mainColor, size: 22),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.white70 : Colors.black87,
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -174,6 +371,13 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     // ✅ عرض بروفايل العميل العادي
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    final followingText = _followingCount == null ? '—' : _followingCount.toString();
+    final favoritesText = _likesCount == null ? '—' : _likesCount.toString();
+    final interactionCount = (_followingCount != null && _likesCount != null)
+      ? (_followingCount! + _likesCount!)
+      : null;
+    final interactionText = interactionCount == null ? '—' : interactionCount.toString();
     
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -204,7 +408,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                 ? LinearGradient(
                                   colors: [
                                     isDark ? Colors.deepPurple.shade800 : mainColor,
-                                    isDark ? Colors.deepPurple.shade900.withOpacity(0.6) : mainColor.withOpacity(0.6),
+                                    isDark ? Colors.deepPurple.shade900.withValues(alpha: 0.6) : mainColor.withValues(alpha: 0.6),
                                   ],
                                   begin: Alignment.topRight,
                                   end: Alignment.bottomLeft,
@@ -220,24 +424,65 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                       ),
                       child: Stack(
                         children: [
-                          // ✅ زر تعديل الغلاف
+                          // ✅ زر تعديل الغلاف (مطابق للتصميم: زر "تعديل")
                           Positioned(
                             top: 8,
                             left: 16,
                             child: SafeArea(
                               bottom: false,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.black26,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.photo_camera_outlined,
-                                    color: Colors.white,
-                                    size: 20,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _pickImage(isCover: true),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 7,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.90),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Text(
+                                      'تعديل',
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                        color: Colors.deepPurple,
+                                      ),
+                                    ),
                                   ),
-                                  onPressed: () => _pickImage(isCover: true),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // ✅ زر QR (يسار الهيدر مثل التصميم)
+                          Positioned(
+                            top: 92,
+                            left: 16,
+                            child: SafeArea(
+                              bottom: false,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _showClientQrDialog,
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Container(
+                                    width: 46,
+                                    height: 46,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.92),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.qr_code_2,
+                                      color: Colors.deepPurple,
+                                      size: 24,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -251,11 +496,11 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                 bottom: false,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.95),
+                                    color: Colors.white.withValues(alpha: 0.95),
                                     borderRadius: BorderRadius.circular(25),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
+                                        color: Colors.black.withValues(alpha: 0.2),
                                         blurRadius: 8,
                                         offset: const Offset(0, 2),
                                       ),
@@ -267,19 +512,19 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                       onTap: () async {
                                         await _syncRoleFromBackend();
                                         final prefs = await SharedPreferences.getInstance();
-                                        await prefs.setBool('isProvider', true);
-                                      
-                                        if (mounted) {
-                                          // إظهار إشعار التبديل
+                                        final canSwitchToProvider =
+                                            (prefs.getBool('isProviderRegistered') ?? false) == true;
+                                        if (!canSwitchToProvider) {
+                                          if (!context.mounted) return;
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
                                               content: const Row(
                                                 children: [
-                                                  Icon(Icons.check_circle, color: Colors.white),
+                                                  Icon(Icons.info_outline, color: Colors.white),
                                                   SizedBox(width: 12),
                                                   Expanded(
                                                     child: Text(
-                                                      'تم التبديل إلى حساب مقدم الخدمة بنجاح',
+                                                      'حسابك عميل فقط حالياً. سجّل كمقدم خدمة أولاً ليظهر حساب مقدم الخدمة.',
                                                       style: TextStyle(
                                                         fontFamily: 'Cairo',
                                                         fontSize: 14,
@@ -288,20 +533,49 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                                   ),
                                                 ],
                                               ),
-                                              backgroundColor: Colors.green,
-                                              duration: const Duration(seconds: 5),
+                                              backgroundColor: Colors.deepPurple,
+                                              duration: const Duration(seconds: 4),
                                               behavior: SnackBarBehavior.floating,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(10),
-                                              ),
                                             ),
                                           );
-                                          
-                                          setState(() {
-                                            _isLoading = true;
-                                          });
-                                          await _checkUserType();
+                                          return;
                                         }
+
+                                        await prefs.setBool('isProvider', true);
+
+                                        if (!context.mounted) return;
+
+                                        // إظهار إشعار التبديل
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Row(
+                                              children: [
+                                                Icon(Icons.check_circle, color: Colors.white),
+                                                SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    'تم التبديل إلى حساب مقدم الخدمة بنجاح',
+                                                    style: TextStyle(
+                                                      fontFamily: 'Cairo',
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor: Colors.green,
+                                            duration: const Duration(seconds: 5),
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        );
+
+                                        setState(() {
+                                          _isLoading = true;
+                                        });
+                                        await _checkUserType();
                                       },
                                       borderRadius: BorderRadius.circular(25),
                                       child: Padding(
@@ -416,134 +690,81 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                     ),
                     textAlign: TextAlign.center,
                   ),
+                if (_phone != null || _email != null) ...[
+                  const SizedBox(height: 8),
+                  Column(
+                    children: [
+                      if (_phone != null)
+                        Text(
+                          _phone!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[300] : Colors.black54,
+                            fontFamily: 'Cairo',
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      if (_email != null)
+                        Text(
+                          _email!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[300] : Colors.black54,
+                            fontFamily: 'Cairo',
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
-                // ✅ إحصائيات المتابعين والمتابعون
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('قائمة المتابعين'),
-                          ),
-                        );
-                      },
-                      child: Column(
-                        children: [
-                          Text(
-                            '245',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black87,
+
+                // ✅ شريط الأيقونات/الإحصائيات (مطابق للتصميم)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                  child: Row(
+                    children: [
+                      _statCircle(
+                        icon: Icons.bookmark_border,
+                        value: favoritesText,
+                        onTap: () {
+                          // ينتقل لتفاعلي > المحفوظات
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const InteractiveScreen(initialTabIndex: 1),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'متابع',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    ),
-                    const SizedBox(width: 40),
-                    GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('قائمة المتابَعون'),
-                          ),
-                        );
-                      },
-                      child: Column(
-                        children: [
-                          Text(
-                            '178',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black87,
+                      const SizedBox(width: 14),
+                      _statCircle(
+                        icon: Icons.person_outline,
+                        value: followingText,
+                        onTap: () {
+                          // ينتقل لتفاعلي > من أتابع
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const InteractiveScreen(initialTabIndex: 0),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'يتابع',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 90,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: 6,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return GestureDetector(
-                          onTap: () {},
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isDark ? Colors.deepPurple.shade300 : mainColor,
-                                width: 2,
-                              ),
-                              color: isDark ? Colors.grey[850] : Colors.white,
+                      const Spacer(),
+                      _statCircle(
+                        icon: Icons.thumb_up_alt_outlined,
+                        value: interactionText,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const InteractiveScreen(initialTabIndex: 0),
                             ),
-                            child: CircleAvatar(
-                              radius: 32,
-                              backgroundColor: isDark ? Colors.grey[850] : Colors.white,
-                              child: Icon(
-                                Icons.add,
-                                color: isDark ? Colors.deepPurple.shade300 : Colors.deepPurple,
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                        );
-                      } else {
-                        return RotationTransition(
-                          turns: _controller,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: isDark
-                                    ? [Colors.deepPurple.shade700, Colors.orange.shade700]
-                                    : [const Color(0xFFE1BEE7), const Color(0xFFFFB74D)],
-                                begin: Alignment.topRight,
-                                end: Alignment.bottomLeft,
-                              ),
-                            ),
-                            child: CircleAvatar(
-                              radius: 32,
-                              backgroundColor: isDark ? Colors.grey[850] : Colors.white,
-                              child: Icon(
-                                Icons.play_arrow,
-                                color: isDark ? Colors.deepPurple.shade300 : Colors.deepPurple,
-                                size: 26,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    },
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -556,8 +777,8 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.deepPurple.shade900.withOpacity(0.3)
-                            : mainColor.withOpacity(0.07),
+                            ? Colors.deepPurple.shade900.withValues(alpha: 0.3)
+                            : mainColor.withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Column(
@@ -615,25 +836,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
             top: 190,
             left: 20,
             right: 20,
-            child: Row(
-              children: [
-                Row(
-                  children: [
-                    _iconButtonCircle(Icons.qr_code, "QR", isDark),
-                    const SizedBox(width: 16),
-                    _iconButtonCircle(Icons.bookmark_border, "79", isDark),
-                  ],
-                ),
-                const Spacer(),
-                Row(
-                  children: [
-                    _iconButtonCircle(Icons.person_outline, "33", isDark),
-                    const SizedBox(width: 16),
-                    _iconButtonCircle(Icons.thumb_up_alt_outlined, "21", isDark),
-                  ],
-                ),
-              ],
-            ),
+            child: const SizedBox.shrink(),
           ),
         ],
       ),

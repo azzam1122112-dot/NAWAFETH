@@ -55,6 +55,7 @@ dependencies:
   url_launcher: ^6.3.1
   permission_handler: ^11.3.1
   flutter_sound: ^9.2.13
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

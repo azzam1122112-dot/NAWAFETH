@@ -15,6 +15,7 @@ import '../services/session_storage.dart';
 import '../services/account_api.dart';
 import '../services/app_snackbar.dart';
 import '../utils/auth_guard.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _SessionInfo {
   final bool loggedIn;
@@ -34,6 +35,11 @@ class CustomDrawer extends StatefulWidget {
 
 class _CustomDrawerState extends State<CustomDrawer> {
   String selectedLanguage = "ar";
+
+  Future<bool> _loadIsProviderRegistered() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getBool('isProviderRegistered') ?? false) == true;
+  }
 
   Future<_SessionInfo> _loadSessionInfo() async {
     const storage = SessionStorage();
@@ -238,21 +244,29 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   onTap: () => _showLanguageDialog(),
                   isDark: isDark,
                 ),
-                _buildDrawerItem(
-                  icon: FontAwesomeIcons.qrcode,
-                  label: AppTexts.getText(context, "qr"),
-                  onTap: () {
-                    Navigator.pop(context); // إغلاق الـ Drawer
-                    Future.delayed(const Duration(milliseconds: 100), () async {
-                       if (!await checkFullClient(context)) return;
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ProviderHomeScreen(),
-                        ),
-                      );
-                    });
+                FutureBuilder<bool>(
+                  future: _loadIsProviderRegistered(),
+                  builder: (context, providerSnap) {
+                    final canShowProvider = providerSnap.data == true;
+                    if (!canShowProvider) return const SizedBox.shrink();
+
+                    return _buildDrawerItem(
+                      icon: FontAwesomeIcons.qrcode,
+                      label: AppTexts.getText(context, "qr"),
+                      onTap: () {
+                        Navigator.pop(context); // إغلاق الـ Drawer
+                        Future.delayed(const Duration(milliseconds: 100), () async {
+                          if (!await checkFullClient(context)) return;
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ProviderHomeScreen(),
+                            ),
+                          );
+                        });
+                      },
+                      isDark: isDark,
+                    );
                   },
-                  isDark: isDark,
                 ),
                 _buildDrawerItem(
                   icon: Icons.article_outlined,

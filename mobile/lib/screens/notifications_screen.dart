@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'notification_settings_screen.dart'; // ✅ صفحة الإعدادات
 import '../utils/auth_guard.dart';
+import '../models/app_notification.dart';
+import '../services/notifications_api.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -10,210 +12,281 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  // ✅ بيانات الإشعارات
-  List<Map<String, dynamic>> notifications = [
-    {
-      "icon": Icons.warning_amber_rounded,
-      "title": "لديك طلب عاجل",
-      "subtitle": "عميل: محمد الغامدي • منذ 5 دقائق",
-      "color": Colors.red,
-      "urgent": true,
-      "important": false,
-      "pinned": false,
-    },
-    {
-      "icon": Icons.person_add_alt,
-      "title": "قام @111222 بمتابعة منصتك",
-      "subtitle": "16:35 • 01/01/2024",
-      "color": Colors.deepPurple,
-      "urgent": false,
-      "important": false,
-      "pinned": false,
-    },
-    {
-      "icon": Icons.hourglass_bottom, // ⏳ للباقة
-      "title": "قرب انتهاء فترة الباقة",
-      "subtitle":
-          "تنبيه: ستنتهي باقتك الحالية بعد 3 أيام. يُوصى بتجديد الاشتراك للاستمرار بالخدمات.",
-      "color": Colors.orange,
-      "urgent": false,
-      "important": false,
-      "pinned": false,
-    },
-    {
-      "icon": Icons.campaign,
-      "title": "عرض خاص لليوم الوطني 🇸🇦",
-      "subtitle":
-          "كود الخصم: SAUDIA95 — احصل على 20% خصم على الترويج الإعلاني بمناسبة اليوم الوطني.",
-      "color": Colors.green,
-      "urgent": false,
-      "important": false,
-      "pinned": false,
-    },
-  ];
+  final _api = NotificationsApi();
+  final _scroll = ScrollController();
 
-  // ✅ تحديث الترتيب
-  void _reorderNotifications() {
-    // العاجلة دائمًا بالأعلى
-    notifications.sort((a, b) {
-      if (a["urgent"] == true && b["urgent"] != true) return -1;
-      if (b["urgent"] == true && a["urgent"] != true) return 1;
-      if (a["pinned"] == true && b["pinned"] != true) return -1;
-      if (b["pinned"] == true && a["pinned"] != true) return 1;
-      return 0;
-    });
+  final List<AppNotification> _items = [];
+  bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _offset = 0;
+  String? _error;
+
+  static const int _limit = 20;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitial();
+    _scroll.addListener(_onScroll);
   }
 
-  // ✅ كارت الإشعار
-  Widget _notificationCard(
-    Map<String, dynamic> notification,
-    int index,
-    BuildContext context,
-  ) {
-    bool isUrgent = notification["urgent"] ?? false;
-    bool isImportant = notification["important"] ?? false;
-    bool isPinned = notification["pinned"] ?? false;
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color:
-            isUrgent
-                ? Colors.red
-                : isImportant
-                ? const Color(0xFFFFF8E1) // ذهبي فاتح
-                : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border:
-            isImportant
-                ? Border.all(color: Colors.amber, width: 2)
-                : Border.all(color: Colors.transparent),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            notification["icon"],
-            color:
-                isUrgent
-                    ? Colors.white
-                    : isImportant
-                    ? Colors.amber.shade800
-                    : notification["color"],
-            size: 28,
+  void _onScroll() {
+    if (!_hasMore || _loadingMore || _loading) return;
+    if (!_scroll.hasClients) return;
+    final position = _scroll.position;
+    if (position.pixels >= position.maxScrollExtent - 240) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadInitial() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _items.clear();
+      _offset = 0;
+      _hasMore = true;
+    });
+
+    try {
+      final page = await _api.list(limit: _limit, offset: 0);
+      final results = (page['results'] as List?) ?? const [];
+      final items = results
+          .whereType<Map>()
+          .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _items.addAll(items);
+        _offset = _items.length;
+        _hasMore = items.length >= _limit;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'تعذر تحميل الإشعارات';
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (!_hasMore) return;
+    setState(() {
+      _loadingMore = true;
+    });
+
+    try {
+      final page = await _api.list(limit: _limit, offset: _offset);
+      final results = (page['results'] as List?) ?? const [];
+      final items = results
+          .whereType<Map>()
+          .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _items.addAll(items);
+        _offset = _items.length;
+        _hasMore = items.length >= _limit;
+      });
+    } catch (_) {
+      // Ignore load-more errors; user can pull-to-refresh.
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _loadingMore = false;
+      });
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm • $y/$m/$d';
+  }
+
+  IconData _iconForKind(String kind) {
+    switch (kind) {
+      case 'urgent':
+        return Icons.warning_amber_rounded;
+      case 'offer':
+        return Icons.local_offer_outlined;
+      case 'message':
+        return Icons.chat_bubble_outline;
+      case 'info':
+      default:
+        return Icons.notifications_none;
+    }
+  }
+
+  Future<void> _markAllRead() async {
+    try {
+      await _api.markAllRead();
+      if (!mounted) return;
+      setState(() {
+        for (var i = 0; i < _items.length; i++) {
+          final n = _items[i];
+          if (!n.isRead) {
+            _items[i] = AppNotification(
+              id: n.id,
+              title: n.title,
+              body: n.body,
+              kind: n.kind,
+              url: n.url,
+              isRead: true,
+              createdAt: n.createdAt,
+            );
+          }
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تعليم الكل كمقروء')),
+      );
+    }
+  }
+
+  Widget _notificationCard(AppNotification notification) {
+    final isUnread = !notification.isRead;
+    final theme = Theme.of(context);
+    final bg = theme.cardColor;
+
+    return InkWell(
+      onTap: () async {
+        if (!isUnread) return;
+        try {
+          await _api.markRead(notification.id);
+          if (!mounted) return;
+          setState(() {
+            final idx = _items.indexWhere((n) => n.id == notification.id);
+            if (idx >= 0) {
+              final n = _items[idx];
+              _items[idx] = AppNotification(
+                id: n.id,
+                title: n.title,
+                body: n.body,
+                kind: n.kind,
+                url: n.url,
+                isRead: true,
+                createdAt: n.createdAt,
+              );
+            }
+          });
+        } catch (_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تعذر تعليم الإشعار كمقروء')),
+          );
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isUnread ? theme.colorScheme.primary.withOpacity(0.35) : Colors.transparent,
+            width: isUnread ? 1.2 : 1,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      notification["title"],
-                      style: TextStyle(
-                        fontFamily: "Cairo",
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color:
-                            isUrgent
-                                ? Colors.white
-                                : isImportant
-                                ? Colors.amber.shade900
-                                : Colors.black87,
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _iconForKind(notification.kind),
+                color: theme.colorScheme.primary,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          notification.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
                       ),
-                    ),
-                    if (isPinned) ...[
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.push_pin,
-                        color: Colors.deepPurple,
-                        size: 18,
-                      ),
+                      if (isUnread)
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  notification["subtitle"],
-                  style: TextStyle(
-                    fontFamily: "Cairo",
-                    fontSize: 12,
-                    color:
-                        isUrgent
-                            ? Colors.white70
-                            : isImportant
-                            ? Colors.amber.shade700
-                            : Colors.black54,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    notification.body,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12.5,
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _formatDate(notification.createdAt.toLocal()),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11.5,
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.70),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-
-          // ✅ قائمة الخيارات
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.black54),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            onSelected: (value) {
-              if (value == 'follow') {
-                setState(() {
-                  notification["important"] = !(notification["important"]);
-                });
-              } else if (value == 'pin') {
-                setState(() {
-                  notification["pinned"] = true;
-                  _reorderNotifications();
-                });
-              } else if (value == 'unpin') {
-                setState(() {
-                  notification["pinned"] = false;
-                  _reorderNotifications();
-                });
-              } else if (value == 'delete') {
-                setState(() {
-                  notifications.remove(notification);
-                });
-              }
-            },
-            itemBuilder: (context) {
-              return [
-                PopupMenuItem(
-                  value: 'follow',
-                  child: Text(
-                    (notification["important"] ?? false)
-                        ? "⭐ إزالة التمييز"
-                        : "⭐ تمييز مهم للمتابعة",
-                  ),
-                ),
-                if (notification["pinned"] == true)
-                  const PopupMenuItem(
-                    value: 'unpin',
-                    child: Text("❌ إلغاء التثبيت"),
-                  )
-                else
-                  const PopupMenuItem(
-                    value: 'pin',
-                    child: Text("📌 تثبيت بالأعلى"),
-                  ),
-                const PopupMenuItem(value: 'delete', child: Text("🗑 حذف")),
-              ];
-            },
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    _reorderNotifications(); // ✅ تحديث الترتيب عند البناء
     final theme = Theme.of(context);
 
     return Directionality(
@@ -232,6 +305,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'تعليم الكل كمقروء',
+              icon: const Icon(Icons.done_all, color: Colors.white),
+              onPressed: () async {
+                await _markAllRead();
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.settings, color: Colors.white),
               onPressed: () async {
                 if (!await checkFullClient(context)) return;
@@ -245,12 +325,55 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
           ],
         ),
-        body: ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: notifications.length,
-          itemBuilder: (context, index) {
-            return _notificationCard(notifications[index], index, context);
-          },
+        body: RefreshIndicator(
+          onRefresh: _loadInitial,
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : (_error != null)
+                  ? ListView(
+                      children: [
+                        const SizedBox(height: 140),
+                        Center(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: ElevatedButton(
+                            onPressed: _loadInitial,
+                            child: const Text('إعادة المحاولة', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                        ),
+                      ],
+                    )
+                  : (_items.isEmpty)
+                      ? ListView(
+                          children: const [
+                            SizedBox(height: 140),
+                            Center(
+                              child: Text(
+                                'لا توجد إشعارات حالياً',
+                                style: TextStyle(fontFamily: 'Cairo'),
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          controller: _scroll,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _items.length + (_loadingMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= _items.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(child: CircularProgressIndicator()),
+                              );
+                            }
+                            return _notificationCard(_items[index]);
+                          },
+                        ),
         ),
       ),
     );

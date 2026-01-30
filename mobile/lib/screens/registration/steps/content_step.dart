@@ -16,15 +16,7 @@ class ContentStep extends StatefulWidget {
 class _ContentStepState extends State<ContentStep> {
   final ScrollController _scrollController = ScrollController();
 
-  final List<SectionContent> sections = [
-    SectionContent(
-      title: 'فيديو تعريفي لخدمة إدارة الاشتراكات',
-      description:
-          'فيديو يشرح آلية إدارة الاشتراكات للعملاء من التسجيل وحتى التجديد بطريقة مبسطة.',
-      mainImage: null,
-      contentVideos: [],
-    ),
-  ];
+  final List<SectionContent> sections = [];
 
   bool _isAddingNew = false;
   int? _editingIndex;
@@ -123,12 +115,6 @@ class _ContentStepState extends State<ContentStep> {
   }
 
   void _deleteSection(int index) {
-    if (sections.length == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("يجب أن يبقى قسم واحد على الأقل.")),
-      );
-      return;
-    }
     setState(() {
       sections.removeAt(index);
     });

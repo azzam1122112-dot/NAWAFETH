@@ -4,6 +4,10 @@ from .views import (
     CategoryListView,
     FollowProviderView,
     LikeProviderView,
+    MyFollowingProvidersView,
+    MyLikedProvidersView,
+    MyProviderFollowersView,
+    MyProviderLikersView,
     ProviderCreateView,
     ProviderDetailView,
     ProviderListView,
@@ -16,6 +20,10 @@ app_name = "providers"
 urlpatterns = [
     path("categories/", CategoryListView.as_view(), name="categories"),
     path("list/", ProviderListView.as_view(), name="provider_list"),
+    path("me/following/", MyFollowingProvidersView.as_view(), name="my_following"),
+    path("me/likes/", MyLikedProvidersView.as_view(), name="my_likes"),
+    path("me/followers/", MyProviderFollowersView.as_view(), name="my_followers"),
+    path("me/likers/", MyProviderLikersView.as_view(), name="my_likers"),
     path("<int:pk>/", ProviderDetailView.as_view(), name="provider_detail"),
     path("register/", ProviderCreateView.as_view(), name="provider_register"),
 

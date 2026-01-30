@@ -3,6 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count
 
+from apps.accounts.models import User
+
 from apps.accounts.models import UserRole
 from apps.accounts.permissions import IsAtLeastClient, IsAtLeastPhoneOnly
 
@@ -11,6 +13,7 @@ from .serializers import (
 	CategorySerializer,
 	ProviderProfileSerializer,
 	ProviderPublicSerializer,
+	UserPublicSerializer,
 )
 
 
@@ -64,6 +67,68 @@ class ProviderDetailView(generics.RetrieveAPIView):
             followers_count=Count("followers"),
             likes_count=Count("likes")
         )
+
+
+class MyFollowingProvidersView(generics.ListAPIView):
+	"""Providers the current user follows."""
+	serializer_class = ProviderPublicSerializer
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def get_queryset(self):
+		return (
+			ProviderProfile.objects.filter(followers__user=self.request.user)
+			.annotate(followers_count=Count("followers"), likes_count=Count("likes"))
+			.distinct()
+			.order_by("-id")
+		)
+
+
+class MyLikedProvidersView(generics.ListAPIView):
+	"""Providers the current user liked (used as Favorites in the app)."""
+	serializer_class = ProviderPublicSerializer
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def get_queryset(self):
+		return (
+			ProviderProfile.objects.filter(likes__user=self.request.user)
+			.annotate(followers_count=Count("followers"), likes_count=Count("likes"))
+			.distinct()
+			.order_by("-id")
+		)
+
+
+class MyProviderFollowersView(generics.ListAPIView):
+	"""Users who follow the current user's provider profile (if exists)."""
+	serializer_class = UserPublicSerializer
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def get_queryset(self):
+		provider_profile = getattr(self.request.user, "provider_profile", None)
+		if not provider_profile:
+			return User.objects.none()
+
+		return (
+			User.objects.filter(provider_follows__provider=provider_profile)
+			.distinct()
+			.order_by("-id")
+		)
+
+
+class MyProviderLikersView(generics.ListAPIView):
+	"""Users who liked the current user's provider profile (if exists)."""
+	serializer_class = UserPublicSerializer
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def get_queryset(self):
+		provider_profile = getattr(self.request.user, "provider_profile", None)
+		if not provider_profile:
+			return User.objects.none()
+
+		return (
+			User.objects.filter(provider_likes__provider=provider_profile)
+			.distinct()
+			.order_by("-id")
+		)
 
 
 class FollowProviderView(APIView):
