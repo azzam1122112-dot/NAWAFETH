@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dio/dio.dart';
 
 // استيراد الخطوات
 import 'steps/personal_info_step.dart';
 import 'steps/service_classification_step.dart';
 import 'steps/contact_info_step.dart';
+
+import '../../services/providers_api.dart';
 
 // لوحة المزود بعد التسجيل
 import '../provider_dashboard/provider_home_screen.dart';
@@ -32,6 +35,17 @@ class _RegisterServiceProviderPageState
   late AnimationController _animationController;
 
   bool _showSuccessOverlay = false;
+  bool _submitting = false;
+
+  // Registration draft (required by backend)
+  final TextEditingController _displayNameCtrl = TextEditingController();
+  final TextEditingController _bioCtrl = TextEditingController();
+  final TextEditingController _cityCtrl = TextEditingController();
+  final TextEditingController _phoneCtrl = TextEditingController();
+  final TextEditingController _whatsappCtrl = TextEditingController();
+
+  String _accountTypeAr = 'فرد';
+  bool _acceptsUrgent = false;
   
   // تتبع نسبة إكمال كل صفحة (من 0.0 إلى 1.0)
   Map<int, double> _stepCompletion = {
@@ -54,6 +68,11 @@ class _RegisterServiceProviderPageState
   void dispose() {
     _scrollController.dispose();
     _animationController.dispose();
+    _displayNameCtrl.dispose();
+    _bioCtrl.dispose();
+    _cityCtrl.dispose();
+    _phoneCtrl.dispose();
+    _whatsappCtrl.dispose();
     super.dispose();
   }
 
@@ -101,10 +120,72 @@ class _RegisterServiceProviderPageState
     });
   }
 
-  void _completeRegistration() {
+  String _providerTypeToBackend(String ar) {
+    final v = ar.trim();
+    if (v == 'منشأة') return 'company';
+    return 'individual';
+  }
+
+  Future<void> _submitProviderRegistration() async {
+    if (_submitting) return;
+
+    final displayName = _displayNameCtrl.text.trim();
+    final bio = _bioCtrl.text.trim();
+    final city = _cityCtrl.text.trim();
+
+    if (displayName.isEmpty || bio.isEmpty || city.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('أكمل البيانات المطلوبة: الاسم، النبذة، المدينة.'),
+        ),
+      );
+      return;
+    }
+
     setState(() {
-      _showSuccessOverlay = true;
+      _submitting = true;
     });
+
+    try {
+      await ProvidersApi().registerProvider(
+        providerType: _providerTypeToBackend(_accountTypeAr),
+        displayName: displayName,
+        bio: bio,
+        city: city,
+        acceptsUrgent: _acceptsUrgent,
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isProviderRegistered', true);
+      await prefs.setBool('isProvider', true);
+
+      if (!mounted) return;
+      setState(() {
+        _showSuccessOverlay = true;
+      });
+    } on DioException catch (e) {
+      String msg = 'تعذر التسجيل كمقدم خدمة. حاول مرة أخرى.';
+      final data = e.response?.data;
+      if (data is Map) {
+        final detail = (data['detail'] ?? '').toString().trim();
+        if (detail.isNotEmpty) {
+          msg = detail;
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حدث خطأ غير متوقع أثناء التسجيل.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
   }
 
   double get _completionPercent {
@@ -292,18 +373,26 @@ class _RegisterServiceProviderPageState
       PersonalInfoStep(
         onNext: _goToNextStep,
         onValidationChanged: (percent) => _updateStepCompletion(0, percent),
+        displayNameController: _displayNameCtrl,
+        bioController: _bioCtrl,
+        initialAccountType: _accountTypeAr,
+        onAccountTypeChanged: (v) => _accountTypeAr = v,
       ),
       ServiceClassificationStep(
         onNext: _goToNextStep,
         onBack: _goToPreviousStep,
         onValidationChanged: (percent) => _updateStepCompletion(1, percent),
+        onUrgentChanged: (v) => _acceptsUrgent = v,
       ),
       ContactInfoStep(
-        onNext: _completeRegistration,
+        onNext: _submitProviderRegistration,
         onBack: _goToPreviousStep,
         isInitialRegistration: true,
         isFinalStep: true,
         onValidationChanged: (percent) => _updateStepCompletion(2, percent),
+        phoneExternalController: _phoneCtrl,
+        whatsappExternalController: _whatsappCtrl,
+        cityExternalController: _cityCtrl,
       ),
     ];
 
@@ -543,6 +632,19 @@ class _RegisterServiceProviderPageState
               ],
             ),
           ),
+
+          if (_submitting)
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: true,
+                child: Container(
+                  color: Colors.black.withOpacity(0.2),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Colors.deepPurple),
+                  ),
+                ),
+              ),
+            ),
 
           if (_showSuccessOverlay)
             Positioned.fill(

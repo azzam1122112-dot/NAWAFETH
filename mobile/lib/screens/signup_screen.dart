@@ -7,6 +7,7 @@ import '../widgets/app_bar.dart';
 
 import '../services/auth_api.dart';
 import '../services/session_storage.dart';
+import '../services/role_sync.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
@@ -106,6 +107,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
       );
+
+      // Best-effort: ensure local role flags match backend.
+      try {
+        await RoleSync.sync(accessToken: accessToken);
+      } catch (_) {
+        // ignore
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

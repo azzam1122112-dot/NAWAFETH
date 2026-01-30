@@ -92,6 +92,16 @@ def me_view(request):
         user.delete()
         return Response({"ok": True}, status=status.HTTP_200_OK)
 
+    has_provider_profile = False
+    try:
+        # related_name on ProviderProfile.user is "provider_profile"
+        has_provider_profile = bool(getattr(user, "provider_profile", None))
+    except Exception:
+        has_provider_profile = False
+
+    role_state = getattr(user, "role_state", None)
+    is_provider = bool(role_state == UserRole.PROVIDER) or has_provider_profile
+
     return Response(
         {
             "id": user.id,
@@ -100,7 +110,9 @@ def me_view(request):
             "username": user.username,
             "first_name": getattr(user, "first_name", None),
             "last_name": getattr(user, "last_name", None),
-            "role_state": user.role_state,
+            "role_state": role_state,
+            "has_provider_profile": has_provider_profile,
+            "is_provider": is_provider,
         }
     )
 

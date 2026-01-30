@@ -17,6 +17,11 @@ class ContactInfoStep extends StatefulWidget {
   
   final Function(double)? onValidationChanged;
 
+  // Optional external controllers (used by initial provider registration flow)
+  final TextEditingController? phoneExternalController;
+  final TextEditingController? whatsappExternalController;
+  final TextEditingController? cityExternalController;
+
   const ContactInfoStep({
     super.key,
     required this.onNext,
@@ -24,6 +29,9 @@ class ContactInfoStep extends StatefulWidget {
     this.isInitialRegistration = false,
     this.isFinalStep = false,
     this.onValidationChanged,
+    this.phoneExternalController,
+    this.whatsappExternalController,
+    this.cityExternalController,
   });
 
   @override
@@ -32,11 +40,16 @@ class ContactInfoStep extends StatefulWidget {
 
 class _ContactInfoStepState extends State<ContactInfoStep> {
   // Controllers
-  final websiteController = TextEditingController();
-  final phoneController = TextEditingController();
-  final whatsappController = TextEditingController();
-  final mapLocationController = TextEditingController();
-  final socialControllers = List.generate(9, (_) => TextEditingController());
+  late final TextEditingController websiteController;
+  late final TextEditingController phoneController;
+  late final TextEditingController whatsappController;
+  late final TextEditingController cityController;
+  late final TextEditingController mapLocationController;
+  late final List<TextEditingController> socialControllers;
+
+  late final bool _ownsPhone;
+  late final bool _ownsWhatsapp;
+  late final bool _ownsCity;
 
   // Logo
   final ImagePicker _picker = ImagePicker();
@@ -110,8 +123,20 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   @override
   void initState() {
     super.initState();
+
+    websiteController = TextEditingController();
+    _ownsPhone = widget.phoneExternalController == null;
+    _ownsWhatsapp = widget.whatsappExternalController == null;
+    _ownsCity = widget.cityExternalController == null;
+    phoneController = widget.phoneExternalController ?? TextEditingController();
+    whatsappController = widget.whatsappExternalController ?? TextEditingController();
+    cityController = widget.cityExternalController ?? TextEditingController();
+    mapLocationController = TextEditingController();
+    socialControllers = List.generate(9, (_) => TextEditingController());
+
     phoneController.addListener(_validateForm);
     whatsappController.addListener(_validateForm);
+    cityController.addListener(_validateForm);
     // تأجيل الاستدعاء الأول حتى بعد اكتمال البناء
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _validateForm();
@@ -121,15 +146,25 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   void _validateForm() {
     // حساب النسبة بناءً على الحقول المملوءة
     double completionPercent = 0.0;
-    
-    // رقم الهاتف الأساسي (60% من الصفحة)
-    if (phoneController.text.trim().isNotEmpty) {
-      completionPercent += 0.6;
-    }
-    
-    // واتساب (40% من الصفحة - اختياري)
-    if (whatsappController.text.trim().isNotEmpty) {
-      completionPercent += 0.4;
+
+    // للتسجيل الأولي: نحتاج المدينة + رقم الهاتف كحد أدنى
+    if (widget.isInitialRegistration) {
+      if (phoneController.text.trim().isNotEmpty) {
+        completionPercent += 0.5;
+      }
+      if (cityController.text.trim().isNotEmpty) {
+        completionPercent += 0.5;
+      }
+    } else {
+      // رقم الهاتف الأساسي (60% من الصفحة)
+      if (phoneController.text.trim().isNotEmpty) {
+        completionPercent += 0.6;
+      }
+
+      // واتساب (40% من الصفحة - اختياري)
+      if (whatsappController.text.trim().isNotEmpty) {
+        completionPercent += 0.4;
+      }
     }
     
     widget.onValidationChanged?.call(completionPercent);
@@ -155,8 +190,15 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   @override
   void dispose() {
     websiteController.dispose();
-    phoneController.dispose();
-    whatsappController.dispose();
+    if (_ownsPhone) {
+      phoneController.dispose();
+    }
+    if (_ownsWhatsapp) {
+      whatsappController.dispose();
+    }
+    if (_ownsCity) {
+      cityController.dispose();
+    }
     mapLocationController.dispose();
     for (final c in socialControllers) {
       c.dispose();
@@ -313,6 +355,16 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
               "هذه البيانات أساسية لإنشاء حسابك، يمكنك إضافة مزيد من وسائل التواصل لاحقًا من خلال إكمال الملف التعريفي.",
         ),
         const SizedBox(height: 16),
+        _sectionCard(
+          title: "المدينة",
+          icon: Icons.location_city,
+          child: _styledField(
+            controller: cityController,
+            hint: "مثال: الرياض",
+            icon: Icons.location_city,
+            keyboardType: TextInputType.text,
+          ),
+        ),
         _sectionCard(
           title: "رقم الهاتف الأساسي",
           icon: Icons.phone_android,

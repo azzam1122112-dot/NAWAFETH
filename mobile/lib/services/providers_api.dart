@@ -42,4 +42,35 @@ class ProvidersApi {
       return null;
     }
   }
+
+  Future<Map<String, dynamic>> registerProvider({
+    required String providerType,
+    required String displayName,
+    required String bio,
+    required String city,
+    bool acceptsUrgent = false,
+    int? yearsExperience,
+  }) async {
+    final payload = <String, dynamic>{
+      'provider_type': providerType,
+      'display_name': displayName,
+      'bio': bio,
+      'city': city,
+      'accepts_urgent': acceptsUrgent,
+    };
+
+    if (yearsExperience != null) {
+      payload['years_experience'] = yearsExperience;
+    }
+
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/providers/register/',
+      data: payload,
+    );
+
+    if (res.data is Map<String, dynamic>) {
+      return res.data as Map<String, dynamic>;
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
 }

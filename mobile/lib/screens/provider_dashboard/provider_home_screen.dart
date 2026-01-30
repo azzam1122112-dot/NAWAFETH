@@ -12,7 +12,6 @@ import '../../widgets/custom_drawer.dart';
 import 'profile_tab.dart';
 import 'services_tab.dart';
 import 'reviews_tab.dart';
-import 'provider_orders_screen.dart';
 import '../verification_screen.dart';
 import '../plans_screen.dart';
 import '../additional_services_screen.dart';
@@ -637,93 +636,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     );
   }
 
-  // إدارة الطلبات
-  Widget _ordersCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ProviderOrdersScreen()),
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black12.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: mainColor.withOpacity(0.1),
-                ),
-                child: Icon(Icons.list_alt, color: mainColor),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  "إدارة الطلبات",
-                  style: TextStyle(
-                    color: Colors.black87,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: "Cairo",
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade600,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  "2 عاجلة",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: "Cairo",
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.amber),
-                ),
-                child: const Text(
-                  "5 جديدة",
-                  style: TextStyle(
-                    color: Colors.black87,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: "Cairo",
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // ريلز
   Widget _reelsRow() {
     return SizedBox(
@@ -1081,7 +993,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                       ),
                     ),
                     const SizedBox(height: 10),
-                    _ordersCard(),
                   ],
                 ),
               ),

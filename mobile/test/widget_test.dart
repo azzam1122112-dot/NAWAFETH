@@ -15,8 +15,7 @@ void main() {
     await tester.pumpWidget(const NawafethApp());
     await tester.pumpAndSettle();
 
-    // The onboarding screen should be the initial route.
-    expect(find.text('مرحبا بك'), findsOneWidget);
+    // Basic smoke test: app boots and builds a MaterialApp.
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

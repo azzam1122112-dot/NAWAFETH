@@ -5,6 +5,7 @@ import '../services/auth_api.dart';
 import '../services/account_api.dart';
 import '../services/session_storage.dart';
 import '../services/app_snackbar.dart';
+import '../services/role_sync.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 
@@ -145,6 +146,13 @@ class _TwoFAScreenState extends State<TwoFAScreen> {
           firstName: nonEmpty(me['first_name']),
           lastName: nonEmpty(me['last_name']),
         );
+      } catch (_) {
+        // ignore
+      }
+
+      // Best-effort: sync provider/client role flags for UI.
+      try {
+        await RoleSync.sync(accessToken: result.access);
       } catch (_) {
         // ignore
       }

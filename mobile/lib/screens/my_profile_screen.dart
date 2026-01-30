@@ -6,9 +6,8 @@ import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import 'registration/register_service_provider.dart';
 import 'provider_dashboard/provider_home_screen.dart';
-import 'provider_dashboard/provider_orders_screen.dart';
-import 'client_orders_screen.dart';
 import '../widgets/custom_drawer.dart';
+import '../services/account_api.dart';
 import '../services/session_storage.dart';
 
 class MyProfileScreen extends StatefulWidget {
@@ -37,8 +36,37 @@ class _MyProfileScreenState extends State<MyProfileScreen>
       vsync: this,
       duration: const Duration(seconds: 6),
     )..repeat();
-    _checkUserType();
+    _refreshRoleAndUserType();
     _loadIdentity();
+  }
+
+  Future<void> _refreshRoleAndUserType() async {
+    await _syncRoleFromBackend();
+    await _checkUserType();
+  }
+
+  Future<void> _syncRoleFromBackend() async {
+    try {
+      final loggedIn = await const SessionStorage().isLoggedIn();
+      if (!loggedIn) return;
+
+      final me = await AccountApi().me();
+      final role = (me['role_state'] ?? '').toString().trim();
+      final hasProviderProfile = me['has_provider_profile'] == true;
+      final isProviderFlag = me['is_provider'] == true;
+
+      final isProviderRegisteredBackend = isProviderFlag || hasProviderProfile || role == 'provider';
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isProviderRegistered', isProviderRegisteredBackend);
+
+      // Defensive: if backend says not a provider, force provider mode off.
+      if (!isProviderRegisteredBackend) {
+        await prefs.setBool('isProvider', false);
+      }
+    } catch (_) {
+      // Best-effort: keep local state if backend call fails.
+    }
   }
 
   Future<void> _loadIdentity() async {
@@ -112,28 +140,6 @@ class _MyProfileScreenState extends State<MyProfileScreen>
           style: TextStyle(
             fontSize: 12,
             color: isDark ? Colors.white70 : Colors.black87,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ✅ دالة لبناء عناصر الإحصائيات
-  Widget _buildStatItem(IconData icon, String count) {
-    return Column(
-      children: [
-        Icon(
-          icon,
-          size: 22,
-          color: Colors.deepPurple,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          count,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
           ),
         ),
       ],
@@ -259,6 +265,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: () async {
+                                        await _syncRoleFromBackend();
                                         final prefs = await SharedPreferences.getInstance();
                                         await prefs.setBool('isProvider', true);
                                       
@@ -476,41 +483,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                   ],
                 ),
                 const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.list_alt, color: Colors.white),
-                    label: const Text(
-                      "إدارة الطلبات",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onPressed: () {
-                      if (isProvider) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ProviderOrdersScreen(),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ClientOrdersScreen(),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                      backgroundColor: isDark ? Colors.deepPurple.shade700 : mainColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 SizedBox(
                   height: 90,
                   child: ListView.separated(

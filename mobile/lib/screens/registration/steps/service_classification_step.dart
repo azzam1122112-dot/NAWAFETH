@@ -4,12 +4,14 @@ class ServiceClassificationStep extends StatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onBack;
   final Function(double)? onValidationChanged;
+  final ValueChanged<bool>? onUrgentChanged;
 
   const ServiceClassificationStep({
     super.key,
     required this.onNext,
     required this.onBack,
     this.onValidationChanged,
+    this.onUrgentChanged,
   });
 
   @override
@@ -808,6 +810,7 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                       urgentRequests = value;
                       selectedUrgentServices.clear();
                     });
+                    widget.onUrgentChanged?.call(value);
                   },
                 ),
 
