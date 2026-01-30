@@ -6,7 +6,7 @@ import '../widgets/platform_report_dialog.dart';
 class ServiceDetailScreen extends StatefulWidget {
   final String title;
   final List<String> images;
-  final int likes; // ✅ عدد إعجابات القسم الابتدائي (وهمي)
+  final int likes; // عدد الإعجابات (يفترض أن يأتي من الباكند)
   final int filesCount;
   final int initialCommentsCount;
 
@@ -43,49 +43,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   int? replyingToReplyIndex; // فهرس الرد الفرعي
   final TextEditingController _commentController = TextEditingController();
 
-  // 🔹 بيانات افتراضية للتعليقات
-  final List<Map<String, dynamic>> comments = [
-    {
-      "name": "أحمد",
-      "comment": "خدمة رائعة جدًا 👌",
-      "isProvider": false,
-      "isOnline": true,
-      "isLiked": false,
-      "replies": [
-        {
-          "name": "مزود الخدمة",
-          "comment": "شكرًا لك 🌹",
-          "isProvider": true,
-          "isOnline": true,
-          "isLiked": false,
-        },
-      ],
-    },
-    {
-      "name": "ريم",
-      "comment": "مفيدة وسريعة التنفيذ 🌟",
-      "isProvider": false,
-      "isOnline": false,
-      "isLiked": false,
-      "replies": [
-        {
-          "name": "مزود الخدمة",
-          "comment": "سعيد جدًا إنها أفادتك 🙏",
-          "isProvider": true,
-          "isOnline": true,
-          "isLiked": false,
-        },
-      ],
-    },
-  ];
+  // التعليقات سيتم جلبها من الباكند لاحقاً (بدون بيانات وهمية).
+  final List<Map<String, dynamic>> comments = [];
 
   @override
   void initState() {
     super.initState();
     sectionName = widget.title;
-    sectionLikes = widget.likes; // ✅ قيمة أولية وهمية قابلة للتحديث
-    _ensureInitialComments(widget.initialCommentsCount);
-    _recalculateCommentsCount();
+    sectionLikes = widget.likes;
+    _totalCommentsCount = widget.initialCommentsCount;
   }
 
   @override
@@ -95,59 +61,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   void _submitComment() {
-    final text = _commentController.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() {
-      final newComment = {
-        "name": "زائر جديد",
-        "comment": replyingTo != null ? "@$replyingTo: $text" : text,
-        "isProvider": false,
-        "isOnline": false,
-        "isLiked": false,
-        "replies": <Map<String, dynamic>>[],
-      };
-
-      if (replyingTo != null && replyingToIndex != null) {
-        final index = replyingToIndex!;
-        (comments[index]["replies"] as List).add(newComment);
-
-        replyingTo = null;
-        replyingToIndex = null;
-        replyingToReply = null;
-        replyingToReplyIndex = null;
-      } else {
-        comments.add(newComment);
-      }
-
-      _commentController.clear();
-      _recalculateCommentsCount();
-    });
-  }
-
-  void _ensureInitialComments(int targetCount) {
-    if (targetCount <= comments.length) return;
-    final missing = targetCount - comments.length;
-    for (var i = 0; i < missing; i++) {
-      comments.add({
-        "name": "زائر ${comments.length + 1}",
-        "comment": "تعليق جديد (وهمي)",
-        "isProvider": false,
-        "isOnline": false,
-        "isLiked": false,
-        "replies": <Map<String, dynamic>>[],
-      });
-    }
-  }
-
-  void _recalculateCommentsCount() {
-    int total = 0;
-    for (final c in comments) {
-      total += 1;
-      final replies = (c["replies"] as List?) ?? const [];
-      total += replies.length;
-    }
-    _totalCommentsCount = total;
+    // بدون ربط بواجهة الباكند لا نسمح بإضافة تعليقات وهمية.
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('التعليقات غير متاحة حالياً، سيتم ربطها قريباً.')),
+    );
   }
 
   @override
@@ -285,12 +203,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                     : Colors.grey.shade700,
                           ),
                           onPressed: () {
-                            setState(() {
-                              isSectionLiked = !isSectionLiked;
-                              sectionLikes += isSectionLiked ? 1 : -1;
-                              if (sectionLikes < 0)
-                                sectionLikes = 0; // أمان بسيط
-                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('ميزة الإعجاب ستعمل بعد ربطها بالباكند.'),
+                              ),
+                            );
                           },
                         ),
                       ],
@@ -572,34 +489,44 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          Column(
-            children:
-                comments.take(showAllComments ? comments.length : 2).toList().asMap().entries.map((entry) {
-                  int commentIndex = entry.key;
-                  var c = entry.value;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildCommentItem(c, mainColor, commentIndex: commentIndex),
-                      ...(c["replies"] as List).asMap().entries.map<Widget>((replyEntry) {
-                        int replyIndex = replyEntry.key;
-                        var reply = replyEntry.value;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 40, top: 6),
-                          child: _buildCommentItem(
-                            reply,
-                            mainColor,
-                            isReply: true,
-                            commentIndex: commentIndex,
-                            replyIndex: replyIndex,
-                          ),
-                        );
-                      }).toList(),
-                      const Divider(),
-                    ],
-                  );
-                }).toList(),
-          ),
+          if (comments.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Text(
+                'لا توجد تعليقات معروضة حالياً (سيتم ربطها قريباً).',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+
+          if (comments.isNotEmpty)
+            Column(
+              children:
+                  comments.take(showAllComments ? comments.length : 2).toList().asMap().entries.map((entry) {
+                    int commentIndex = entry.key;
+                    var c = entry.value;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCommentItem(c, mainColor, commentIndex: commentIndex),
+                        ...(c["replies"] as List).asMap().entries.map<Widget>((replyEntry) {
+                          int replyIndex = replyEntry.key;
+                          var reply = replyEntry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 40, top: 6),
+                            child: _buildCommentItem(
+                              reply,
+                              mainColor,
+                              isReply: true,
+                              commentIndex: commentIndex,
+                              replyIndex: replyIndex,
+                            ),
+                          );
+                        }).toList(),
+                        const Divider(),
+                      ],
+                    );
+                  }).toList(),
+            ),
 
           if (!showAllComments && comments.length > 2)
             TextButton(

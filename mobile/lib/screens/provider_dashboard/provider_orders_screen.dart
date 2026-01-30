@@ -30,7 +30,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
   void initState() {
     super.initState();
     _ensureProviderAccount();
-    _orders = _demoOrdersForProvider();
+    // NOTE: لا نعرض بيانات وهمية. سيتم ربط شاشة الطلبات بواجهة الباكند لاحقاً.
+    _orders = <ProviderOrder>[];
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -81,76 +82,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  List<ProviderOrder> _demoOrdersForProvider() {
-    return [
-      ProviderOrder(
-        id: 'R012345',
-        serviceCode: '@111222',
-        createdAt: DateTime(2024, 1, 1, 16, 35),
-        status: 'جديد',
-        clientName: 'أحمد العتيبي',
-        clientHandle: '@ahmed_at',
-        clientPhone: '0501234567',
-        clientCity: 'الرياض',
-        title: 'عنوان الطلب',
-        details: 'تفاصيل الطلب هنا (وهمية): وصف مختصر لمتطلبات العميل ونطاق الخدمة المطلوبة.',
-        attachments: const [
-          ProviderOrderAttachment(name: 'صور_العطل.jpg', type: 'IMG'),
-          ProviderOrderAttachment(name: 'فواتير.pdf', type: 'PDF'),
-        ],
-      ),
-      ProviderOrder(
-        id: 'R012346',
-        serviceCode: '@111223',
-        createdAt: DateTime(2024, 1, 2, 11, 10),
-        status: 'تحت التنفيذ',
-        clientName: 'ريم الشهري',
-        clientHandle: '@reem22',
-        clientPhone: '0559876543',
-        clientCity: 'جدة',
-        title: 'تصميم مقترح للديكور',
-        details: 'تفاصيل الطلب هنا (وهمية): تحديثات أسبوعية مع تسليم مقترح أولي ثم نسخة نهائية.',
-        expectedDeliveryAt: DateTime(2024, 1, 10, 18, 0),
-        estimatedServiceAmountSR: 1500,
-        receivedAmountSR: 500,
-        remainingAmountSR: 1000,
-      ),
-      ProviderOrder(
-        id: 'R012347',
-        serviceCode: '@111224',
-        createdAt: DateTime(2024, 1, 3, 9, 5),
-        status: 'مكتمل',
-        clientName: 'صالح القحطاني',
-        clientHandle: '@saleh9',
-        clientPhone: '0531112233',
-        clientCity: 'الدمام',
-        title: 'استشارة مكتوبة',
-        details: 'تفاصيل الطلب هنا (وهمية): تم التسليم وإغلاق الطلب.',
-        attachments: const [
-          ProviderOrderAttachment(name: 'إيصال_الدفع.jpg', type: 'IMG'),
-          ProviderOrderAttachment(name: 'تقرير_نهائي.pdf', type: 'PDF'),
-          ProviderOrderAttachment(name: 'مقطع_فيديو.mp4', type: 'VID'),
-        ],
-        deliveredAt: DateTime(2024, 1, 7, 13, 0),
-        actualServiceAmountSR: 950,
-      ),
-      ProviderOrder(
-        id: 'R012348',
-        serviceCode: '@111225',
-        createdAt: DateTime(2024, 1, 4, 14, 5),
-        status: 'ملغي',
-        clientName: 'نور الحربي',
-        clientHandle: '@noor12',
-        clientPhone: '0547788990',
-        clientCity: 'مكة',
-        title: 'شعار وهوية',
-        details: 'تفاصيل الطلب هنا (وهمية): تم الإلغاء قبل بدء التنفيذ.',
-        canceledAt: DateTime(2024, 1, 5, 9, 30),
-        cancelReason: 'تغيير المتطلبات قبل بدء التنفيذ.',
-      ),
-    ];
   }
 
   Color _statusColor(String status) {

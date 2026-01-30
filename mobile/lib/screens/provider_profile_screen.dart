@@ -86,14 +86,14 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     'assets/images/879797.jpeg',
   ];
 
-  // عدادات أعلى الصفحة (وهمية طبقًا للمخطط)
-  int _completedRequests = 79;
-  int _followersCount = 33;
-  int _followingCount = 12;
-  int _likesCount = 21;
+  // عدادات أعلى الصفحة (بدون بيانات وهمية)
+  // ملاحظة: بعض العدادات لا يوجد لها مصدر API حالياً، لذلك تبقى null وتُعرض كـ "—".
+  int? _completedRequests;
+  int? _followersCount;
+  int? _followingCount;
+  int? _likesCount;
 
-  // عدد المقيمين (وهمي) طبقًا للمخطط
-  int _reviewersCount = 440;
+  int? _reviewersCount;
 
   final List<Map<String, dynamic>> tabs = const [
     {"title": "الملف الشخصي", "icon": Icons.person_outline},
@@ -600,6 +600,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) {
+        final countText = _followersCount?.toString() ?? '—';
         return Directionality(
           textDirection: TextDirection.rtl,
           child: SizedBox(
@@ -623,7 +624,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       const Icon(Icons.groups_rounded, color: Colors.black87),
                       const SizedBox(width: 10),
                       Text(
-                        'متابعون ($_followersCount)',
+                        'متابعون ($countText)',
                         style: const TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 14,
@@ -639,17 +640,16 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ),
                 ),
                 const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: 12,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, index) {
-                      final name = 'متابع ${index + 1}';
-                      return ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.person)),
-                        title: Text(name, style: const TextStyle(fontFamily: 'Cairo')),
-                      );
-                    },
+                const Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'قائمة المتابعين ستتوفر بعد ربطها بواجهة الباكند.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -668,6 +668,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) {
+        final countText = _followingCount?.toString() ?? '—';
         return Directionality(
           textDirection: TextDirection.rtl,
           child: SizedBox(
@@ -694,7 +695,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'يتابع ($_followingCount)',
+                        'يتابع ($countText)',
                         style: const TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 14,
@@ -710,20 +711,16 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ),
                 ),
                 const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: 8,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, index) {
-                      final name = 'حساب ${index + 1}';
-                      return ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.person)),
-                        title: Text(
-                          name,
-                          style: const TextStyle(fontFamily: 'Cairo'),
-                        ),
-                      );
-                    },
+                const Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'قائمة "يتابع" غير متاحة حالياً في الباكند، وستظهر عند توفير API.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -950,7 +947,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                '($_reviewersCount)',
+                                '(${_reviewersCount?.toString() ?? '—'})',
                                 style: TextStyle(
                                   fontFamily: 'Cairo',
                                   fontSize: 12,
@@ -1167,7 +1164,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   Widget _circleStat({
     required IconData icon,
-    required int value,
+    required int? value,
     required VoidCallback onTap,
     required bool isDark,
   }) {
@@ -1180,7 +1177,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '$value',
+            value == null ? '—' : value.toString(),
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 14,
