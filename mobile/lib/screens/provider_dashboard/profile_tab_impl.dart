@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:dio/dio.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:latlong2/latlong.dart';
 
@@ -180,38 +181,125 @@ class _ProfileTabState extends State<ProfileTab> {
     return int.tryParse(s.trim());
   }
 
+  String _formatDioError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401) {
+        return 'انتهت الجلسة. فضلاً سجّل الدخول مرة أخرى.';
+      }
+
+      final data = error.response?.data;
+      if (data is Map) {
+        final map = data.map((k, v) => MapEntry(k.toString(), v));
+        final detail = map['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+
+        final parts = <String>[];
+        for (final entry in map.entries) {
+          final key = entry.key;
+          final value = entry.value;
+
+          if (value is List) {
+            final msgs = value
+                .map((e) => e?.toString().trim())
+                .whereType<String>()
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (msgs.isNotEmpty) parts.add('$key: ${msgs.join('، ')}');
+          } else if (value is String && value.trim().isNotEmpty) {
+            parts.add('$key: ${value.trim()}');
+          }
+        }
+        if (parts.isNotEmpty) return parts.join('\n');
+      }
+
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'تعذر الاتصال بالخادم حالياً. حاول مرة أخرى.';
+        default:
+          break;
+      }
+    }
+
+    return 'تعذر حفظ البيانات حالياً.';
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
 
-    final patch = <String, dynamic>{
-      'provider_type': _providerType,
-      'display_name': _displayNameController.text.trim(),
-      'bio': _bioController.text.trim(),
-      'city': _cityController.text.trim(),
-      'accepts_urgent': _acceptsUrgent,
-    };
+    final displayName = _displayNameController.text.trim();
+    final city = _cityController.text.trim();
+    final bio = _bioController.text.trim();
 
-    final years = _parseInt(_yearsExperienceController.text);
-    if (years != null) patch['years_experience'] = years;
-
-    if (_lat != null) patch['lat'] = _lat;
-    if (_lng != null) patch['lng'] = _lng;
-
-    final updated = await ProvidersApi().updateMyProviderProfile(patch);
-    if (!mounted) return;
-    setState(() => _saving = false);
-
-    if (updated == null) {
+    if (displayName.isEmpty) {
+      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر حفظ البيانات حالياً.')),
+        const SnackBar(content: Text('فضلاً اكتب اسم العرض.')),
       );
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم حفظ البيانات بنجاح')),
-    );
+    if (city.isEmpty) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فضلاً اختر المدينة.')),
+      );
+      return;
+    }
+
+    final patch = <String, dynamic>{
+      'provider_type': _providerType,
+      'display_name': displayName,
+      'accepts_urgent': _acceptsUrgent,
+      'city': city,
+    };
+
+    // Avoid sending empty strings (common source of backend validation errors).
+    if (bio.isNotEmpty) patch['bio'] = bio;
+
+    final yearsRaw = _yearsExperienceController.text.trim();
+    if (yearsRaw.isNotEmpty) {
+      final years = _parseInt(yearsRaw);
+      if (years == null) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('سنوات الخبرة يجب أن تكون رقم.')),
+        );
+        return;
+      }
+      patch['years_experience'] = years;
+    }
+
+    if (_lat != null) patch['lat'] = _lat;
+    if (_lng != null) patch['lng'] = _lng;
+
+    try {
+      final updated = await ProvidersApi().updateMyProviderProfile(patch);
+      if (!mounted) return;
+      setState(() => _saving = false);
+
+      if (updated == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ البيانات حالياً.')),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ البيانات بنجاح')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_formatDioError(e))),
+      );
+    }
   }
 
   InputDecoration _inputDecoration(String hint) {

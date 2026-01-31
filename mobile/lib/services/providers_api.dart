@@ -128,17 +128,13 @@ class ProvidersApi {
   }
 
   Future<Map<String, dynamic>?> updateMyProviderProfile(Map<String, dynamic> patch) async {
-    try {
-      final res = await _dio.patch(
-        '${ApiConfig.apiPrefix}/providers/me/profile/',
-        data: patch,
-      );
-      if (res.data is Map<String, dynamic>) {
-        return res.data as Map<String, dynamic>;
-      }
-      return Map<String, dynamic>.from(res.data as Map);
-    } catch (_) {
-      return null;
+    final res = await _dio.patch(
+      '${ApiConfig.apiPrefix}/providers/me/profile/',
+      data: patch,
+    );
+    if (res.data is Map<String, dynamic>) {
+      return res.data as Map<String, dynamic>;
     }
+    return Map<String, dynamic>.from(res.data as Map);
   }
 }

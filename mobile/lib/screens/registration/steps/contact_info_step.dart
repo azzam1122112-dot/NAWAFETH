@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/account_api.dart';
 import '../../../services/providers_api.dart';
@@ -53,7 +53,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   late final TextEditingController phoneController;
   late final TextEditingController whatsappController;
   late final TextEditingController cityController;
-  late final TextEditingController mapLocationController;
   late final List<TextEditingController> socialControllers;
 
   late final bool _ownsPhone;
@@ -78,7 +77,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     "social": false,
     "whatsapp": false,
     "phone": false,
-    "map": false,
   };
 
   final socialIcons = [
@@ -105,38 +103,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     "Behance",
   ];
 
-  Future<void> _pickLocation() async {
-    final lat = 24.7136;
-    final lng = 46.6753;
-    final appUri = Uri.parse("geo:$lat,$lng?q=$lat,$lng");
-    final webUri = Uri.parse(
-      "https://www.google.com/maps/search/?api=1&query=$lat,$lng",
-    );
-
-    try {
-      if (await canLaunchUrl(appUri)) {
-        await launchUrl(appUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (await canLaunchUrl(webUri)) {
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("تعذر فتح خرائط Google حاليًا.")),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("تعذر فتح خرائط Google حاليًا.")),
-    );
-  }
-
   @override
   void initState() {
     super.initState();
@@ -148,7 +114,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     phoneController = widget.phoneExternalController ?? TextEditingController();
     whatsappController = widget.whatsappExternalController ?? TextEditingController();
     cityController = widget.cityExternalController ?? TextEditingController();
-    mapLocationController = TextEditingController();
     socialControllers = List.generate(9, (_) => TextEditingController());
 
     void onAnyChange() {
@@ -162,7 +127,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     whatsappController.addListener(onAnyChange);
     cityController.addListener(onAnyChange);
     websiteController.addListener(onAnyChange);
-    mapLocationController.addListener(onAnyChange);
     for (final c in socialControllers) {
       c.addListener(onAnyChange);
     }
@@ -202,9 +166,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       if (websiteController.text.trim().isEmpty) {
         websiteController.text = asString(data['website']);
       }
-      if (mapLocationController.text.trim().isEmpty) {
-        mapLocationController.text = asString(data['map']);
-      }
 
       final socials = asList(data['social']);
       for (var i = 0; i < socialControllers.length && i < socials.length; i++) {
@@ -227,7 +188,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
           'whatsapp': whatsappController.text.trim(),
           'city': cityController.text.trim(),
           'website': websiteController.text.trim(),
-          'map': mapLocationController.text.trim(),
           'social': socialControllers.map((c) => c.text.trim()).toList(growable: false),
         };
         await prefs.setString(_draftKey, jsonEncode(data));
@@ -313,7 +273,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       final updated = await ProvidersApi().updateMyProviderProfile({
         'whatsapp': whatsapp,
       });
-      if (updated == null) {
+      if (updated == null) { 
         if (!mounted) return false;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر حفظ رقم الواتساب حالياً.')),
@@ -322,10 +282,10 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       }
       _initialWhatsapp = (updated['whatsapp'] ?? '').toString().trim();
       return true;
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر حفظ رقم الواتساب حالياً.')),
+        SnackBar(content: Text(_formatDioError(e))),
       );
       return false;
     } finally {
@@ -335,6 +295,64 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         _saving = false;
       }
     }
+  }
+
+  String _formatDioError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401) {
+        return 'انتهت الجلسة. فضلاً سجّل الدخول مرة أخرى.';
+      }
+
+      final data = error.response?.data;
+      if (data is String) {
+        final msg = data.trim();
+        if (msg.isNotEmpty) return msg;
+      }
+
+      if (data is Map) {
+        final map = data.map((k, v) => MapEntry(k.toString(), v));
+        final detail = map['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+
+        final parts = <String>[];
+        for (final entry in map.entries) {
+          final key = entry.key;
+          final value = entry.value;
+
+          if (value is List) {
+            final msgs = value
+                .map((e) => e?.toString().trim())
+                .whereType<String>()
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (msgs.isNotEmpty) parts.add('$key: ${msgs.join('، ')}');
+          } else if (value is String && value.trim().isNotEmpty) {
+            parts.add('$key: ${value.trim()}');
+          }
+        }
+        if (parts.isNotEmpty) return parts.join('\n');
+      }
+
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'تعذر الاتصال بالخادم حالياً. حاول مرة أخرى.';
+        case DioExceptionType.connectionError:
+          return 'لا يوجد اتصال بالإنترنت حالياً.';
+        default:
+          break;
+      }
+
+      if (status != null) {
+        return 'تعذر حفظ رقم الواتساب حالياً (HTTP $status).';
+      }
+    }
+
+    return 'تعذر حفظ رقم الواتساب حالياً.';
   }
 
   void _validateForm() {
@@ -395,7 +413,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     if (_ownsCity) {
       cityController.dispose();
     }
-    mapLocationController.dispose();
     for (final c in socialControllers) {
       c.dispose();
     }
@@ -663,62 +680,6 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
             readOnly: true,
-          ),
-        ),
-
-        // موقعي على الخريطة
-        _accordionCard(
-          id: "map",
-          icon: Icons.location_on_outlined,
-          title: "موقعي على الخريطة",
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _styledField(
-                      controller: mapLocationController,
-                      hint: "رابط موقعي على الخريطة",
-                      icon: FontAwesomeIcons.mapLocationDot,
-                      keyboardType: TextInputType.url,
-                      readOnly: true,
-                      onTap: _pickLocation,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: _pickLocation,
-                    icon: const Icon(Icons.my_location, size: 18),
-                    label: const Text(
-                      "تحديد",
-                      style: TextStyle(fontFamily: "Cairo"),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                "اضغط على حقل الموقع أو زر \"تحديد\" لفتح خرائط Google وتحديد موقعك.",
-                style: TextStyle(
-                  fontFamily: "Cairo",
-                  fontSize: 11.5,
-                  color: Colors.black54,
-                  height: 1.4,
-                ),
-              ),
-            ],
           ),
         ),
       ],

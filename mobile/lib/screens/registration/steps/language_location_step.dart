@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:dio/dio.dart';
 import 'package:latlong2/latlong.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -229,14 +230,71 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم حفظ الموقع الجغرافي.')),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر حفظ الموقع حالياً.')),
+        SnackBar(content: Text(_formatDioError(e))),
       );
     } finally {
       if (mounted) setState(() => _savingLocation = false);
     }
+  }
+
+  String _formatDioError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401) {
+        return 'انتهت الجلسة. فضلاً سجّل الدخول مرة أخرى.';
+      }
+
+      final data = error.response?.data;
+      if (data is String) {
+        final msg = data.trim();
+        if (msg.isNotEmpty) return msg;
+      }
+
+      if (data is Map) {
+        final map = data.map((k, v) => MapEntry(k.toString(), v));
+        final detail = map['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+
+        final parts = <String>[];
+        for (final entry in map.entries) {
+          final key = entry.key;
+          final value = entry.value;
+
+          if (value is List) {
+            final msgs = value
+                .map((e) => e?.toString().trim())
+                .whereType<String>()
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (msgs.isNotEmpty) parts.add('$key: ${msgs.join('، ')}');
+          } else if (value is String && value.trim().isNotEmpty) {
+            parts.add('$key: ${value.trim()}');
+          }
+        }
+        if (parts.isNotEmpty) return parts.join('\n');
+      }
+
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'تعذر الاتصال بالخادم حالياً. حاول مرة أخرى.';
+        case DioExceptionType.connectionError:
+          return 'لا يوجد اتصال بالإنترنت حالياً.';
+        default:
+          break;
+      }
+
+      if (status != null) {
+        return 'تعذر حفظ الموقع حالياً (HTTP $status).';
+      }
+    }
+    return 'تعذر حفظ الموقع حالياً.';
   }
 
   @override
