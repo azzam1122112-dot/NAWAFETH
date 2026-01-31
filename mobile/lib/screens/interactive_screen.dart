@@ -11,6 +11,7 @@ import '../widgets/custom_drawer.dart';
 import 'chat_detail_screen.dart';
 
 enum InteractiveMode {
+  auto,
   client,
   provider,
 }
@@ -21,7 +22,7 @@ class InteractiveScreen extends StatefulWidget {
 
   const InteractiveScreen({
     super.key,
-    this.mode = InteractiveMode.client,
+    this.mode = InteractiveMode.auto,
     this.initialTabIndex = 0,
   });
 
@@ -32,6 +33,7 @@ class InteractiveScreen extends StatefulWidget {
 class _InteractiveScreenState extends State<InteractiveScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late InteractiveMode _effectiveMode;
 
   final ProvidersApi _providersApi = ProvidersApi();
   final AccountApi _accountApi = AccountApi();
@@ -47,7 +49,8 @@ class _InteractiveScreenState extends State<InteractiveScreen>
   @override
   void initState() {
     super.initState();
-    final tabsCount = _tabsCountForMode(widget.mode);
+    _effectiveMode = widget.mode == InteractiveMode.auto ? InteractiveMode.client : widget.mode;
+    final tabsCount = _tabsCountForMode(_effectiveMode);
     final initial = widget.initialTabIndex.clamp(0, tabsCount - 1);
     _tabController = TabController(length: tabsCount, vsync: this, initialIndex: initial);
     _loadCapabilitiesAndReload();
@@ -56,10 +59,13 @@ class _InteractiveScreenState extends State<InteractiveScreen>
   int _tabsCountForMode(InteractiveMode mode) => 2;
 
   Future<void> _loadCapabilitiesAndReload() async {
-    if (widget.mode != InteractiveMode.provider) {
+    final needsCapabilityLookup =
+        widget.mode == InteractiveMode.provider || widget.mode == InteractiveMode.auto;
+    if (!needsCapabilityLookup) {
       setState(() {
         _hasProviderProfile = false;
         _capabilitiesLoaded = true;
+        _effectiveMode = widget.mode;
       });
       _reload();
       return;
@@ -72,12 +78,22 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       setState(() {
         _hasProviderProfile = hasProviderProfile;
         _capabilitiesLoaded = true;
+        if (widget.mode == InteractiveMode.auto) {
+          _effectiveMode = hasProviderProfile ? InteractiveMode.provider : InteractiveMode.client;
+        } else {
+          _effectiveMode = widget.mode;
+        }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _hasProviderProfile = false;
         _capabilitiesLoaded = true;
+        if (widget.mode == InteractiveMode.auto) {
+          _effectiveMode = InteractiveMode.client;
+        } else {
+          _effectiveMode = widget.mode;
+        }
       });
     }
 
@@ -87,7 +103,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
 
   void _reload() {
     setState(() {
-      if (widget.mode == InteractiveMode.client) {
+      if (_effectiveMode == InteractiveMode.client) {
         _clientFollowingFuture = _providersApi.getMyFollowingProviders();
         _clientSavedFuture = _providersApi.getMyLikedProviders();
         _providerFollowersFuture = null;
@@ -133,7 +149,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
             fontSize: 15,
             fontWeight: FontWeight.bold,
           ),
-          tabs: widget.mode == InteractiveMode.client
+          tabs: _effectiveMode == InteractiveMode.client
               ? const [
                   Tab(text: 'من أتابع', icon: Icon(Icons.group)),
                   Tab(text: 'المحفوظات', icon: Icon(Icons.bookmark)),
@@ -146,7 +162,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: widget.mode == InteractiveMode.client
+        children: _effectiveMode == InteractiveMode.client
             ? [
                 _buildClientFollowingTab(),
                 _buildClientSavedTab(),
