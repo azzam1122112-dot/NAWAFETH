@@ -128,9 +128,35 @@ class ProvidersApi {
   }
 
   Future<Map<String, dynamic>?> updateMyProviderProfile(Map<String, dynamic> patch) async {
+    dynamic normalizeCoord(dynamic v) {
+      if (v == null) return null;
+      final d = (v is num) ? v.toDouble() : double.tryParse(v.toString().trim());
+      if (d == null) return v;
+      // Backend enforces max 6 decimal places for lat/lng.
+      return double.parse(d.toStringAsFixed(6));
+    }
+
+    final data = Map<String, dynamic>.from(patch);
+    if (data.containsKey('lat')) {
+      final normalized = normalizeCoord(data['lat']);
+      if (normalized == null) {
+        data.remove('lat');
+      } else {
+        data['lat'] = normalized;
+      }
+    }
+    if (data.containsKey('lng')) {
+      final normalized = normalizeCoord(data['lng']);
+      if (normalized == null) {
+        data.remove('lng');
+      } else {
+        data['lng'] = normalized;
+      }
+    }
+
     final res = await _dio.patch(
       '${ApiConfig.apiPrefix}/providers/me/profile/',
-      data: patch,
+      data: data,
     );
     if (res.data is Map<String, dynamic>) {
       return res.data as Map<String, dynamic>;
