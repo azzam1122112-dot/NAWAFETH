@@ -450,8 +450,8 @@ class _ProviderProfileCompletionScreenState
                     ),
                     _sectionTile(
                       id: "lang_loc",
-                      title: "اللغة ونطاق الخدمة",
-                      subtitle: "اللغات التي تجيدها ونطاق تقديم خدماتك.",
+                      title: "اللغة والموقع الجغرافي",
+                      subtitle: "اللغات التي تجيدها وتحديد موقعك الجغرافي الدقيق.",
                         extra:
                           "يمثل ${_sectionPercent('lang_loc')}٪ من اكتمال الملف.",
                       icon: Icons.language_outlined,

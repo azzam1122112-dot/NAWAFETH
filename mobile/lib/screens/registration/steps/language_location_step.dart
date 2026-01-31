@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'map_radius_picker_screen.dart';
+import '../../../services/providers_api.dart';
+import '../../provider_dashboard/google_map_location_picker_screen.dart';
 
 class LanguageLocationStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -32,17 +33,9 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       TextEditingController();
   final TextEditingController locationController = TextEditingController();
 
-  int? _selectedDistanceKm;
   LatLng? _selectedCenter;
-
-  final Map<String, bool> serviceRange = {
-    'مدينتي 🏙️': false,
-    'منطقتي 🗺️': false,
-    'دولتي 🌍': false,
-    'ضمن نطاق محدد 📍': false,
-  };
-
-  static const List<int> _distanceOptionsKm = [2, 5, 10, 20, 50];
+  bool _loadingFromBackend = false;
+  bool _savingLocation = false;
 
   Timer? _draftTimer;
 
@@ -50,8 +43,40 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   void initState() {
     super.initState();
     _loadDraft();
+    _loadFromBackendBestEffort();
     customLanguageController.addListener(_scheduleDraftSave);
     locationController.addListener(_scheduleDraftSave);
+  }
+
+  Future<void> _loadFromBackendBestEffort() async {
+    if (_loadingFromBackend) return;
+    setState(() => _loadingFromBackend = true);
+    try {
+      final json = await ProvidersApi().getMyProviderProfile();
+      if (json == null) return;
+
+      double? asDouble(dynamic v) {
+        if (v is double) return v;
+        if (v is num) return v.toDouble();
+        return double.tryParse((v ?? '').toString());
+      }
+
+      final lat = asDouble(json['lat']);
+      final lng = asDouble(json['lng']);
+      if (lat == null || lng == null) return;
+      if (!mounted) return;
+
+      setState(() {
+        _selectedCenter = LatLng(lat, lng);
+        locationController.text =
+            '(${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)})';
+      });
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+    } finally {
+      if (mounted) setState(() => _loadingFromBackend = false);
+    }
   }
 
   Future<void> _loadDraft() async {
@@ -81,8 +106,6 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
 
       final langs = asStringList(data['selected_languages']);
       final custom = asStringList(data['custom_languages']);
-      final ranges = data['service_range'];
-      final distance = asInt(data['distance_km']);
       final lat = asDouble(data['lat']);
       final lng = asDouble(data['lng']);
       final locationText = (data['location_text'] ?? '').toString();
@@ -99,12 +122,6 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
             ..clear()
             ..addAll(custom);
         }
-        if (ranges is Map) {
-          for (final k in serviceRange.keys) {
-            serviceRange[k] = ranges[k] == true;
-          }
-        }
-        _selectedDistanceKm = distance;
         if (lat != null && lng != null) {
           _selectedCenter = LatLng(lat, lng);
         }
@@ -127,8 +144,6 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         final data = <String, dynamic>{
           'selected_languages': selectedLanguages,
           'custom_languages': customLanguages,
-          'service_range': serviceRange,
-          'distance_km': _selectedDistanceKm,
           'lat': _selectedCenter?.latitude,
           'lng': _selectedCenter?.longitude,
           'location_text': locationController.text.trim(),
@@ -141,8 +156,8 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   }
 
   void _updateSectionDone() {
-    final hasAnyRange = serviceRange.values.any((v) => v);
-    final done = selectedLanguages.isNotEmpty || customLanguages.isNotEmpty || hasAnyRange || _selectedCenter != null;
+    final done =
+        selectedLanguages.isNotEmpty || customLanguages.isNotEmpty || _selectedCenter != null;
     SharedPreferences.getInstance().then((prefs) {
       prefs.setBool('provider_section_done_lang_loc', done);
     }).catchError((_) {});
@@ -150,16 +165,15 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
 
   void _handleNext() {
     _updateSectionDone();
-    final prefsDone = serviceRange.values.any((v) => v) ||
-        selectedLanguages.isNotEmpty ||
-        customLanguages.isNotEmpty ||
-        _selectedCenter != null;
+    final prefsDone = selectedLanguages.isNotEmpty ||
+      customLanguages.isNotEmpty ||
+      _selectedCenter != null;
 
     if (!prefsDone) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'اختر لغة واحدة على الأقل أو حدّد نطاق/موقع قبل المتابعة.',
+            'اختر لغة واحدة على الأقل أو حدّد موقعك قبل المتابعة.',
           ),
         ),
       );
@@ -170,37 +184,59 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
     widget.onNext();
   }
 
-  void _ensureDefaultDistance() {
-    if (_selectedDistanceKm == null) {
-      _selectedDistanceKm = 10;
-    }
-  }
-
   Future<void> _pickMapLocation() async {
-    if (_selectedDistanceKm == null) {
-      _ensureDefaultDistance();
-      if (mounted) setState(() {});
-    }
-
-    final picked = await Navigator.push<LatLng>(
+    final picked = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder: (_) => MapRadiusPickerScreen(
-          radiusKm: _selectedDistanceKm!,
+        builder: (_) => GoogleMapLocationPickerScreen(
           initialCenter: _selectedCenter,
         ),
       ),
     );
 
     if (picked == null || !mounted) return;
+    final lat = picked['lat'];
+    final lng = picked['lng'];
+    if (lat is! num || lng is! num) return;
+
+    final point = LatLng(lat.toDouble(), lng.toDouble());
     setState(() {
-      _selectedCenter = picked;
+      _selectedCenter = point;
       locationController.text =
-          '(${picked.latitude.toStringAsFixed(5)}, ${picked.longitude.toStringAsFixed(5)}) • ${_selectedDistanceKm} كم';
+          '(${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)})';
     });
 
+    await _saveLocationToBackendBestEffort(point);
     _scheduleDraftSave();
     _updateSectionDone();
+  }
+
+  Future<void> _saveLocationToBackendBestEffort(LatLng point) async {
+    if (_savingLocation) return;
+    setState(() => _savingLocation = true);
+    try {
+      final res = await ProvidersApi().updateMyProviderProfile({
+        'lat': point.latitude,
+        'lng': point.longitude,
+      });
+      if (!mounted) return;
+      if (res == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ الموقع حالياً.')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ الموقع الجغرافي.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ الموقع حالياً.')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingLocation = false);
+    }
   }
 
   @override
@@ -252,7 +288,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         ),
         const SizedBox(height: 4),
         const Text(
-          "حدد اللغات التي يمكنك التعامل بها ونطاق تقديم خدماتك.",
+          "حدد اللغات التي يمكنك التعامل بها وموقعك الجغرافي.",
           style: TextStyle(
             fontFamily: "Cairo",
             fontSize: 13,
@@ -263,7 +299,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         _infoTip(
           icon: Icons.info_outline,
           text:
-              "اختيار اللغات ونطاق الخدمة يساعد في عرضك للعملاء المناسبين أكثر لاهتماماتك وموقعك.",
+              "اختيار اللغات وتحديد موقعك الجغرافي يساعد في عرضك للعملاء المناسبين أكثر.",
         ),
       ],
     );
@@ -282,15 +318,15 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: Colors.deepPurple, size: 20),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
               style: const TextStyle(
-                fontFamily: "Cairo",
-                fontSize: 11.5,
+                fontFamily: 'Cairo',
+                fontSize: 12.5,
+                height: 1.4,
                 color: Colors.black87,
-                height: 1.5,
               ),
             ),
           ),
@@ -303,193 +339,129 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
 
   Widget _buildForm() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionCard(
           icon: FontAwesomeIcons.language,
-          title: 'ما اللغة التي يمكنك تقديم الخدمة من خلالها؟',
-          subtitle:
-              "اختر اللغات التي يمكنك التحدث والتعامل بها مع العملاء، ويمكنك إضافة لغات أخرى يدويًا.",
+          title: 'اللغة',
+          subtitle: 'اختر اللغات التي يمكنك التواصل بها مع العملاء.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children:
-                    predefinedLanguages.map((lang) {
-                      final selected = selectedLanguages.contains(lang);
-                      return FilterChip(
-                        label: Text(lang),
-                        selected: selected,
-                        onSelected: (val) {
-                          setState(() {
-                            val
-                                ? selectedLanguages.add(lang)
-                                : selectedLanguages.remove(lang);
-                          });
-
-                          _scheduleDraftSave();
-                          _updateSectionDone();
-                        },
-                        selectedColor: Colors.deepPurple,
-                        backgroundColor: Colors.grey.shade200,
-                        labelStyle: TextStyle(
-                          fontFamily: "Cairo",
-                          color: selected ? Colors.white : Colors.black,
-                        ),
-                      );
-                    }).toList(),
-              ),
-              if (selectedLanguages.contains('أخرى'))
-                _buildCustomLanguageInput(),
-              if (customLanguages.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Wrap(
-                    spacing: 8,
-                    children:
-                        customLanguages.map((lang) {
-                          return Chip(
-                            label: Text(
-                              lang,
-                              style: const TextStyle(fontFamily: "Cairo"),
-                            ),
-                            onDeleted: () {
-                              setState(() => customLanguages.remove(lang));
-                              _scheduleDraftSave();
-                              _updateSectionDone();
-                            },
-                          );
-                        }).toList(),
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        _sectionCard(
-          icon: FontAwesomeIcons.mapMarkedAlt,
-          title: 'نطاق الخدمة الجغرافي',
-          subtitle:
-              "حدد النطاق الذي يمكنك تقديم خدماتك فيه. يمكن اختيار أكثر من خيار حسب طبيعة عملك.",
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children:
-                serviceRange.entries.map((entry) {
-                  final selected = entry.value;
+                spacing: 8,
+                runSpacing: 8,
+                children: predefinedLanguages.map((lang) {
+                  final selected = selectedLanguages.contains(lang);
                   return FilterChip(
-                    label: Text(
-                      entry.key,
-                      style: const TextStyle(fontFamily: "Cairo"),
-                    ),
+                    label: Text(lang, style: const TextStyle(fontFamily: 'Cairo')),
                     selected: selected,
-                    onSelected: (val) {
+                    selectedColor: Colors.deepPurple.withOpacity(0.14),
+                    checkmarkColor: Colors.deepPurple,
+                    onSelected: (v) {
                       setState(() {
-                        serviceRange[entry.key] = val;
-                        if (entry.key == 'ضمن نطاق محدد 📍' && val) {
-                          _ensureDefaultDistance();
+                        if (v) {
+                          if (!selectedLanguages.contains(lang)) {
+                            selectedLanguages.add(lang);
+                          }
+                        } else {
+                          selectedLanguages.remove(lang);
                         }
                       });
-
                       _scheduleDraftSave();
                       _updateSectionDone();
                     },
-                    selectedColor: Colors.deepPurple,
-                    backgroundColor: Colors.grey.shade200,
-                    labelStyle: TextStyle(
-                      color: selected ? Colors.white : Colors.black,
-                    ),
                   );
                 }).toList(),
+              ),
+              if (selectedLanguages.contains('أخرى')) _buildCustomLanguageInput(),
+              if (customLanguages.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: customLanguages.map((lang) {
+                    return Chip(
+                      label: Text(lang, style: const TextStyle(fontFamily: 'Cairo')),
+                      deleteIcon: const Icon(Icons.close, size: 18),
+                      onDeleted: () {
+                        setState(() => customLanguages.remove(lang));
+                        _scheduleDraftSave();
+                        _updateSectionDone();
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ],
           ),
         ),
-
-        if (serviceRange['ضمن نطاق محدد 📍'] == true)
-          _sectionCard(
-            icon: FontAwesomeIcons.locationCrosshairs,
-            title: 'المسافة والموقع المحدد',
-            subtitle:
-                "اختر المسافة التي يمكنك تغطيتها، وحدد موقعك الجغرافي على الخريطة.",
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  children:
-                      _distanceOptionsKm.map((km) {
-                        final selected = _selectedDistanceKm == km;
-                        return FilterChip(
-                          label: Text(
-                            '$km كم',
-                            style: const TextStyle(fontFamily: 'Cairo'),
-                          ),
-                          selected: selected,
-                          onSelected: (_) {
-                            setState(() {
-                              _selectedDistanceKm = km;
-                              if (_selectedCenter != null) {
-                                locationController.text =
-                                    '(${_selectedCenter!.latitude.toStringAsFixed(5)}, ${_selectedCenter!.longitude.toStringAsFixed(5)}) • $_selectedDistanceKm كم';
-                              }
-                            });
-
-                            _scheduleDraftSave();
-                            _updateSectionDone();
-                          },
-                          selectedColor: Colors.deepPurple,
-                          backgroundColor: Colors.grey.shade200,
-                          labelStyle: TextStyle(
-                            color: selected ? Colors.white : Colors.black87,
-                          ),
-                        );
-                      }).toList(),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: _pickMapLocation,
-                  icon: const Icon(Icons.my_location),
-                  label: const Text(
-                    "تحديد موقعي الجغرافي",
-                    style: TextStyle(fontFamily: "Cairo"),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.deepPurple,
-                    side: const BorderSide(color: Colors.deepPurple),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: locationController,
-                  readOnly: true,
-                  style: const TextStyle(fontFamily: "Cairo", fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: 'موقعي المختار والمسافة',
-                    hintStyle: const TextStyle(
-                      fontFamily: "Cairo",
-                      fontSize: 13,
-                      color: Colors.grey,
-                    ),
-                    prefixIcon: const Icon(Icons.link),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Colors.deepPurple,
-                        width: 1.3,
+        _sectionCard(
+          icon: FontAwesomeIcons.mapMarkedAlt,
+          title: 'الموقع الجغرافي',
+          subtitle:
+              'حدد موقعك الجغرافي الدقيق. سيتم محاولة تحديد موقعك تلقائياً عند فتح الخريطة ويمكنك تحريك الدبوس.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _savingLocation ? null : _pickMapLocation,
+                      icon: const Icon(Icons.map_outlined),
+                      label: Text(
+                        _savingLocation ? 'جارٍ الحفظ…' : 'تحديد الموقع على الخريطة',
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.deepPurple,
+                        side: const BorderSide(color: Colors.deepPurple),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  if (_loadingFromBackend)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: locationController,
+                readOnly: true,
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'لم يتم تحديد موقع بعد',
+                  hintStyle: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                    color: Colors.grey,
+                  ),
+                  prefixIcon: const Icon(Icons.location_on_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Colors.deepPurple,
+                      width: 1.4,
+                    ),
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
       ],
     );
   }

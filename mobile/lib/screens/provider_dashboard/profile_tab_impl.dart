@@ -1,10 +1,7 @@
-export 'profile_tab_impl.dart';
-
-/*
-import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -21,7 +18,7 @@ class ProfileTab extends StatefulWidget {
 class _ProfileTabState extends State<ProfileTab> {
   final Color mainColor = Colors.deepPurple;
 
-  static const double _cityLockKm = 35; // Keep the map focused around the city.
+  static const double _cityLockKm = 35;
 
   static const Map<String, LatLng> _knownSaudiCityCenters = {
     'المدينة المنورة': LatLng(24.5246542, 39.5691841),
@@ -37,181 +34,194 @@ class _ProfileTabState extends State<ProfileTab> {
     'الطائف': LatLng(21.27028, 40.41583),
   };
 
-      final center = (_lat != null && _lng != null)
-          ? LatLng(_lat!, _lng!)
-          : (_cityCenter ?? const LatLng(24.7136, 46.6753));
-      final bounds = _cityBounds;
+  bool _loading = true;
+  bool _saving = false;
 
-      return _sectionCard(
-        title: 'الموقع الجغرافي',
-        icon: Icons.location_on_outlined,
-        subtitle:
-            'حدد موقعك الجغرافي الدقيق على خريطة Google. سيتم محاولة تحديد موقعك تلقائياً (GPS) عند فتح الخريطة، ويمكنك تحريك الدبوس ثم حفظه.',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SizedBox(
-                height: 190,
-                child: Stack(
-                  children: [
-                    GoogleMap(
-                      initialCameraPosition:
-                          CameraPosition(target: center, zoom: 12.8),
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                      compassEnabled: false,
-                      mapToolbarEnabled: false,
-                      buildingsEnabled: true,
-                      markers: {
-                        Marker(
-                          markerId: const MarkerId('center'),
-                          position: center,
-                          icon: BitmapDescriptor.defaultMarkerWithHue(
-                            BitmapDescriptor.hueViolet,
-                          ),
-                        ),
-                      },
-                      cameraTargetBounds: bounds != null
-                          ? CameraTargetBounds(bounds)
-                          : CameraTargetBounds.unbounded,
-                      onTap: (_) {
-                        // Preview only
-                      },
-                    ),
-                    if (_resolvingCity)
-                      Positioned(
-                        top: 10,
-                        right: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 10,
-                                offset: Offset(0, 4),
-                              )
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'جارٍ تحديد المدينة…',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _pickGeoLocationOnMap,
-                    icon: const Icon(Icons.map_outlined),
-                    label: const Text(
-                      'تحديد الموقع على الخريطة',
-                      style: TextStyle(fontFamily: 'Cairo'),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: mainColor,
-                      side: BorderSide(color: mainColor.withAlpha(128)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              (_lat != null && _lng != null)
-                  ? 'الإحداثيات: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}'
-                  : 'لم يتم تحديد موقع بعد.',
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
-          ],
-        ),
-      );
+  String _providerType = 'individual';
+  bool _acceptsUrgent = false;
+
+  final _displayNameController = TextEditingController();
+  final _bioController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _yearsExperienceController = TextEditingController();
+
+  double? _lat;
+  double? _lng;
+
+  LatLng? _cityCenter;
+  LatLngBounds? _cityBounds;
+  bool _resolvingCity = false;
+  Timer? _cityDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _cityController.addListener(_onCityChanged);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    _bioController.dispose();
+    _cityController.dispose();
+    _yearsExperienceController.dispose();
+    _cityDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onCityChanged() {
+    _cityDebounce?.cancel();
+    _cityDebounce = Timer(const Duration(milliseconds: 550), () {
+      _resolveCityCenter();
+    });
+  }
+
+  LatLngBounds _boundsAroundKm(LatLng center, double km) {
+    final dLat = km / 111.0;
+    final latRad = center.latitude * (math.pi / 180.0);
+    final cosLat = math.cos(latRad).abs().clamp(0.2, 1.0);
+    final dLng = km / (111.0 * cosLat);
+    return LatLngBounds(
+      southwest: LatLng(center.latitude - dLat, center.longitude - dLng),
+      northeast: LatLng(center.latitude + dLat, center.longitude + dLng),
+    );
+  }
+
+  LatLng? _lookupCityCenter(String rawCity) {
+    final city = rawCity.trim();
+    if (city.isEmpty) return null;
+
+    final direct = _knownSaudiCityCenters[city];
+    if (direct != null) return direct;
+
+    for (final entry in _knownSaudiCityCenters.entries) {
+      if (city.contains(entry.key)) return entry.value;
+    }
+    return null;
+  }
+
+  Future<LatLng?> _geocodeCityBestEffort(String city) async {
+    final queries = <String>[
+      city,
+      '$city، السعودية',
+      '$city, السعودية',
+      '$city, المملكة العربية السعودية',
+      '$city, Saudi Arabia',
+    ];
+
+    for (final q in queries) {
+      try {
+        final results = await geocoding
+            .locationFromAddress(q)
+            .timeout(const Duration(seconds: 6));
+        if (results.isEmpty) continue;
+        final first = results.first;
+        return LatLng(first.latitude, first.longitude);
+      } catch (_) {
+        // Best-effort.
+      }
+    }
+    return null;
+  }
+
+  Future<void> _resolveCityCenter() async {
+    final city = _cityController.text.trim();
+    if (city.isEmpty) return;
+
+    if (_lat != null && _lng != null) {
+      final c = LatLng(_lat!, _lng!);
+      setState(() {
+        _cityCenter = c;
+        _cityBounds = _boundsAroundKm(c, _cityLockKm);
+      });
+      return;
     }
 
-    Widget _field({
-      required String label,
-      required TextEditingController controller,
-      int maxLines = 1,
-      TextInputType? keyboardType,
-    }) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: controller,
-              maxLines: maxLines,
-              keyboardType: keyboardType,
-              decoration: _inputDecoration(label),
-              style: const TextStyle(fontFamily: 'Cairo'),
-            ),
-          ],
-        ),
-      );
+    setState(() => _resolvingCity = true);
+    try {
+      final c = _lookupCityCenter(city) ?? await _geocodeCityBestEffort(city);
+      if (c == null) return;
+      if (!mounted) return;
+      setState(() {
+        _cityCenter = c;
+        _cityBounds = _boundsAroundKm(c, _cityLockKm);
+      });
+    } catch (_) {
+      // Best-effort.
+    } finally {
+      if (mounted) setState(() => _resolvingCity = false);
+    }
+  }
+
+  Future<void> _load() async {
+    final json = await ProvidersApi().getMyProviderProfile();
+    if (!mounted) return;
+
+    void setText(TextEditingController c, dynamic v) {
+      c.text = (v ?? '').toString();
     }
 
-    @override
-    Widget build(BuildContext context) {
-      return Directionality(
-        textDirection: TextDirection.rtl,
-        child: Scaffold(
-          backgroundColor: const Color(0xFFF3F4FC),
-          appBar: AppBar(
-            backgroundColor: mainColor,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: const Text(
-              'الملف الشخصي',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
+    setState(() {
+      _loading = false;
+      if (json == null) return;
+
+      _providerType = (json['provider_type'] ?? 'individual').toString();
+      _acceptsUrgent = json['accepts_urgent'] == true;
+
+      setText(_displayNameController, json['display_name']);
+      setText(_bioController, json['bio']);
+      setText(_cityController, json['city']);
+      setText(_yearsExperienceController, json['years_experience']);
+
+      double? asDouble(dynamic v) {
+        if (v is double) return v;
+        if (v is num) return v.toDouble();
+        return double.tryParse((v ?? '').toString().trim());
+      }
+
+      _lat = asDouble(json['lat']);
+      _lng = asDouble(json['lng']);
+
+      if (_lat != null && _lng != null) {
+        final c = LatLng(_lat!, _lng!);
+        _cityCenter = c;
+        _cityBounds = _boundsAroundKm(c, _cityLockKm);
+      }
+    });
+
+    await _resolveCityCenter();
+  }
+
+  int? _parseInt(String s) {
+    return int.tryParse(s.trim());
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    final patch = <String, dynamic>{
+      'provider_type': _providerType,
+      'display_name': _displayNameController.text.trim(),
+      'bio': _bioController.text.trim(),
+      'city': _cityController.text.trim(),
+      'accepts_urgent': _acceptsUrgent,
+    };
+
+    final years = _parseInt(_yearsExperienceController.text);
+    if (years != null) patch['years_experience'] = years;
+
+    if (_lat != null) patch['lat'] = _lat;
+    if (_lng != null) patch['lng'] = _lng;
+
+    final updated = await ProvidersApi().updateMyProviderProfile(patch);
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (updated == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ البيانات حالياً.')),
       );
       return;
     }
@@ -224,9 +234,7 @@ class _ProfileTabState extends State<ProfileTab> {
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       filled: true,
       fillColor: Colors.grey[100],
       isDense: true,
@@ -242,11 +250,10 @@ class _ProfileTabState extends State<ProfileTab> {
     final res = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder:
-            (_) => GoogleMapLocationPickerScreen(
-              city: city.isEmpty ? null : city,
-              initialCenter: initialCenter,
-            ),
+        builder: (_) => GoogleMapLocationPickerScreen(
+          city: city.isEmpty ? null : city,
+          initialCenter: initialCenter,
+        ),
       ),
     );
 
@@ -331,6 +338,7 @@ class _ProfileTabState extends State<ProfileTab> {
       subtitle:
           'حدد موقعك الجغرافي الدقيق على خريطة Google. سيتم محاولة تحديد موقعك تلقائياً (GPS) عند فتح الخريطة، ويمكنك تحريك الدبوس ثم حفظه.',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -355,22 +363,10 @@ class _ProfileTabState extends State<ProfileTab> {
                         ),
                       ),
                     },
-                    circles: {
-                      Circle(
-                        circleId: const CircleId('coverage'),
-                        center: center,
-                        radius: _coverageRadiusKm * 1000.0,
-                        fillColor: mainColor.withAlpha(36),
-                        strokeColor: mainColor.withAlpha(230),
-                        strokeWidth: 2,
-                      )
-                    },
                     cameraTargetBounds: bounds != null
                         ? CameraTargetBounds(bounds)
                         : CameraTargetBounds.unbounded,
-                    onTap: (_) {
-                      // Preview only
-                    },
+                    onTap: (_) {},
                   ),
                   if (_resolvingCity)
                     Positioned(
@@ -403,8 +399,7 @@ class _ProfileTabState extends State<ProfileTab> {
                             SizedBox(width: 10),
                             Text(
                               'جارٍ تحديد المدينة…',
-                              style:
-                                  TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                              style: TextStyle(fontFamily: 'Cairo', fontSize: 12),
                             ),
                           ],
                         ),
@@ -416,6 +411,17 @@ class _ProfileTabState extends State<ProfileTab> {
           ),
           const SizedBox(height: 12),
           Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _pickGeoLocationOnMap,
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text(
+                    'تحديد الموقع على الخريطة',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
                     foregroundColor: mainColor,
                     side: BorderSide(color: mainColor.withAlpha(128)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -425,38 +431,19 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: mainColor.withAlpha(20),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: mainColor.withAlpha(51)),
-                ),
-                child: Text(
-                  '$_coverageRadiusKm كم',
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 10),
-          if (_lat != null && _lng != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'المركز: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}',
-                style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  color: Colors.black54,
-                ),
-              ),
+          Text(
+            (_lat != null && _lng != null)
+                ? 'الإحداثيات: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}'
+                : 'لم يتم تحديد موقع بعد.',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: Colors.black54,
             ),
+          ),
         ],
       ),
     );
@@ -465,15 +452,15 @@ class _ProfileTabState extends State<ProfileTab> {
   Widget _field({
     required String label,
     required TextEditingController controller,
-                    const Positioned(
-                      top: 10,
-                      right: 10,
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             label,
             style: const TextStyle(
               fontFamily: 'Cairo',
@@ -483,9 +470,9 @@ class _ProfileTabState extends State<ProfileTab> {
           ),
           const SizedBox(height: 6),
           TextField(
-                  onPressed: _pickGeoLocationOnMap,
-                  icon: const Icon(Icons.map_outlined),
-                  label: const Text('تحديد الموقع على الخريطة', style: TextStyle(fontFamily: 'Cairo')),
+            controller: controller,
+            maxLines: maxLines,
+            keyboardType: keyboardType,
             decoration: _inputDecoration(label),
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
@@ -493,11 +480,11 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
     );
   }
-              Icon(Icons.location_on, size: 16, color: mainColor.withAlpha(210)),
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
-                  'الإحداثيات: ${center.latitude.toStringAsFixed(5)}, ${center.longitude.toStringAsFixed(5)}',
+      textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: const Color(0xFFF3F4FC),
         appBar: AppBar(
@@ -520,8 +507,10 @@ class _ProfileTabState extends State<ProfileTab> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.save, color: Colors.white),
             ),
@@ -545,13 +534,13 @@ class _ProfileTabState extends State<ProfileTab> {
                           items: const [
                             DropdownMenuItem(
                               value: 'individual',
-                              child:
-                                  Text('فرد', style: TextStyle(fontFamily: 'Cairo')),
+                              child: Text('فرد',
+                                  style: TextStyle(fontFamily: 'Cairo')),
                             ),
                             DropdownMenuItem(
                               value: 'company',
-                              child:
-                                  Text('منشأة', style: TextStyle(fontFamily: 'Cairo')),
+                              child: Text('منشأة',
+                                  style: TextStyle(fontFamily: 'Cairo')),
                             ),
                           ],
                           onChanged: (v) {
@@ -560,7 +549,10 @@ class _ProfileTabState extends State<ProfileTab> {
                           },
                         ),
                         const SizedBox(height: 12),
-                        _field(label: 'اسم الصفحة', controller: _displayNameController),
+                        _field(
+                          label: 'اسم الصفحة',
+                          controller: _displayNameController,
+                        ),
                         _field(
                           label: 'نبذة مختصرة',
                           controller: _bioController,
@@ -621,5 +613,3 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 }
-
-*/
