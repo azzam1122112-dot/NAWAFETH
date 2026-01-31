@@ -114,4 +114,31 @@ class ProvidersApi {
     }
     return Map<String, dynamic>.from(res.data as Map);
   }
+
+  Future<Map<String, dynamic>?> getMyProviderProfile() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/profile/');
+      if (res.data is Map<String, dynamic>) {
+        return res.data as Map<String, dynamic>;
+      }
+      return Map<String, dynamic>.from(res.data as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> updateMyProviderProfile(Map<String, dynamic> patch) async {
+    try {
+      final res = await _dio.patch(
+        '${ApiConfig.apiPrefix}/providers/me/profile/',
+        data: patch,
+      );
+      if (res.data is Map<String, dynamic>) {
+        return res.data as Map<String, dynamic>;
+      }
+      return Map<String, dynamic>.from(res.data as Map);
+    } catch (_) {
+      return null;
+    }
+  }
 }

@@ -26,6 +26,41 @@ class ProviderProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ("user", "is_verified_blue", "is_verified_green")
 
 
+class ProviderProfileMeSerializer(serializers.ModelSerializer):
+    """Provider profile for the authenticated owner (read + update).
+
+    Keep sensitive/computed fields read-only.
+    """
+
+    class Meta:
+        model = ProviderProfile
+        fields = (
+            "id",
+            "provider_type",
+            "display_name",
+            "bio",
+            "years_experience",
+            "city",
+            "lat",
+            "lng",
+            "coverage_radius_km",
+            "accepts_urgent",
+            "is_verified_blue",
+            "is_verified_green",
+            "rating_avg",
+            "rating_count",
+            "created_at",
+        )
+        read_only_fields = (
+            "id",
+            "is_verified_blue",
+            "is_verified_green",
+            "rating_avg",
+            "rating_count",
+            "created_at",
+        )
+
+
 class ProviderPublicSerializer(serializers.ModelSerializer):
     followers_count = serializers.IntegerField(read_only=True)
     likes_count = serializers.IntegerField(read_only=True)

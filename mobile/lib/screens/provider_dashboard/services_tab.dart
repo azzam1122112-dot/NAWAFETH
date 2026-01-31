@@ -1,123 +1,56 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-class ServicesTab extends StatefulWidget {
+class ServicesTab extends StatelessWidget {
   const ServicesTab({super.key});
 
+  static const Color _mainColor = Colors.deepPurple;
+
   @override
-  State<ServicesTab> createState() => _ServicesTabState();
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: _mainColor,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: const Text(
+            'خدماتي',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.home_repair_service, size: 44, color: Colors.grey.shade500),
+                const SizedBox(height: 10),
+                const Text(
+                  'لا توجد خدمات مرتبطة حالياً',
+                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'سيتم تفعيل إدارة الخدمات (إضافة/تعديل/حذف) بعد توفير API لها في الباكند.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade600, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _ServicesTabState extends State<ServicesTab> {
-  final List<Map<String, dynamic>> services = [
-    {
-      'title': 'استشارة قانونية عاجلة',
-      'description': 'استشارة فورية لقضية مستعجلة.',
-      'price': '300',
-      'pricingType': 'negotiable',
-      'urgent': true,
-      'mainCategory': 'استشارات قانونية',
-      'subCategory': 'عامة',
-    },
-    {
-      'title': 'صياغة عقد',
-      'description': 'صياغة عقد بيع أو شراكة بطريقة قانونية.',
-      'price': '',
-      'pricingType': 'custom',
-      'urgent': false,
-      'mainCategory': 'استشارات قانونية',
-      'subCategory': 'صياغة عقود',
-    },
-  ];
-
-  final Map<String, List<String>> categoryMap = {
-    'استشارات قانونية': ['عامة', 'صياغة عقود'],
-    'خدمات الشركات': ['تأسيس', 'مراجعة نظام'],
-  };
-
-  void _editService(int index) {
-    final item = services[index];
-    String selectedMain = item['mainCategory'] ?? '';
-    String? selectedSub = item['subCategory'];
-    String title = item['title'] ?? '';
-    String description = item['description'] ?? '';
-    String price = item['price'] ?? '';
-    String pricingType = item['pricingType'] ?? 'fixed';
-    bool urgent = item['urgent'] == true;
-    String? customSub;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      builder:
-          (_) => Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              left: 20,
-              right: 20,
-              top: 20,
-            ),
-            child: StatefulBuilder(
-              builder: (context, setModalState) {
-                final currentSubList = categoryMap[selectedMain] ?? [];
-
-                return SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLabel("التصنيف الرئيسي"),
-                      DropdownButtonFormField<String>(
-                        value: selectedMain.isEmpty ? null : selectedMain,
-                        decoration: _inputDecoration(),
-                        items:
-                            categoryMap.keys
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e,
-                                    child: Text(e),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged: (val) {
-                          setModalState(() {
-                            selectedMain = val!;
-                            selectedSub = null;
-                            customSub = null;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-
-                      _buildLabel("التصنيف الفرعي"),
-                      DropdownButtonFormField<String>(
-                        value:
-                            currentSubList.contains(selectedSub)
-                                ? selectedSub
-                                : null,
-                        decoration: _inputDecoration(),
-                        items:
-                            currentSubList
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e,
-                                    child: Text(e),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged: (val) {
-                          setModalState(() {
-                            selectedSub = val;
-                            customSub = null;
-                          });
-                        },
-                      ),
-
-                      if (!currentSubList.contains(selectedSub))
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+/*
                             children: [
                               _buildLabel("اقتراح تصنيف فرعي"),
                               TextFormField(
@@ -429,3 +362,5 @@ class _ServicesTabState extends State<ServicesTab> {
     );
   }
 }
+
+*/

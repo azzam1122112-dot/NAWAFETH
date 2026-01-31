@@ -1,58 +1,100 @@
 import 'package:flutter/material.dart';
-import '../../utils/auth_guard.dart';
+
+import '../../services/account_api.dart';
+import '../../services/reviews_api.dart';
 
 class ReviewsTab extends StatefulWidget {
+  final int? providerId;
+  final bool embedded;
+  final Future<void> Function(String customerName)? onOpenChat;
+
   const ReviewsTab({
     super.key,
+    this.providerId,
     this.embedded = false,
     this.onOpenChat,
   });
-
-  final bool embedded;
-
-  final Future<void> Function(String customerName)? onOpenChat;
 
   @override
   State<ReviewsTab> createState() => _ReviewsTabState();
 }
 
 class _ReviewsTabState extends State<ReviewsTab> {
-  double overallRating = 4.2;
-  int totalReviews = 23;
-  int totalUsersRated = 17;
-  String _sortOption = 'الأحدث';
-  final Map<String, bool> _isReplying = {};
-  final Map<String, TextEditingController> _replyControllers = {};
-  final Map<String, bool> _isLiked = {};
-  // ✅ لحفظ الردود المرسلة
-  final Map<String, List<Map<String, String>>> _replies = {};
+  static const Color _mainColor = Colors.deepPurple;
 
-  void _toggleLike(String customerName) async {
-    if (!await checkAuth(context)) return;
-    setState(() {
-      _isLiked[customerName] = !(_isLiked[customerName] ?? false);
-    });
+  Map<String, dynamic>? _meCache;
+
+  bool _loading = true;
+  double? _ratingAvg;
+  int? _ratingCount;
+  List<Map<String, dynamic>> _reviews = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  void _toggleReply(String customerName) async {
-    if (!await checkFullClient(context)) return;
-    setState(() {
-      _isReplying[customerName] = !(_isReplying[customerName] ?? false);
-    });
-  }
+  Future<void> _load() async {
+    try {
+      int? providerId = widget.providerId;
+      providerId ??= () {
+        final meId = _meCache?['provider_profile_id'];
+        if (meId is int) return meId;
+        return int.tryParse((meId ?? '').toString());
+      }();
 
-  Future<void> _openChat(String customerName) async {
-    if (widget.onOpenChat != null) {
-      await widget.onOpenChat!(customerName);
-      return;
+      if (providerId == null) {
+        final me = await AccountApi().me();
+        _meCache = me;
+        final id = me['provider_profile_id'];
+        providerId = id is int ? id : int.tryParse((id ?? '').toString());
+      }
+      if (providerId == null) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _ratingAvg = null;
+          _ratingCount = null;
+          _reviews = const [];
+        });
+        return;
+      }
+
+      final ratingJson = await ReviewsApi().getProviderRatingSummary(providerId);
+      final reviewsJson = await ReviewsApi().getProviderReviews(providerId);
+
+      double? asDouble(dynamic v) {
+        if (v is double) return v;
+        if (v is int) return v.toDouble();
+        if (v is num) return v.toDouble();
+        return double.tryParse((v ?? '').toString());
+      }
+
+      int? asInt(dynamic v) {
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        return int.tryParse((v ?? '').toString());
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _ratingAvg = ratingJson == null ? null : asDouble(ratingJson['rating_avg']);
+        _ratingCount = ratingJson == null ? null : asInt(ratingJson['rating_count']);
+        _reviews = reviewsJson;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _ratingAvg = null;
+        _ratingCount = null;
+        _reviews = const [];
+      });
     }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ميزة المحادثة غير مفعلة هنا.')),
-    );
   }
 
-  // ⭐ بناء النجوم
   Widget _buildStars(double rating, {double size = 22}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -62,107 +104,178 @@ class _ReviewsTabState extends State<ReviewsTab> {
         } else if (index < rating) {
           return Icon(Icons.star_half, color: Colors.amber, size: size);
         } else {
-          return Icon(
-            Icons.star_border,
-            color: Colors.grey.shade400,
-            size: size,
-          );
+          return Icon(Icons.star_border, color: Colors.grey.shade400, size: size);
         }
       }),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ⭐ التقييم العام (في المنتصف بدون كرت)
-          Center(
-            child: Column(
+  @override
+  Widget build(BuildContext context) {
+    final Widget body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                Text(
-                  overallRating.toStringAsFixed(1),
-                  style: const TextStyle(
-                    fontSize: 60,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                    height: 1,
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        _ratingAvg == null ? '—' : _ratingAvg!.toStringAsFixed(2),
+                        style: const TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                          color: _mainColor,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildStars(_ratingAvg ?? 0, size: 30),
+                      const SizedBox(height: 6),
+                      Text(
+                        _ratingCount == null ? '— مراجعة' : 'بناءً على $_ratingCount مراجعة',
+                        style: const TextStyle(fontFamily: 'Cairo', color: Colors.black54, fontSize: 13),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 6),
-                _buildStars(overallRating, size: 34),
-                const SizedBox(height: 6),
-                Text(
-                  "بناءً على $totalReviews مراجعة • $totalUsersRated مقيم",
-                  style: const TextStyle(color: Colors.black54, fontSize: 14),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
-
-          // 📊 تفاصيل البنود
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                const SizedBox(height: 14),
                 const Text(
-                  'تفصيل البنود',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  'مراجعات العملاء',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 12),
-                _buildCriteriaRow('سرعة الاستجابة', 4.0),
-                _buildCriteriaRow('التكلفة مقابل الخدمة', 3.5),
-                _buildCriteriaRow('جودة الخدمة', 4.5),
-                _buildCriteriaRow('المصداقية', 4.0),
-                _buildCriteriaRow('وقت الإنجاز', 4.2),
+                const SizedBox(height: 10),
+                if (_reviews.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 20),
+                    child: Center(
+                      child: Text(
+                        'لا توجد مراجعات حتى الآن',
+                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade700),
+                      ),
+                    ),
+                  )
+                else
+                  ..._reviews.map((r) {
+                    final rating = (r['rating'] ?? 0);
+                    final ratingD = (rating is num)
+                        ? rating.toDouble()
+                        : double.tryParse(rating.toString()) ?? 0.0;
+
+                    final comment = (r['comment'] ?? '').toString().trim();
+                    final customerName = (r['client_name'] ?? '').toString().trim();
+                    final customerPhone = (r['client_phone'] ?? '').toString().trim();
+                    final customerLabel = customerName.isNotEmpty
+                        ? customerName
+                        : (customerPhone.isNotEmpty ? customerPhone : 'عميل');
+
+                    final createdAt = (r['created_at'] ?? '').toString().trim();
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  customerLabel,
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (widget.onOpenChat != null)
+                                IconButton(
+                                  tooltip: 'محادثة',
+                                  onPressed: () => widget.onOpenChat?.call(customerLabel),
+                                  icon: const Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 18,
+                                    color: _mainColor,
+                                  ),
+                                ),
+                              _buildStars(ratingD, size: 18),
+                            ],
+                          ),
+                          if (createdAt.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              createdAt,
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Text(
+                            comment.isEmpty ? '—' : comment,
+                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
               ],
             ),
-          ),
+          );
 
-          const SizedBox(height: 20),
+    if (widget.embedded) {
+      return Directionality(textDirection: TextDirection.rtl, child: body);
+    }
 
-          // 🔽 عنوان + فلترة أسفله
-          const Text(
-            'مراجعات العملاء',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: _mainColor,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: const Text(
+            'المراجعات',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _sortOption,
-                isExpanded: true,
-                borderRadius: BorderRadius.circular(12),
-                items: const [
-                  DropdownMenuItem(value: 'الأحدث', child: Text('الأحدث')),
-                  DropdownMenuItem(
-                    value: 'الأعلى تقييماً',
-                    child: Text('الأعلى تقييماً'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'الأقل تقييماً',
-                    child: Text('الأقل تقييماً'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _sortOption = value);
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'تحديث',
+              onPressed: _load,
+              icon: const Icon(Icons.refresh, color: Colors.white),
+            ),
+          ],
+        ),
+        body: body,
+      ),
+    );
+  }
+}
+
+/*
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text("تم الفرز حسب: $value")),
                     );
@@ -580,3 +693,5 @@ class _ReviewsTabState extends State<ReviewsTab> {
     );
   }
 }
+
+*/

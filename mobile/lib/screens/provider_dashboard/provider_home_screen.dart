@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/account_api.dart';
 import '../../services/api_config.dart';
+import '../../services/providers_api.dart';
 
 import '../../widgets/app_bar.dart';
 import '../../widgets/bottom_nav.dart';
@@ -44,6 +45,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   final String _currentPlanName = "—";
 
   String? _providerShareLink;
+
+  String? _providerDisplayName;
+  String? _providerCity;
 
   int? _followersCount;
   int? _likesReceivedCount;
@@ -125,6 +129,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       final followersCount = asInt(me['provider_followers_count']);
       final likesReceivedCount = asInt(me['provider_likes_received_count']);
 
+      final myProfile = await ProvidersApi().getMyProviderProfile();
+      final providerDisplayName = (myProfile?['display_name'] ?? '').toString().trim();
+      final providerCity = (myProfile?['city'] ?? '').toString().trim();
+
       String? link;
       if (providerId != null) {
         // Public link (API endpoint is guaranteed to exist today).
@@ -135,6 +143,8 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         _providerShareLink = link;
         _followersCount = followersCount;
         _likesReceivedCount = likesReceivedCount;
+        _providerDisplayName = providerDisplayName.isEmpty ? null : providerDisplayName;
+        _providerCity = providerCity.isEmpty ? null : providerCity;
       });
     } catch (_) {
       // Best-effort.
@@ -918,6 +928,36 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             children: [
               _buildHeader(),
               const SizedBox(height: 52),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    Text(
+                      _providerDisplayName ?? '—',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Cairo',
+                        color: Colors.black87,
+                      ),
+                    ),
+                    if (_providerCity != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _providerCity!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'Cairo',
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               // بطاقة رئيسية تحت الغلاف
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),

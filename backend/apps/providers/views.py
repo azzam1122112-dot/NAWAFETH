@@ -1,4 +1,5 @@
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count
@@ -12,9 +13,23 @@ from .models import Category, ProviderFollow, ProviderLike, ProviderProfile
 from .serializers import (
 	CategorySerializer,
 	ProviderProfileSerializer,
+	ProviderProfileMeSerializer,
 	ProviderPublicSerializer,
 	UserPublicSerializer,
 )
+
+
+class MyProviderProfileView(generics.RetrieveUpdateAPIView):
+	"""Get/update the current user's provider profile."""
+
+	serializer_class = ProviderProfileMeSerializer
+	permission_classes = [IsAtLeastClient]
+
+	def get_object(self):
+		provider_profile = getattr(self.request.user, "provider_profile", None)
+		if not provider_profile:
+			raise NotFound("provider_profile_not_found")
+		return provider_profile
 
 
 class CategoryListView(generics.ListAPIView):

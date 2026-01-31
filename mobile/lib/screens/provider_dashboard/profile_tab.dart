@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../registration/steps/content_step.dart';
+import '../../services/providers_api.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -9,206 +9,158 @@ class ProfileTab extends StatefulWidget {
   State<ProfileTab> createState() => _ProfileTabState();
 }
 
-class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
+class _ProfileTabState extends State<ProfileTab> {
   final Color mainColor = Colors.deepPurple;
-  late TabController _tabController;
 
-  final Map<String, String> data = {
-    "fullName": "عبدالله محمد",
-    "englishName": "Abdullah Mohammed",
-    "accountType": "مؤسسة",
-    "about": "نقدم خدمات برمجية احترافية للمؤسسات.",
-    "specialization": "تطوير برمجيات",
-    "experience": "5 سنوات",
-    "languages": "العربية، الإنجليزية",
-    "location": "الرياض",
-    "map": "https://maps.google.com",
-    "details": "نوفر حلول برمجية متقدمة ومتكاملة",
-    "qualification": "بكالوريوس علوم حاسب",
-    "website": "https://example.com",
-    "social": "@example",
-    "phone": "0551234567",
-    "keywords": "برمجة، تطبيقات، مواقع",
-  };
+  bool _loading = true;
+  bool _saving = false;
 
-  final Map<String, bool> isEditing = {};
-  final Map<String, TextEditingController> controllers = {};
+  String _providerType = 'individual';
+  bool _acceptsUrgent = false;
 
-  void _openPortfolio() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) => ContentStep(
-              onBack: () => Navigator.pop(context),
-              onNext: () => Navigator.pop(context),
-            ),
-      ),
-    );
-  }
+  final _displayNameController = TextEditingController();
+  final _bioController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _yearsExperienceController = TextEditingController();
+  final _coverageRadiusController = TextEditingController();
+  final _latController = TextEditingController();
+  final _lngController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    data.forEach((key, value) {
-      controllers[key] = TextEditingController(text: value);
-      isEditing[key] = false;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    _bioController.dispose();
+    _cityController.dispose();
+    _yearsExperienceController.dispose();
+    _coverageRadiusController.dispose();
+    _latController.dispose();
+    _lngController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final json = await ProvidersApi().getMyProviderProfile();
+    if (!mounted) return;
+
+    void setText(TextEditingController c, dynamic v) {
+      final s = (v ?? '').toString();
+      c.text = s;
+    }
+
+    setState(() {
+      _loading = false;
+      if (json == null) return;
+
+      _providerType = (json['provider_type'] ?? 'individual').toString();
+      _acceptsUrgent = json['accepts_urgent'] == true;
+
+      setText(_displayNameController, json['display_name']);
+      setText(_bioController, json['bio']);
+      setText(_cityController, json['city']);
+      setText(_yearsExperienceController, json['years_experience']);
+      setText(_coverageRadiusController, json['coverage_radius_km']);
+      setText(_latController, json['lat']);
+      setText(_lngController, json['lng']);
     });
   }
 
-  Widget buildField(
-    String key,
-    String label,
-    IconData icon, {
-    int maxLines = 1,
-  }) {
-    final editing = isEditing[key]!;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: mainColor.withAlpha(25),
-                  child: Icon(icon, color: mainColor),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    editing ? Icons.check_circle : Icons.edit,
-                    color: editing ? Colors.green : mainColor,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      if (editing) data[key] = controllers[key]!.text;
-                      isEditing[key] = !editing;
-                    });
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            editing
-                ? TextField(
-                  controller: controllers[key],
-                  maxLines: maxLines,
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                  decoration: InputDecoration(
-                    hintText: 'أدخل $label',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: mainColor),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    isDense: true,
-                    contentPadding: const EdgeInsets.all(12),
-                  ),
-                )
-                : Text(
-                  controllers[key]!.text,
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    color: Colors.black87,
-                  ),
-                ),
-          ],
-        ),
-      ),
+  int? _parseInt(String s) {
+    final v = int.tryParse(s.trim());
+    return v;
+  }
+
+  double? _parseDouble(String s) {
+    final v = double.tryParse(s.trim());
+    return v;
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    final patch = <String, dynamic>{
+      'provider_type': _providerType,
+      'display_name': _displayNameController.text.trim(),
+      'bio': _bioController.text.trim(),
+      'city': _cityController.text.trim(),
+      'accepts_urgent': _acceptsUrgent,
+    };
+
+    final years = _parseInt(_yearsExperienceController.text);
+    if (years != null) patch['years_experience'] = years;
+
+    final radius = _parseInt(_coverageRadiusController.text);
+    if (radius != null) patch['coverage_radius_km'] = radius;
+
+    final lat = _parseDouble(_latController.text);
+    final lng = _parseDouble(_lngController.text);
+    if (lat != null) patch['lat'] = lat;
+    if (lng != null) patch['lng'] = lng;
+
+    final updated = await ProvidersApi().updateMyProviderProfile(patch);
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (updated == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ البيانات حالياً.')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم حفظ البيانات بنجاح')),
     );
   }
 
-  Widget buildSection(List<Map<String, dynamic>> fields) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        InkWell(
-          onTap: _openPortfolio,
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 6,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: mainColor.withAlpha(25),
-                  child: Icon(Icons.photo_library_outlined, color: mainColor),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'معرض الأعمال',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'تحكم بمحتوى المعرض الذي يظهر للعملاء',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12.5,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_left, color: mainColor),
-              ],
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      filled: true,
+      fillColor: Colors.grey[100],
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    );
+  }
+
+  Widget _field({
+    required String label,
+    required TextEditingController controller,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ),
-        const SizedBox(height: 10),
-        ...fields
-            .map(
-              (field) => buildField(
-                field['key'],
-                field['label'],
-                field['icon'],
-                maxLines: field['multiline'] == true ? 3 : 1,
-              ),
-            )
-            .toList(),
-      ],
+          const SizedBox(height: 6),
+          TextField(
+            controller: controller,
+            maxLines: maxLines,
+            keyboardType: keyboardType,
+            decoration: _inputDecoration(label),
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -218,10 +170,10 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          iconTheme: IconThemeData(color: Colors.white),
           backgroundColor: mainColor,
+          iconTheme: const IconThemeData(color: Colors.white),
           title: const Text(
-            "الملف الشخصي",
+            'الملف الشخصي',
             style: TextStyle(
               fontFamily: 'Cairo',
               color: Colors.white,
@@ -231,13 +183,108 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
           ),
           actions: [
             IconButton(
-              tooltip: 'معرض الأعمال',
-              onPressed: _openPortfolio,
-              icon: const Icon(Icons.photo_library_outlined, color: Colors.white),
+              tooltip: 'حفظ',
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.save, color: Colors.white),
             ),
           ],
-          bottom: TabBar(
-            indicatorColor: Colors.white,
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'بيانات المزود',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _providerType,
+                          decoration: _inputDecoration('نوع الحساب'),
+                          items: const [
+                            DropdownMenuItem(value: 'individual', child: Text('فرد', style: TextStyle(fontFamily: 'Cairo'))),
+                            DropdownMenuItem(value: 'company', child: Text('منشأة', style: TextStyle(fontFamily: 'Cairo'))),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() => _providerType = v);
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        _field(label: 'اسم الصفحة', controller: _displayNameController),
+                        _field(label: 'نبذة مختصرة', controller: _bioController, maxLines: 3),
+                        _field(label: 'المدينة', controller: _cityController),
+                        _field(
+                          label: 'سنوات الخبرة',
+                          controller: _yearsExperienceController,
+                          keyboardType: TextInputType.number,
+                        ),
+                        _field(
+                          label: 'نطاق التغطية (كم)',
+                          controller: _coverageRadiusController,
+                          keyboardType: TextInputType.number,
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _field(
+                                label: 'Latitude',
+                                controller: _latController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _field(
+                                label: 'Longitude',
+                                controller: _lngController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SwitchListTile.adaptive(
+                          value: _acceptsUrgent,
+                          onChanged: (v) => setState(() => _acceptsUrgent = v),
+                          title: const Text('أقبل الطلبات العاجلة', style: TextStyle(fontFamily: 'Cairo')),
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: mainColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+
+    );
+  }
+}
+
+/*
             indicatorWeight: 3,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
@@ -348,3 +395,5 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
     );
   }
 }
+
+*/
