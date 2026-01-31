@@ -44,6 +44,8 @@ class ProviderProfile(models.Model):
     bio = models.TextField(max_length=300)
     years_experience = models.PositiveIntegerField(default=0)
 
+    whatsapp = models.CharField(max_length=30, null=True, blank=True)
+
     city = models.CharField(max_length=100)
     lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

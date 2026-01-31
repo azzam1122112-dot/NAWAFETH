@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SeoStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -11,13 +14,90 @@ class SeoStep extends StatefulWidget {
 }
 
 class _SeoStepState extends State<SeoStep> {
+  static const String _draftKey = 'provider_seo_draft_v1';
+
   final TextEditingController keywordsController = TextEditingController();
   final TextEditingController metaDescriptionController =
       TextEditingController();
   final TextEditingController slugController = TextEditingController();
 
+  Timer? _draftTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraft();
+    void onChange() {
+      _scheduleDraftSave();
+      _updateSectionDone();
+    }
+
+    keywordsController.addListener(onChange);
+    metaDescriptionController.addListener(onChange);
+    slugController.addListener(onChange);
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final data = jsonDecode(raw);
+      if (data is! Map) return;
+
+      String asString(dynamic v) => (v ?? '').toString();
+
+      if (keywordsController.text.trim().isEmpty) {
+        keywordsController.text = asString(data['keywords']);
+      }
+      if (metaDescriptionController.text.trim().isEmpty) {
+        metaDescriptionController.text = asString(data['meta']);
+      }
+      if (slugController.text.trim().isEmpty) {
+        slugController.text = asString(data['slug']);
+      }
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final data = <String, dynamic>{
+          'keywords': keywordsController.text.trim(),
+          'meta': metaDescriptionController.text.trim(),
+          'slug': slugController.text.trim(),
+        };
+        await prefs.setString(_draftKey, jsonEncode(data));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _updateSectionDone() {
+    final done = keywordsController.text.trim().isNotEmpty ||
+        metaDescriptionController.text.trim().isNotEmpty ||
+        slugController.text.trim().isNotEmpty;
+
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('provider_section_done_seo', done);
+    }).catchError((_) {});
+  }
+
+  void _clearDraft() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_draftKey);
+    }).catchError((_) {});
+  }
+
   @override
   void dispose() {
+    _draftTimer?.cancel();
     keywordsController.dispose();
     metaDescriptionController.dispose();
     slugController.dispose();
@@ -27,6 +107,8 @@ class _SeoStepState extends State<SeoStep> {
   void _submit() {
     // هنا لاحقًا تقدر تضيف حفظ للبيانات في الـ API / قاعدة البيانات
     // الآن المطلوب فقط يعتبر الخطوة مكتملة ويرجع للشاشة السابقة بعلامة صح
+    _updateSectionDone();
+    _clearDraft();
     widget.onNext();
   }
 

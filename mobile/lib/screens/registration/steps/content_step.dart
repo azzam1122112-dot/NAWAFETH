@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ContentStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -14,12 +17,127 @@ class ContentStep extends StatefulWidget {
 }
 
 class _ContentStepState extends State<ContentStep> {
+  static const String _draftKey = 'provider_content_draft_v1';
+
   final ScrollController _scrollController = ScrollController();
 
   final List<SectionContent> sections = [];
 
   bool _isAddingNew = false;
   int? _editingIndex;
+
+  Timer? _draftTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraft();
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+      if (raw == null || raw.trim().isEmpty) {
+        _updateSectionDone();
+        return;
+      }
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        _updateSectionDone();
+        return;
+      }
+
+      final restored = <SectionContent>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final title = (item['title'] ?? '').toString();
+        final description = (item['description'] ?? '').toString();
+        final mainPath = (item['main_image_path'] ?? '').toString();
+        final videoPaths = (item['video_paths'] is List)
+            ? (item['video_paths'] as List)
+                .map((e) => (e ?? '').toString())
+                .where((s) => s.trim().isNotEmpty)
+                .toList()
+            : <String>[];
+        final imagePaths = (item['image_paths'] is List)
+            ? (item['image_paths'] as List)
+                .map((e) => (e ?? '').toString())
+                .where((s) => s.trim().isNotEmpty)
+                .toList()
+            : <String>[];
+
+        XFile? mainImage;
+        if (mainPath.trim().isNotEmpty && File(mainPath).existsSync()) {
+          mainImage = XFile(mainPath);
+        }
+
+        final videos = <XFile>[];
+        for (final p in videoPaths) {
+          if (p.trim().isEmpty) continue;
+          if (File(p).existsSync()) videos.add(XFile(p));
+        }
+
+        final images = <XFile>[];
+        for (final p in imagePaths) {
+          if (p.trim().isEmpty) continue;
+          if (File(p).existsSync()) images.add(XFile(p));
+        }
+
+        restored.add(
+          SectionContent(
+            title: title,
+            description: description,
+            mainImage: mainImage,
+            contentVideos: videos,
+            contentImages: images,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        sections
+          ..clear()
+          ..addAll(restored);
+      });
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+      _updateSectionDone();
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = sections
+            .map(
+              (s) => {
+                'title': s.title,
+                'description': s.description,
+                'main_image_path': s.mainImage?.path,
+                'video_paths': s.contentVideos.map((v) => v.path).toList(),
+                'image_paths': s.contentImages.map((i) => i.path).toList(),
+              },
+            )
+            .toList(growable: false);
+        await prefs.setString(_draftKey, jsonEncode(list));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _updateSectionDone() {
+    final done = sections.isNotEmpty;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('provider_section_done_content', done);
+    }).catchError((_) {});
+  }
 
   void _scrollToEditor() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -53,6 +171,8 @@ class _ContentStepState extends State<ContentStep> {
       _isAddingNew = false;
       _editingIndex = null;
     });
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   void _saveNewSection(SectionContent section) {
@@ -60,6 +180,8 @@ class _ContentStepState extends State<ContentStep> {
       sections.add(section);
       _isAddingNew = false;
     });
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   void _saveEditedSection(SectionContent section) {
@@ -70,6 +192,8 @@ class _ContentStepState extends State<ContentStep> {
       sections[index] = section;
       _editingIndex = null;
     });
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   Future<void> _confirmDeleteSection(int index) async {
@@ -118,9 +242,20 @@ class _ContentStepState extends State<ContentStep> {
     setState(() {
       sections.removeAt(index);
     });
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   void _saveAndContinue() {
+    if (sections.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أضف قسمًا واحدًا على الأقل قبل المتابعة.')),
+      );
+      return;
+    }
+
+    _scheduleDraftSave();
+    _updateSectionDone();
     // لاحقًا: جمع البيانات وإرسالها للباكند
     widget.onNext();
   }
@@ -308,6 +443,7 @@ class _ContentStepState extends State<ContentStep> {
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -510,12 +646,16 @@ class NewSectionEditor extends StatefulWidget {
 }
 
 class _NewSectionEditorState extends State<NewSectionEditor> {
+  static const String _editorDraftKey = 'provider_content_editor_draft_v1';
+
   final picker = ImagePicker();
   late final TextEditingController _titleController;
   late final TextEditingController _descController;
   XFile? _mainImage;
   final List<XFile> _videos = [];
   final List<XFile> _images = [];
+
+  Timer? _draftTimer;
 
   bool get _isEditing => widget.initialSection != null;
 
@@ -524,48 +664,141 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
     super.initState();
     final initial = widget.initialSection;
     _titleController = TextEditingController(
-      text: initial?.title.isNotEmpty == true
-          ? initial!.title
-          : "فيديو تعريفي لخدمة الاستشارات التقنية",
+      text: initial?.title.isNotEmpty == true ? initial!.title : '',
     );
     _descController = TextEditingController(
-      text: initial?.description.isNotEmpty == true
-          ? initial!.description
-          : "فيديو يشرح طريقة طلب الاستشارة، وكيف يتم التواصل مع العميل وتقديم الحلول.",
+      text: initial?.description.isNotEmpty == true ? initial!.description : '',
     );
     _mainImage = initial?.mainImage;
     if (initial != null) {
       _videos.addAll(initial.contentVideos);
       _images.addAll(initial.contentImages);
     }
+
+    _loadEditorDraftIfNeeded();
+    void onChange() {
+      _scheduleEditorDraftSave();
+    }
+
+    _titleController.addListener(onChange);
+    _descController.addListener(onChange);
+  }
+
+  Future<void> _loadEditorDraftIfNeeded() async {
+    // Only restore draft when creating a new section (not editing an existing one).
+    if (_isEditing) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_editorDraftKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final data = jsonDecode(raw);
+      if (data is! Map) return;
+
+      final title = (data['title'] ?? '').toString();
+      final desc = (data['description'] ?? '').toString();
+      final mainPath = (data['main_image_path'] ?? '').toString();
+      final videoPaths = (data['video_paths'] is List)
+          ? (data['video_paths'] as List)
+              .map((e) => (e ?? '').toString())
+              .where((s) => s.trim().isNotEmpty)
+              .toList()
+          : <String>[];
+      final imagePaths = (data['image_paths'] is List)
+          ? (data['image_paths'] as List)
+              .map((e) => (e ?? '').toString())
+              .where((s) => s.trim().isNotEmpty)
+              .toList()
+          : <String>[];
+
+      if (!mounted) return;
+      setState(() {
+        if (_titleController.text.trim().isEmpty && title.trim().isNotEmpty) {
+          _titleController.text = title;
+        }
+        if (_descController.text.trim().isEmpty && desc.trim().isNotEmpty) {
+          _descController.text = desc;
+        }
+
+        if (_mainImage == null && mainPath.trim().isNotEmpty) {
+          if (File(mainPath).existsSync()) {
+            _mainImage = XFile(mainPath);
+          }
+        }
+
+        if (_videos.isEmpty) {
+          for (final p in videoPaths) {
+            if (File(p).existsSync()) _videos.add(XFile(p));
+          }
+        }
+        if (_images.isEmpty) {
+          for (final p in imagePaths) {
+            if (File(p).existsSync()) _images.add(XFile(p));
+          }
+        }
+      });
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  void _scheduleEditorDraftSave() {
+    if (_isEditing) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final data = <String, dynamic>{
+          'title': _titleController.text.trim(),
+          'description': _descController.text.trim(),
+          'main_image_path': _mainImage?.path,
+          'video_paths': _videos.map((v) => v.path).toList(),
+          'image_paths': _images.map((i) => i.path).toList(),
+        };
+        await prefs.setString(_editorDraftKey, jsonEncode(data));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _clearEditorDraft() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_editorDraftKey);
+    }).catchError((_) {});
   }
 
   Future<void> _pickMainImage() async {
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
       setState(() => _mainImage = picked);
+      _scheduleEditorDraftSave();
     }
   }
 
   void _removeMainImage() {
     if (_mainImage == null) return;
     setState(() => _mainImage = null);
+    _scheduleEditorDraftSave();
   }
 
   void _removeVideoAt(int index) {
     if (index < 0 || index >= _videos.length) return;
     setState(() => _videos.removeAt(index));
+    _scheduleEditorDraftSave();
   }
 
   void _removeImageAt(int index) {
     if (index < 0 || index >= _images.length) return;
     setState(() => _images.removeAt(index));
+    _scheduleEditorDraftSave();
   }
 
   Future<void> _pickVideo({ImageSource source = ImageSource.gallery}) async {
     final picked = await picker.pickVideo(source: source);
     if (picked != null) {
       setState(() => _videos.add(picked));
+      _scheduleEditorDraftSave();
     }
   }
 
@@ -573,6 +806,7 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
     final picked = await picker.pickImage(source: source);
     if (picked != null) {
       setState(() => _images.add(picked));
+      _scheduleEditorDraftSave();
     }
   }
 
@@ -660,11 +894,13 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
       contentVideos: List<XFile>.from(_videos),
       contentImages: List<XFile>.from(_images),
     );
+    _clearEditorDraft();
     widget.onSave(section);
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     _titleController.dispose();
     _descController.dispose();
     super.dispose();

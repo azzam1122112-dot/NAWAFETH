@@ -1,9 +1,15 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../../services/account_api.dart';
+import '../../../services/providers_api.dart';
 
 class ContactInfoStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -39,6 +45,9 @@ class ContactInfoStep extends StatefulWidget {
 }
 
 class _ContactInfoStepState extends State<ContactInfoStep> {
+  static const String _draftKeyFull = 'provider_contact_info_draft_full_v1';
+  static const String _draftKeyInitial = 'provider_contact_info_draft_initial_v1';
+
   // Controllers
   late final TextEditingController websiteController;
   late final TextEditingController phoneController;
@@ -54,6 +63,14 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   // Logo
   final ImagePicker _picker = ImagePicker();
   File? _logoFile;
+
+  bool _loadingFromBackend = false;
+  bool _saving = false;
+  String? _initialWhatsapp;
+
+  Timer? _draftTimer;
+  Timer? _patchTimer;
+  String? _lastPatchedWhatsapp;
 
   // Accordion state (للوضع الكامل فقط)
   Map<String, bool> expanded = {
@@ -134,13 +151,190 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     mapLocationController = TextEditingController();
     socialControllers = List.generate(9, (_) => TextEditingController());
 
-    phoneController.addListener(_validateForm);
-    whatsappController.addListener(_validateForm);
-    cityController.addListener(_validateForm);
+    void onAnyChange() {
+      _validateForm();
+      _scheduleDraftSave();
+      _updateSectionDoneFlag();
+      _scheduleWhatsappPatch();
+    }
+
+    phoneController.addListener(onAnyChange);
+    whatsappController.addListener(onAnyChange);
+    cityController.addListener(onAnyChange);
+    websiteController.addListener(onAnyChange);
+    mapLocationController.addListener(onAnyChange);
+    for (final c in socialControllers) {
+      c.addListener(onAnyChange);
+    }
+
     // تأجيل الاستدعاء الأول حتى بعد اكتمال البناء
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDraft();
       _validateForm();
+      _updateSectionDoneFlag();
+      _prefillFromBackendIfNeeded();
     });
+  }
+
+  String get _draftKey => widget.isInitialRegistration ? _draftKeyInitial : _draftKeyFull;
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final data = jsonDecode(raw);
+      if (data is! Map) return;
+
+      String asString(dynamic v) => (v ?? '').toString();
+      List asList(dynamic v) => v is List ? v : const [];
+
+      // Only fill if empty to avoid overriding user input.
+      if (phoneController.text.trim().isEmpty) {
+        phoneController.text = asString(data['phone']);
+      }
+      if (whatsappController.text.trim().isEmpty) {
+        whatsappController.text = asString(data['whatsapp']);
+      }
+      if (cityController.text.trim().isEmpty) {
+        cityController.text = asString(data['city']);
+      }
+      if (websiteController.text.trim().isEmpty) {
+        websiteController.text = asString(data['website']);
+      }
+      if (mapLocationController.text.trim().isEmpty) {
+        mapLocationController.text = asString(data['map']);
+      }
+
+      final socials = asList(data['social']);
+      for (var i = 0; i < socialControllers.length && i < socials.length; i++) {
+        if (socialControllers[i].text.trim().isEmpty) {
+          socialControllers[i].text = asString(socials[i]);
+        }
+      }
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final data = <String, dynamic>{
+          'phone': phoneController.text.trim(),
+          'whatsapp': whatsappController.text.trim(),
+          'city': cityController.text.trim(),
+          'website': websiteController.text.trim(),
+          'map': mapLocationController.text.trim(),
+          'social': socialControllers.map((c) => c.text.trim()).toList(growable: false),
+        };
+        await prefs.setString(_draftKey, jsonEncode(data));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _updateSectionDoneFlag() {
+    if (widget.isInitialRegistration) return;
+    final done = whatsappController.text.trim().isNotEmpty;
+    // Best-effort; no need to await.
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('provider_section_done_contact_full', done);
+    }).catchError((_) {});
+  }
+
+  void _scheduleWhatsappPatch() {
+    if (widget.isInitialRegistration) return;
+    final whatsapp = whatsappController.text.trim();
+    if (_lastPatchedWhatsapp != null && whatsapp == _lastPatchedWhatsapp) return;
+
+    _patchTimer?.cancel();
+    _patchTimer = Timer(const Duration(milliseconds: 900), () async {
+      if (!mounted) return;
+      final current = whatsappController.text.trim();
+      if (_lastPatchedWhatsapp != null && current == _lastPatchedWhatsapp) return;
+
+      final ok = await _saveToBackendIfNeeded();
+      if (ok) {
+        _lastPatchedWhatsapp = current;
+      }
+    });
+  }
+
+  Future<void> _prefillFromBackendIfNeeded() async {
+    // In the provider registration wizard, controllers are passed from outside.
+    // In that case, do not override user input.
+    if (!mounted) return;
+    if (!_ownsPhone && !_ownsWhatsapp) return;
+
+    setState(() => _loadingFromBackend = true);
+    try {
+      final me = await AccountApi().me();
+      final phone = (me['phone'] ?? '').toString().trim();
+      if (_ownsPhone && phoneController.text.trim().isEmpty && phone.isNotEmpty) {
+        phoneController.text = phone;
+      }
+
+      // WhatsApp is stored on the provider profile.
+      final myProfile = await ProvidersApi().getMyProviderProfile();
+      final whatsapp = (myProfile?['whatsapp'] ?? '').toString().trim();
+      _initialWhatsapp = whatsapp;
+      _lastPatchedWhatsapp = whatsapp;
+      if (_ownsWhatsapp && whatsappController.text.trim().isEmpty && whatsapp.isNotEmpty) {
+        whatsappController.text = whatsapp;
+      }
+    } catch (_) {
+      // Best-effort.
+    } finally {
+      if (mounted) {
+        setState(() => _loadingFromBackend = false);
+      } else {
+        _loadingFromBackend = false;
+      }
+    }
+  }
+
+  Future<bool> _saveToBackendIfNeeded() async {
+    if (widget.isInitialRegistration) return true;
+    if (_saving) return false;
+    setState(() => _saving = true);
+    try {
+      final whatsapp = whatsappController.text.trim();
+      if (_initialWhatsapp == null) {
+        // If we didn't prefill, still keep a baseline to avoid spamming PATCH.
+        _initialWhatsapp = whatsapp;
+        return true;
+      }
+      if (whatsapp == _initialWhatsapp) return true;
+
+      final updated = await ProvidersApi().updateMyProviderProfile({
+        'whatsapp': whatsapp,
+      });
+      if (updated == null) {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ رقم الواتساب حالياً.')),
+        );
+        return false;
+      }
+      _initialWhatsapp = (updated['whatsapp'] ?? '').toString().trim();
+      return true;
+    } catch (_) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ رقم الواتساب حالياً.')),
+      );
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      } else {
+        _saving = false;
+      }
+    }
   }
 
   void _validateForm() {
@@ -189,6 +383,8 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
+    _patchTimer?.cancel();
     websiteController.dispose();
     if (_ownsPhone) {
       phoneController.dispose();
@@ -373,6 +569,9 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
             hint: "+9665xxxxxxxx",
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
+            readOnly: widget.isInitialRegistration &&
+                widget.phoneExternalController != null &&
+                phoneController.text.trim().isNotEmpty,
           ),
         ),
         _sectionCard(
@@ -394,6 +593,11 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   Widget _buildFullAccordion() {
     return Column(
       children: [
+        if (_loadingFromBackend)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: LinearProgressIndicator(minHeight: 3),
+          ),
         _infoTip(
           icon: Icons.info_outline,
           text:
@@ -458,6 +662,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
             hint: "+9665xxxxxxxx",
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
+            readOnly: true,
           ),
         ),
 
@@ -735,7 +940,13 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: widget.onNext,
+            onPressed: _saving
+                ? null
+                : () async {
+                    final ok = await _saveToBackendIfNeeded();
+                    if (!ok) return;
+                    widget.onNext();
+                  },
             icon: const Icon(Icons.arrow_forward),
             label: Text(
               primaryLabel,

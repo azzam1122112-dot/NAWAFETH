@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 
@@ -9,9 +10,12 @@ import 'steps/service_classification_step.dart';
 import 'steps/contact_info_step.dart';
 
 import '../../services/providers_api.dart';
+import '../../services/account_api.dart';
+import '../../services/account_api.dart';
 
 // لوحة المزود بعد التسجيل
 import '../provider_dashboard/provider_home_screen.dart';
+import '../signup_screen.dart';
 
 class RegisterServiceProviderPage extends StatefulWidget {
   const RegisterServiceProviderPage({super.key});
@@ -24,6 +28,8 @@ class RegisterServiceProviderPage extends StatefulWidget {
 class _RegisterServiceProviderPageState
     extends State<RegisterServiceProviderPage>
     with SingleTickerProviderStateMixin {
+  static const String _draftPrefsKey = 'provider_registration_draft_v1';
+
   final List<String> stepTitles = [
     'المعلومات الأساسية',
     'تصنيف الاختصاص',
@@ -62,6 +68,9 @@ class _RegisterServiceProviderPageState
       vsync: this,
       duration: const Duration(milliseconds: 300),
     )..forward();
+
+    _loadDraft();
+    _prefillFromAccount();
   }
 
   @override
@@ -84,6 +93,116 @@ class _RegisterServiceProviderPageState
       });
       _scrollToCurrentStep();
     }
+  }
+
+  Future<void> _saveDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final draft = <String, dynamic>{
+        'display_name': _displayNameCtrl.text,
+        'bio': _bioCtrl.text,
+        'city': _cityCtrl.text,
+        'phone': _phoneCtrl.text,
+        'whatsapp': _whatsappCtrl.text,
+        'account_type_ar': _accountTypeAr,
+        'accepts_urgent': _acceptsUrgent,
+        'step': _currentStep,
+      };
+      await prefs.setString(_draftPrefsKey, jsonEncode(draft));
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftPrefsKey);
+      if (raw == null || raw.trim().isEmpty) return;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+
+      if (_displayNameCtrl.text.trim().isEmpty) {
+        _displayNameCtrl.text = (decoded['display_name'] ?? '').toString();
+      }
+      if (_bioCtrl.text.trim().isEmpty) {
+        _bioCtrl.text = (decoded['bio'] ?? '').toString();
+      }
+      if (_cityCtrl.text.trim().isEmpty) {
+        _cityCtrl.text = (decoded['city'] ?? '').toString();
+      }
+      if (_phoneCtrl.text.trim().isEmpty) {
+        _phoneCtrl.text = (decoded['phone'] ?? '').toString();
+      }
+      if (_whatsappCtrl.text.trim().isEmpty) {
+        _whatsappCtrl.text = (decoded['whatsapp'] ?? '').toString();
+      }
+      final at = (decoded['account_type_ar'] ?? '').toString().trim();
+      if (at.isNotEmpty) {
+        _accountTypeAr = at;
+      }
+      final au = decoded['accepts_urgent'];
+      if (au is bool) {
+        _acceptsUrgent = au;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        // Keep user on the same step only if it's within range
+        final s = decoded['step'];
+        final step = s is int ? s : int.tryParse((s ?? '').toString());
+        if (step != null && step >= 0 && step < stepTitles.length) {
+          _currentStep = step;
+        }
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _prefillFromAccount() async {
+    try {
+      final me = await AccountApi().me();
+      final phone = (me['phone'] ?? '').toString().trim();
+      final first = (me['first_name'] ?? '').toString().trim();
+      final last = (me['last_name'] ?? '').toString().trim();
+      final fullName = ('$first $last').trim();
+
+      if (_phoneCtrl.text.trim().isEmpty && phone.isNotEmpty) {
+        _phoneCtrl.text = phone;
+      }
+      if (_displayNameCtrl.text.trim().isEmpty && fullName.isNotEmpty) {
+        _displayNameCtrl.text = fullName;
+      }
+      await _saveDraft();
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  void _onNextFromStep0() {
+    final displayName = _displayNameCtrl.text.trim();
+    final bio = _bioCtrl.text.trim();
+    if (displayName.isEmpty || bio.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'أكمل بيانات هذه الصفحة قبل المتابعة (الاسم الكامل + النبذة).',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    _saveDraft();
+    _goToNextStep();
+  }
+
+  void _onNextFromStep1() {
+    _saveDraft();
+    _goToNextStep();
   }
 
   void _goToPreviousStep() {
@@ -132,15 +251,19 @@ class _RegisterServiceProviderPageState
     final displayName = _displayNameCtrl.text.trim();
     final bio = _bioCtrl.text.trim();
     final city = _cityCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
 
-    if (displayName.isEmpty || bio.isEmpty || city.isEmpty) {
+    // Required across the 3-step flow.
+    if (displayName.isEmpty || bio.isEmpty || city.isEmpty || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('أكمل البيانات المطلوبة: الاسم، النبذة، المدينة.'),
+          content: Text('أكمل البيانات المطلوبة: الاسم، النبذة، المدينة، رقم الهاتف.'),
         ),
       );
       return;
     }
+
+    await _saveDraft();
 
     setState(() {
       _submitting = true;
@@ -158,6 +281,7 @@ class _RegisterServiceProviderPageState
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isProviderRegistered', true);
       await prefs.setBool('isProvider', true);
+      await prefs.remove(_draftPrefsKey);
 
       if (!mounted) return;
       setState(() {
@@ -174,6 +298,14 @@ class _RegisterServiceProviderPageState
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+      // If backend still blocks by role, guide user to complete registration.
+      if ((e.response?.statusCode ?? 0) == 403) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SignUpScreen()),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -371,7 +503,7 @@ class _RegisterServiceProviderPageState
   Widget _buildStepContent() {
     final steps = [
       PersonalInfoStep(
-        onNext: _goToNextStep,
+        onNext: _onNextFromStep0,
         onValidationChanged: (percent) => _updateStepCompletion(0, percent),
         displayNameController: _displayNameCtrl,
         bioController: _bioCtrl,
@@ -379,7 +511,7 @@ class _RegisterServiceProviderPageState
         onAccountTypeChanged: (v) => _accountTypeAr = v,
       ),
       ServiceClassificationStep(
-        onNext: _goToNextStep,
+        onNext: _onNextFromStep1,
         onBack: _goToPreviousStep,
         onValidationChanged: (percent) => _updateStepCompletion(1, percent),
         onUrgentChanged: (v) => _acceptsUrgent = v,
@@ -396,21 +528,10 @@ class _RegisterServiceProviderPageState
       ),
     ];
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      switchInCurve: Curves.easeIn,
-      switchOutCurve: Curves.easeOut,
-      transitionBuilder: (child, animation) {
-        final offsetAnimation = Tween<Offset>(
-          begin: const Offset(0.05, 0),
-          end: Offset.zero,
-        ).animate(animation);
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(position: offsetAnimation, child: child),
-        );
-      },
-      child: steps[_currentStep],
+    // Keep step widgets mounted to avoid losing user input when navigating back.
+    return IndexedStack(
+      index: _currentStep,
+      children: steps,
     );
   }
 

@@ -40,6 +40,7 @@ class ProviderProfileMeSerializer(serializers.ModelSerializer):
             "display_name",
             "bio",
             "years_experience",
+            "whatsapp",
             "city",
             "lat",
             "lng",

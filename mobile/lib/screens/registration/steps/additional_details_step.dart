@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdditionalDetailsStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -15,6 +18,8 @@ class AdditionalDetailsStep extends StatefulWidget {
 }
 
 class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
+  static const String _draftKey = 'provider_additional_details_draft_v1';
+
   // نبذة عامة عن المزود وخدماته
   final TextEditingController aboutController = TextEditingController();
 
@@ -25,8 +30,88 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
 
   final TextEditingController _dialogController = TextEditingController();
 
+  Timer? _draftTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraft();
+    aboutController.addListener(() {
+      _scheduleDraftSave();
+      _updateSectionDone();
+    });
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final data = jsonDecode(raw);
+      if (data is! Map) return;
+
+      String asString(dynamic v) => (v ?? '').toString();
+      List<String> asStringList(dynamic v) {
+        if (v is! List) return <String>[];
+        return v.map((e) => (e ?? '').toString()).where((s) => s.trim().isNotEmpty).toList();
+      }
+
+      if (aboutController.text.trim().isEmpty) {
+        aboutController.text = asString(data['about']);
+      }
+
+      final qs = asStringList(data['qualifications']);
+      final ex = asStringList(data['experiences']);
+      if (mounted) {
+        setState(() {
+          if (qualifications.isEmpty && qs.isNotEmpty) {
+            qualifications.addAll(qs);
+          }
+          if (experiences.isEmpty && ex.isNotEmpty) {
+            experiences.addAll(ex);
+          }
+        });
+      }
+
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final data = <String, dynamic>{
+          'about': aboutController.text.trim(),
+          'qualifications': qualifications,
+          'experiences': experiences,
+        };
+        await prefs.setString(_draftKey, jsonEncode(data));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _updateSectionDone() {
+    final done = aboutController.text.trim().isNotEmpty || qualifications.isNotEmpty || experiences.isNotEmpty;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('provider_section_done_additional', done);
+    }).catchError((_) {});
+  }
+
+  void _clearDraft() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_draftKey);
+    }).catchError((_) {});
+  }
+
   @override
   void dispose() {
+    _draftTimer?.cancel();
     aboutController.dispose();
     _dialogController.dispose();
     super.dispose();
@@ -98,6 +183,8 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
       hint: "مثال: شهادة مهنية، دورة معتمدة، أو درجة علمية",
       onConfirm: (value) {
         setState(() => qualifications.add(value));
+        _scheduleDraftSave();
+        _updateSectionDone();
       },
     );
   }
@@ -108,20 +195,28 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
       hint: "مثال: تنفيذ نظام متكامل لقطاع معين، أو مشاريع معينة",
       onConfirm: (value) {
         setState(() => experiences.add(value));
+        _scheduleDraftSave();
+        _updateSectionDone();
       },
     );
   }
 
   void _removeQualification(int index) {
     setState(() => qualifications.removeAt(index));
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   void _removeExperience(int index) {
     setState(() => experiences.removeAt(index));
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   void _handleNext() {
     // كلها اختيارية، لكن لو حاب تضيف تحقق بسيط ممكن هنا
+    _updateSectionDone();
+    _clearDraft();
     widget.onNext();
   }
 

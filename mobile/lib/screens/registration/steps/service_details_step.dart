@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ServiceDetailsStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -15,22 +18,113 @@ class ServiceDetailsStep extends StatefulWidget {
 }
 
 class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
+  static const String _draftKey = 'provider_service_details_draft_v1';
+
   final List<_ServiceItem> _services = [];
+
+  Timer? _draftTimer;
 
   @override
   void initState() {
     super.initState();
-    // ✅ بدون بيانات وهمية: نبدأ بسجل فارغ قابل للتعديل
-    _services.add(
-      _ServiceItem(
-        isUrgent: false,
-        isEditing: true,
-      ),
-    );
+    _loadDraft();
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+
+      List<dynamic> list = const [];
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) list = decoded;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _services.clear();
+        for (final item in list) {
+          if (item is! Map) continue;
+          final name = (item['name'] ?? '').toString();
+          final desc = (item['description'] ?? '').toString();
+          final urgent = item['is_urgent'] == true;
+          final s = _ServiceItem(
+            initialName: name,
+            initialDescription: desc,
+            isUrgent: urgent,
+            isEditing: name.trim().isEmpty,
+          );
+          _attachListeners(s);
+          _services.add(s);
+        }
+
+        if (_services.isEmpty) {
+          // ✅ بدون بيانات وهمية: نبدأ بسجل فارغ قابل للتعديل
+          final s = _ServiceItem(isUrgent: false, isEditing: true);
+          _attachListeners(s);
+          _services.add(s);
+        }
+      });
+
+      _updateSectionDone();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        final s = _ServiceItem(isUrgent: false, isEditing: true);
+        _attachListeners(s);
+        _services.add(s);
+      });
+    }
+  }
+
+  void _attachListeners(_ServiceItem item) {
+    void onChange() {
+      _scheduleDraftSave();
+      _updateSectionDone();
+    }
+
+    item.name.addListener(onChange);
+    item.description.addListener(onChange);
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = _services
+            .map(
+              (s) => {
+                'name': s.name.text.trim(),
+                'description': s.description.text.trim(),
+                'is_urgent': s.isUrgent,
+              },
+            )
+            .toList(growable: false);
+        await prefs.setString(_draftKey, jsonEncode(list));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _updateSectionDone() {
+    final done = _services.any((s) => s.name.text.trim().isNotEmpty);
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('provider_section_done_service_details', done);
+    }).catchError((_) {});
+  }
+
+  void _clearDraft() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_draftKey);
+    }).catchError((_) {});
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     for (final s in _services) {
       s.dispose();
     }
@@ -39,19 +133,22 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
 
   void _addService() {
     setState(() {
-      _services.add(
-        _ServiceItem(
-          isUrgent: false,
-          isEditing: true, // الخدمة الجديدة تُفتح في وضع تعديل مباشرة
-        ),
+      final s = _ServiceItem(
+        isUrgent: false,
+        isEditing: true, // الخدمة الجديدة تُفتح في وضع تعديل مباشرة
       );
+      _attachListeners(s);
+      _services.add(s);
     });
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   void _toggleEdit(int index, bool editing) {
     setState(() {
       _services[index].isEditing = editing;
     });
+    _scheduleDraftSave();
   }
 
   void _removeService(int index) {
@@ -64,6 +161,8 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
       item.dispose();
       _services.removeAt(index);
     });
+    _scheduleDraftSave();
+    _updateSectionDone();
     _showSnack("تم حذف الخدمة بنجاح.");
   }
 
@@ -79,6 +178,9 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
     setState(() {
       item.isEditing = false;
     });
+
+    _scheduleDraftSave();
+    _updateSectionDone();
 
     _showSnack("تم حفظ بيانات الخدمة ${index + 1}.");
   }
@@ -102,6 +204,9 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
     //     })
     //     .toList();
 
+    _scheduleDraftSave();
+    _updateSectionDone();
+    _clearDraft();
     widget.onNext();
   }
 

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:latlong2/latlong.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'map_radius_picker_screen.dart';
 
@@ -20,6 +23,8 @@ class LanguageLocationStep extends StatefulWidget {
 }
 
 class _LanguageLocationStepState extends State<LanguageLocationStep> {
+  static const String _draftKey = 'provider_lang_loc_draft_v1';
+
   final List<String> predefinedLanguages = ['عربي', 'English', 'أخرى'];
   final List<String> selectedLanguages = [];
   final List<String> customLanguages = [];
@@ -38,6 +43,132 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   };
 
   static const List<int> _distanceOptionsKm = [2, 5, 10, 20, 50];
+
+  Timer? _draftTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraft();
+    customLanguageController.addListener(_scheduleDraftSave);
+    locationController.addListener(_scheduleDraftSave);
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final data = jsonDecode(raw);
+      if (data is! Map) return;
+
+      List<String> asStringList(dynamic v) {
+        if (v is! List) return <String>[];
+        return v.map((e) => (e ?? '').toString()).where((s) => s.trim().isNotEmpty).toList();
+      }
+
+      int? asInt(dynamic v) {
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        return int.tryParse((v ?? '').toString());
+      }
+
+      double? asDouble(dynamic v) {
+        if (v is double) return v;
+        if (v is num) return v.toDouble();
+        return double.tryParse((v ?? '').toString());
+      }
+
+      final langs = asStringList(data['selected_languages']);
+      final custom = asStringList(data['custom_languages']);
+      final ranges = data['service_range'];
+      final distance = asInt(data['distance_km']);
+      final lat = asDouble(data['lat']);
+      final lng = asDouble(data['lng']);
+      final locationText = (data['location_text'] ?? '').toString();
+
+      if (!mounted) return;
+      setState(() {
+        if (langs.isNotEmpty) {
+          selectedLanguages
+            ..clear()
+            ..addAll(langs);
+        }
+        if (custom.isNotEmpty) {
+          customLanguages
+            ..clear()
+            ..addAll(custom);
+        }
+        if (ranges is Map) {
+          for (final k in serviceRange.keys) {
+            serviceRange[k] = ranges[k] == true;
+          }
+        }
+        _selectedDistanceKm = distance;
+        if (lat != null && lng != null) {
+          _selectedCenter = LatLng(lat, lng);
+        }
+        if (locationController.text.trim().isEmpty && locationText.trim().isNotEmpty) {
+          locationController.text = locationText;
+        }
+      });
+
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final data = <String, dynamic>{
+          'selected_languages': selectedLanguages,
+          'custom_languages': customLanguages,
+          'service_range': serviceRange,
+          'distance_km': _selectedDistanceKm,
+          'lat': _selectedCenter?.latitude,
+          'lng': _selectedCenter?.longitude,
+          'location_text': locationController.text.trim(),
+        };
+        await prefs.setString(_draftKey, jsonEncode(data));
+      } catch (_) {
+        // ignore
+      }
+    });
+  }
+
+  void _updateSectionDone() {
+    final hasAnyRange = serviceRange.values.any((v) => v);
+    final done = selectedLanguages.isNotEmpty || customLanguages.isNotEmpty || hasAnyRange || _selectedCenter != null;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('provider_section_done_lang_loc', done);
+    }).catchError((_) {});
+  }
+
+  void _handleNext() {
+    _updateSectionDone();
+    final prefsDone = serviceRange.values.any((v) => v) ||
+        selectedLanguages.isNotEmpty ||
+        customLanguages.isNotEmpty ||
+        _selectedCenter != null;
+
+    if (!prefsDone) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'اختر لغة واحدة على الأقل أو حدّد نطاق/موقع قبل المتابعة.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    _scheduleDraftSave();
+    widget.onNext();
+  }
 
   void _ensureDefaultDistance() {
     if (_selectedDistanceKm == null) {
@@ -67,10 +198,14 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       locationController.text =
           '(${picked.latitude.toStringAsFixed(5)}, ${picked.longitude.toStringAsFixed(5)}) • ${_selectedDistanceKm} كم';
     });
+
+    _scheduleDraftSave();
+    _updateSectionDone();
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     customLanguageController.dispose();
     locationController.dispose();
     super.dispose();
@@ -192,6 +327,9 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                                 ? selectedLanguages.add(lang)
                                 : selectedLanguages.remove(lang);
                           });
+
+                          _scheduleDraftSave();
+                          _updateSectionDone();
                         },
                         selectedColor: Colors.deepPurple,
                         backgroundColor: Colors.grey.shade200,
@@ -218,6 +356,8 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                             ),
                             onDeleted: () {
                               setState(() => customLanguages.remove(lang));
+                              _scheduleDraftSave();
+                              _updateSectionDone();
                             },
                           );
                         }).toList(),
@@ -251,6 +391,9 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                           _ensureDefaultDistance();
                         }
                       });
+
+                      _scheduleDraftSave();
+                      _updateSectionDone();
                     },
                     selectedColor: Colors.deepPurple,
                     backgroundColor: Colors.grey.shade200,
@@ -290,6 +433,9 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                                     '(${_selectedCenter!.latitude.toStringAsFixed(5)}, ${_selectedCenter!.longitude.toStringAsFixed(5)}) • $_selectedDistanceKm كم';
                               }
                             });
+
+                            _scheduleDraftSave();
+                            _updateSectionDone();
                           },
                           selectedColor: Colors.deepPurple,
                           backgroundColor: Colors.grey.shade200,
@@ -384,6 +530,9 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                   customLanguages.add(lang);
                   customLanguageController.clear();
                 });
+
+                _scheduleDraftSave();
+                _updateSectionDone();
               }
             },
             style: ElevatedButton.styleFrom(
@@ -462,7 +611,11 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       children: [
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: widget.onBack,
+            onPressed: () {
+              _scheduleDraftSave();
+              _updateSectionDone();
+              widget.onBack();
+            },
             icon: const Icon(Icons.arrow_back),
             label: const Text("السابق", style: TextStyle(fontFamily: "Cairo")),
             style: OutlinedButton.styleFrom(
@@ -478,7 +631,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: widget.onNext,
+            onPressed: _handleNext,
             icon: const Icon(Icons.arrow_forward),
             label: const Text("التالي", style: TextStyle(fontFamily: "Cairo")),
             style: ElevatedButton.styleFrom(

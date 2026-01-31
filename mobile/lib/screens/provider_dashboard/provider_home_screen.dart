@@ -51,57 +51,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
   int? _followersCount;
   int? _likesReceivedCount;
-  
-  // ✅ متغيرات لتتبع إكمال الأقسام الإضافية
-  bool _hasServiceDetails = false; // تفاصيل الخدمة
-  bool _hasAdditionalInfo = false; // معلومات إضافية عنك وخدماتك
-  bool _hasFullContactInfo = false; // معلومات التواصل الكاملة
-  bool _hasLanguageAndScope = false; // اللغة ونطاق الخدمة
-  bool _hasPortfolio = false; // محتوى أعمالك
-  bool _hasSEOKeywords = false; // SEO والكلمات المفتاحية
-  
-  // ✅ حساب نسبة إكمال الملف التعريفي بناءً على المعايير الموضحة
-  double get _profileCompletion {
-    double completion = 0.0;
-    
-    // 1️⃣ بيانات التسجيل الأساسية (30%)
-    // تشمل: المعلومات الأساسية + تصنيف الاختصاص + التواصل الأساسية
-    // تمت تعبئتها أثناء التسجيل
-    completion += 0.30;
-    
-    // 2️⃣ تفاصيل الخدمة (10%)
-    // اسم الصفحة، وصف مختصر
-    if (_hasServiceDetails) completion += 0.10;
-    
-    // 3️⃣ معلومات إضافية عنك وخدماتك (10%)
-    // تفاصيل موسعة عن خدماتك وخبراتك وجداولك
-    if (_hasAdditionalInfo) completion += 0.10;
-    
-    // 4️⃣ معلومات التواصل الكاملة (10%)
-    // أوقات التواصل الإضافية، مواقع إلكترونية، رسائل موقعك
-    if (_hasFullContactInfo) completion += 0.10;
-    
-    // 5️⃣ اللغة ونطاق الخدمة (10%)
-    // اللغات التي تجيدها ونطاق تقديم خدماتك
-    if (_hasLanguageAndScope) completion += 0.10;
-    
-    // 6️⃣ محتوى أعمالك (Portfolio) (15%)
-    // صور أو إعادة من أعمالك السابقة
-    if (_hasPortfolio) {
-      completion += 0.15;
-    } else {
-      // إضافة نسب جزئية بناءً على الصور المرفوعة
-      if (_profileImage != null) completion += 0.05;
-      if (_coverImage != null) completion += 0.05;
-      if (_reelVideo != null) completion += 0.05;
-    }
-    
-    // 7️⃣ SEO والكلمات المفتاحية (15%)
-    // محركات البحث بنوعية خدماتك
-    if (_hasSEOKeywords) completion += 0.15;
-    
-    return completion.clamp(0.0, 1.0);
-  }
+
+  // ✅ نسبة اكتمال الملف (متوافقة مع شاشة إكمال الملف التعريفي)
+  double _profileCompletion = 0.0;
 
   @override
   void initState() {
@@ -116,6 +68,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
   Future<void> _loadProviderHeaderData() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
       final me = await AccountApi().me();
       final id = me['provider_profile_id'];
       final int? providerId = id is int ? id : int.tryParse((id ?? '').toString());
@@ -133,6 +86,54 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       final providerDisplayName = (myProfile?['display_name'] ?? '').toString().trim();
       final providerCity = (myProfile?['city'] ?? '').toString().trim();
 
+      // Compute completion percent using the exact same logic used in ProviderProfileCompletionScreen.
+      double baseCompletion() {
+        bool hasName() {
+          final first = (me['first_name'] ?? '').toString().trim();
+          final last = (me['last_name'] ?? '').toString().trim();
+          final user = (me['username'] ?? '').toString().trim();
+          return first.isNotEmpty || last.isNotEmpty || user.isNotEmpty;
+        }
+
+        bool hasPhone() => (me['phone'] ?? '').toString().trim().isNotEmpty;
+        bool hasEmail() => (me['email'] ?? '').toString().trim().isNotEmpty;
+
+        const baseMax = 0.30;
+        final parts = <bool>[hasName(), hasPhone(), hasEmail()];
+        final done = parts.where((v) => v).length;
+        final ratio = done / parts.length;
+        return (baseMax * ratio).clamp(0.0, baseMax);
+      }
+
+      const optionalTotal = 70;
+      const sectionKeys = <String>[
+        'service_details',
+        'additional',
+        'contact_full',
+        'lang_loc',
+        'content',
+        'seo',
+      ];
+
+      Map<String, int> buildWeights() {
+        final base = optionalTotal ~/ sectionKeys.length; // 11
+        var remainder = optionalTotal - (base * sectionKeys.length); // 4
+        final weights = <String, int>{};
+        for (final k in sectionKeys) {
+          final extra = remainder > 0 ? 1 : 0;
+          if (remainder > 0) remainder -= 1;
+          weights[k] = base + extra;
+        }
+        return weights;
+      }
+
+      final weights = buildWeights();
+      final completedOptional = sectionKeys.where((id) {
+        return prefs.getBool('provider_section_done_$id') == true;
+      }).fold<int>(0, (sum, id) => sum + (weights[id] ?? 0));
+
+      final completionPercent = (baseCompletion() + (completedOptional / 100.0)).clamp(0.0, 1.0);
+
       String? link;
       if (providerId != null) {
         // Public link (API endpoint is guaranteed to exist today).
@@ -145,6 +146,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         _likesReceivedCount = likesReceivedCount;
         _providerDisplayName = providerDisplayName.isEmpty ? null : providerDisplayName;
         _providerCity = providerCity.isEmpty ? null : providerCity;
+        _profileCompletion = completionPercent;
       });
     } catch (_) {
       // Best-effort.
@@ -432,13 +434,14 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   Widget _profileCompletionCard() {
     final percent = (_profileCompletion * 100).round();
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => const ProviderProfileCompletionScreen(),
           ),
         );
+        await _loadProviderHeaderData();
       },
       child: Container(
         padding: const EdgeInsets.all(14),

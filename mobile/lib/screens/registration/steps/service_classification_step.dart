@@ -93,6 +93,29 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
     widget.onValidationChanged?.call(completionPercent);
   }
 
+  bool get _canProceed {
+    // Required for step completion:
+    // - Main category
+    // - At least one sub category
+    return selectedMainCategory != null && selectedSubCategories.isNotEmpty;
+  }
+
+  void _onNextPressed() {
+    if (_canProceed) {
+      widget.onNext();
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'أكمل بيانات هذه الصفحة قبل المتابعة (اختر التصنيف الرئيسي وتخصص واحد على الأقل).',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     mainSuggestionController.dispose();
@@ -944,7 +967,7 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: widget.onNext,
+                  onPressed: _onNextPressed,
                   icon: const Icon(Icons.arrow_forward_ios),
                   label: const Text("التالي"),
                   style: ElevatedButton.styleFrom(

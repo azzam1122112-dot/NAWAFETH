@@ -80,6 +80,20 @@ class _ProviderProfileCompletionScreenState
 
   int _sectionPercent(String id) => _sectionWeights[id] ?? 0;
 
+  Future<void> _reloadSectionFlags() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        for (final id in _sections.keys) {
+          _sections[id] = prefs.getBool('provider_section_done_$id') ?? false;
+        }
+      });
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
   // فتح شاشة القسم ثم تحديده كمكتمل إذا رجع بقيمة true
   Future<void> _openSection(String id) async {
     bool? result;
@@ -197,10 +211,6 @@ class _ProviderProfileCompletionScreenState
 
     // ✅ لا نضع علامة صح إلا إذا رجعت الشاشة بـ true
     if (result == true && id != "basic") {
-      setState(() {
-        _sections[id] = true;
-      });
-
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('provider_section_done_$id', true);
@@ -208,6 +218,9 @@ class _ProviderProfileCompletionScreenState
         // ignore
       }
     }
+
+    // ✅ حدث الحالة دائماً بعد العودة (لأن الخطوات قد تحفظ تلقائياً وتحدث مفاتيح الإكمال)
+    await _reloadSectionFlags();
   }
 
   @override
