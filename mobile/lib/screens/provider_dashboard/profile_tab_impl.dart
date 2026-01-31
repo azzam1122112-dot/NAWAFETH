@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../services/providers_api.dart';
 import 'google_map_location_picker_screen.dart';
@@ -17,8 +17,6 @@ class ProfileTab extends StatefulWidget {
 
 class _ProfileTabState extends State<ProfileTab> {
   final Color mainColor = Colors.deepPurple;
-
-  static const double _cityLockKm = 35;
 
   static const Map<String, LatLng> _knownSaudiCityCenters = {
     'المدينة المنورة': LatLng(24.5246542, 39.5691841),
@@ -49,7 +47,6 @@ class _ProfileTabState extends State<ProfileTab> {
   double? _lng;
 
   LatLng? _cityCenter;
-  LatLngBounds? _cityBounds;
   bool _resolvingCity = false;
   Timer? _cityDebounce;
 
@@ -75,17 +72,6 @@ class _ProfileTabState extends State<ProfileTab> {
     _cityDebounce = Timer(const Duration(milliseconds: 550), () {
       _resolveCityCenter();
     });
-  }
-
-  LatLngBounds _boundsAroundKm(LatLng center, double km) {
-    final dLat = km / 111.0;
-    final latRad = center.latitude * (math.pi / 180.0);
-    final cosLat = math.cos(latRad).abs().clamp(0.2, 1.0);
-    final dLng = km / (111.0 * cosLat);
-    return LatLngBounds(
-      southwest: LatLng(center.latitude - dLat, center.longitude - dLng),
-      northeast: LatLng(center.latitude + dLat, center.longitude + dLng),
-    );
   }
 
   LatLng? _lookupCityCenter(String rawCity) {
@@ -133,7 +119,6 @@ class _ProfileTabState extends State<ProfileTab> {
       final c = LatLng(_lat!, _lng!);
       setState(() {
         _cityCenter = c;
-        _cityBounds = _boundsAroundKm(c, _cityLockKm);
       });
       return;
     }
@@ -145,7 +130,6 @@ class _ProfileTabState extends State<ProfileTab> {
       if (!mounted) return;
       setState(() {
         _cityCenter = c;
-        _cityBounds = _boundsAroundKm(c, _cityLockKm);
       });
     } catch (_) {
       // Best-effort.
@@ -186,7 +170,6 @@ class _ProfileTabState extends State<ProfileTab> {
       if (_lat != null && _lng != null) {
         final c = LatLng(_lat!, _lng!);
         _cityCenter = c;
-        _cityBounds = _boundsAroundKm(c, _cityLockKm);
       }
     });
 
@@ -267,7 +250,6 @@ class _ProfileTabState extends State<ProfileTab> {
       if (_lat != null && _lng != null) {
         final c = LatLng(_lat!, _lng!);
         _cityCenter = c;
-        _cityBounds = _boundsAroundKm(c, _cityLockKm);
       }
     });
   }
@@ -330,7 +312,6 @@ class _ProfileTabState extends State<ProfileTab> {
     final center = (_lat != null && _lng != null)
         ? LatLng(_lat!, _lng!)
         : (_cityCenter ?? const LatLng(24.7136, 46.6753));
-    final bounds = _cityBounds;
 
     return _sectionCard(
       title: 'الموقع الجغرافي',
@@ -346,27 +327,38 @@ class _ProfileTabState extends State<ProfileTab> {
               height: 190,
               child: Stack(
                 children: [
-                  GoogleMap(
-                    initialCameraPosition:
-                        CameraPosition(target: center, zoom: 12.8),
-                    myLocationButtonEnabled: false,
-                    zoomControlsEnabled: false,
-                    compassEnabled: false,
-                    mapToolbarEnabled: false,
-                    buildingsEnabled: true,
-                    markers: {
-                      Marker(
-                        markerId: const MarkerId('center'),
-                        position: center,
-                        icon: BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueViolet,
-                        ),
+                  FlutterMap(
+                    options: MapOptions(
+                      initialCenter: center,
+                      initialZoom: 12.8,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.pinchZoom |
+                            InteractiveFlag.drag |
+                            InteractiveFlag.doubleTapZoom |
+                            InteractiveFlag.flingAnimation,
                       ),
-                    },
-                    cameraTargetBounds: bounds != null
-                        ? CameraTargetBounds(bounds)
-                        : CameraTargetBounds.unbounded,
-                    onTap: (_) {},
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.nawafeth.app',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: center,
+                            width: 44,
+                            height: 44,
+                            child: Icon(
+                              Icons.location_pin,
+                              size: 44,
+                              color: mainColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   if (_resolvingCity)
                     Positioned(

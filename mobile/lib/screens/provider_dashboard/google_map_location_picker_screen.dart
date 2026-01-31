@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 class GoogleMapLocationPickerScreen extends StatefulWidget {
   final String? city;
@@ -25,39 +26,38 @@ class _GoogleMapLocationPickerScreenState
   static const Color _mainColor = Colors.deepPurple;
   static const LatLng _defaultCenter = LatLng(24.7136, 46.6753); // Riyadh
 
-  GoogleMapController? _controller;
+  final MapController _mapController = MapController();
   LatLng _selected = _defaultCenter;
+  double _zoom = 15.5;
 
   bool _loadingGps = false;
   bool _resolvingCity = false;
+
+  Timer? _throttle;
 
   @override
   void initState() {
     super.initState();
     _selected = widget.initialCenter ?? _defaultCenter;
 
-    // Try to auto-detect the current location only when no saved point exists.
+    // Auto-detect GPS only when no saved point exists.
     if (widget.initialCenter == null) {
       unawaited(_moveToCurrentLocationBestEffort());
     } else {
-      // Still try to resolve city bounds for a nicer initial zoom if needed.
       unawaited(_resolveCityBestEffort());
     }
   }
 
   @override
   void dispose() {
+    _throttle?.cancel();
     super.dispose();
   }
 
-  Future<void> _animateTo(LatLng target, {double zoom = 15.5}) async {
-    final c = _controller;
-    if (c == null) return;
-    await c.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: zoom),
-      ),
-    );
+  void _moveTo(LatLng target, {double? zoom}) {
+    final z = zoom ?? _zoom;
+    _zoom = z;
+    _mapController.move(target, z);
   }
 
   Future<LatLng?> _tryGeocodeCity(String city) async {
@@ -81,29 +81,67 @@ class _GoogleMapLocationPickerScreenState
         final first = results.first;
         return LatLng(first.latitude, first.longitude);
       } catch (_) {
-        // Continue.
+        // Best-effort.
       }
     }
 
     return null;
   }
 
+  Future<LatLng?> _getCurrentLatLng() async {
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) return null;
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    final position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+      timeLimit: const Duration(seconds: 10),
+    );
+
+    return LatLng(position.latitude, position.longitude);
+  }
+
+  Future<void> _moveToCurrentLocationBestEffort() async {
+    if (_loadingGps) return;
+    setState(() => _loadingGps = true);
+
+    try {
+      final p = await _getCurrentLatLng();
+      if (!mounted) return;
+      if (p != null) {
+        setState(() => _selected = p);
+        _moveTo(p, zoom: 16.0);
+        return;
+      }
+      await _resolveCityBestEffort();
+    } catch (_) {
+      await _resolveCityBestEffort();
+    } finally {
+      if (mounted) setState(() => _loadingGps = false);
+    }
+  }
+
   Future<void> _resolveCityBestEffort() async {
-    final city = (widget.city ?? '').trim();
-    if (city.isEmpty) return;
+    final city = widget.city?.trim();
+    if (city == null || city.isEmpty) return;
+    if (_resolvingCity) return;
 
     setState(() => _resolvingCity = true);
     try {
-      final c = await _tryGeocodeCity(city);
-      if (c == null) return;
+      final center = await _tryGeocodeCity(city);
       if (!mounted) return;
-
-      // Only use city as a fallback when we have no selected point yet.
-      if (widget.initialCenter == null) {
-        setState(() => _selected = c);
+      if (center != null) {
+        setState(() => _selected = center);
+        _moveTo(center, zoom: 12.8);
       }
-
-      await _animateTo(widget.initialCenter ?? c, zoom: 12.8);
     } catch (_) {
       // Best-effort.
     } finally {
@@ -111,112 +149,21 @@ class _GoogleMapLocationPickerScreenState
     }
   }
 
-  Future<LatLng?> _getCurrentLatLng() async {
-    // Permissions
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return null;
-    }
-
-    if (permission == LocationPermission.deniedForever) return null;
-
-    final position = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
-    );
-
-    return LatLng(position.latitude, position.longitude);
-  }
-
-  Future<void> _moveToCurrentLocationBestEffort({bool showFeedback = false}) async {
-    if (_loadingGps) return;
-    setState(() => _loadingGps = true);
-
-    try {
-      final p = await _getCurrentLatLng();
-      if (p == null) {
-        if (!mounted) return;
-        if (showFeedback) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تعذر الوصول للموقع. تأكد من تفعيل الصلاحية.'),
-            ),
-          );
-        }
-        await _resolveCityBestEffort();
-        return;
-      }
-
-      if (!mounted) return;
-      setState(() => _selected = p);
-      await _animateTo(p, zoom: 16.0);
-    } catch (_) {
-      if (!mounted) return;
-      if (showFeedback) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر تحديد موقعك الحالي.')),
-        );
-      }
-      await _resolveCityBestEffort();
-    } finally {
-      if (mounted) setState(() => _loadingGps = false);
-    }
-  }
-
-  void _setSelected(LatLng p) {
-    setState(() => _selected = p);
-  }
-
-  Set<Marker> get _markers {
-    return {
-      Marker(
-        markerId: const MarkerId('picked'),
-        position: _selected,
-        draggable: true,
-        onDragEnd: _setSelected,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-      ),
-    };
-  }
-
-  void _confirm() {
-    Navigator.pop<Map<String, dynamic>>(context, {
-      'lat': _selected.latitude,
-      'lng': _selected.longitude,
-    });
-  }
-
-  Widget _hintCard() {
+  Widget _pill({required Widget child}) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withAlpha(235),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          )
         ],
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.my_location, color: _mainColor, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'سيتم تحديد موقعك تلقائياً إن أمكن. يمكنك الضغط على الخريطة أو سحب الدبوس لتعديل الموقع ثم حفظه.',
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12.5,
-                color: Colors.black87,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: child,
     );
   }
 
@@ -233,126 +180,156 @@ class _GoogleMapLocationPickerScreenState
             'الموقع الجغرافي',
             style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
           ),
-          actions: [
-            TextButton(
-              onPressed: _confirm,
-              child: const Text(
-                'حفظ',
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
         ),
-        body: Column(
-          children: [
-            _hintCard(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loadingGps
-                          ? null
-                          : () => _moveToCurrentLocationBestEffort(
-                                showFeedback: true,
-                              ),
-                      icon: _loadingGps
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.gps_fixed),
-                      label: const Text(
-                        'موقعي الحالي',
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        foregroundColor: _mainColor,
-                        side: BorderSide(color: _mainColor.withAlpha(90)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Stack(
+                      children: [
+                        FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: _selected,
+                            initialZoom: _zoom,
+                            onPositionChanged: (pos, _) {
+                              final center = pos.center;
+                              final zoom = pos.zoom;
+
+                              _throttle?.cancel();
+                              _throttle = Timer(
+                                const Duration(milliseconds: 80),
+                                () {
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _selected = center;
+                                    _zoom = zoom;
+                                  });
+                                },
+                              );
+                            },
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.nawafeth.app',
+                            ),
+                          ],
                         ),
-                        backgroundColor: Colors.white,
-                      ),
+
+                        // Center pin (works without draggable marker plugins).
+                        const IgnorePointer(
+                          child: Center(
+                            child: Icon(
+                              Icons.location_pin,
+                              size: 44,
+                              color: _mainColor,
+                            ),
+                          ),
+                        ),
+
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          left: 12,
+                          child: _pill(
+                            child: Text(
+                              'اسحب الخريطة لتحريك الدبوس ثم احفظ',
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                color: Colors.black87,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        if (_resolvingCity)
+                          Positioned(
+                            top: 58,
+                            right: 12,
+                            child: _pill(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'جارٍ تحديد المدينة…',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          bottom: 14,
+                          right: 14,
+                          child: FloatingActionButton.extended(
+                            heroTag: 'gps',
+                            onPressed:
+                                _loadingGps ? null : _moveToCurrentLocationBestEffort,
+                            backgroundColor: Colors.white,
+                            foregroundColor: _mainColor,
+                            icon: _loadingGps
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.my_location),
+                            label: const Text(
+                              'موقعي الحالي',
+                              style: TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  if (_resolvingCity)
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: GoogleMap(
-                    initialCameraPosition: CameraPosition(
-                      target: _selected,
-                      zoom: 15.0,
-                    ),
-                    myLocationEnabled: false,
-                    myLocationButtonEnabled: false,
-                    zoomControlsEnabled: false,
-                    markers: _markers,
-                    onMapCreated: (c) {
-                      _controller = c;
-                      // Sync initial view.
-                      unawaited(_animateTo(_selected, zoom: 15.0));
-                    },
-                    onTap: _setSelected,
                   ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.grey.shade400),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        backgroundColor: Colors.white,
-                      ),
-                      child: const Text(
-                        'إلغاء',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                        ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.white,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'الإحداثيات: ${_selected.latitude.toStringAsFixed(6)}, ${_selected.longitude.toStringAsFixed(6)}',
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: Colors.black54,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _confirm,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: _mainColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: const Text(
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop<Map<String, dynamic>>(context, {
+                          'lat': _selected.latitude,
+                          'lng': _selected.longitude,
+                        });
+                      },
+                      icon: const Icon(Icons.check, color: Colors.white),
+                      label: const Text(
                         'حفظ الموقع',
                         style: TextStyle(
                           fontFamily: 'Cairo',
@@ -360,12 +337,19 @@ class _GoogleMapLocationPickerScreenState
                           color: Colors.white,
                         ),
                       ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _mainColor,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
