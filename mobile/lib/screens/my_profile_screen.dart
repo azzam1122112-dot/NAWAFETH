@@ -581,7 +581,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                         // Reset stack so all tabs/routes reflect provider account.
                                         Navigator.pushNamedAndRemoveUntil(
                                           context,
-                                          '/profile',
+                                          '/provider_dashboard',
                                           (route) => false,
                                         );
                                       },

@@ -9,7 +9,6 @@ import 'screens/my_profile_screen.dart';
 import 'screens/add_service_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/provider_dashboard/provider_home_screen.dart';
-import 'screens/provider_dashboard/provider_orders_screen.dart';
 
 // 🟢 الشاشات الجديدة
 import 'screens/login_screen.dart';
@@ -134,21 +133,9 @@ class _NawafethAppState extends State<NawafethApp> {
         initialRoute: '/onboarding', // شاشة البداية عند أول تشغيل
         routes: {
           '/onboarding': (context) => const OnboardingScreen(),
-          '/home': (context) => ValueListenableBuilder<RoleState>(
-            valueListenable: RoleController.instance.notifier,
-            builder: (context, role, _) {
-              return role.isProvider ? const ProviderHomeScreen() : const HomeScreen();
-            },
-          ),
+          '/home': (context) => const HomeScreen(),
           '/chats': (context) => const MyChatsScreen(),
-          '/orders': (context) => ValueListenableBuilder<RoleState>(
-            valueListenable: RoleController.instance.notifier,
-            builder: (context, role, _) {
-              return role.isProvider
-                  ? const ProviderOrdersScreen()
-                  : const OrdersHubScreen();
-            },
-          ),
+          '/orders': (context) => const OrdersHubScreen(),
           '/interactive': (context) => ValueListenableBuilder<RoleState>(
             valueListenable: RoleController.instance.notifier,
             builder: (context, role, _) {
@@ -157,14 +144,12 @@ class _NawafethAppState extends State<NawafethApp> {
               );
             },
           ),
-          '/profile': (context) => ValueListenableBuilder<RoleState>(
-            valueListenable: RoleController.instance.notifier,
-            builder: (context, role, _) {
-              return role.isProvider ? const ProviderHomeScreen() : const MyProfileScreen();
-            },
-          ),
+          '/profile': (context) => const MyProfileScreen(),
           '/notifications': (context) => const NotificationsScreen(),
           '/add_service': (context) => const AddServiceScreen(),
+
+          // Provider dashboard (separate from bottom-nav core screens)
+          '/provider_dashboard': (context) => const ProviderHomeScreen(),
 
           // ✅ الشاشات الجديدة
           '/login': (context) => const LoginScreen(),
