@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+
+import os
+
+new_content = r'''import 'package:flutter/material.dart';
 
 import '../models/provider.dart';
 import '../models/provider_portfolio_item.dart';
@@ -284,7 +287,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                       child: Container(
                          decoration: BoxDecoration(
-                          color: AppColors.primaryLight.withValues(alpha: 0.3),
+                          color: AppColors.primaryLight.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(25),
                         ),
                         child: TabBar(
@@ -294,7 +297,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                             color: AppColors.deepPurple,
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.deepPurple.withValues(alpha: 0.3),
+                                color: AppColors.deepPurple.withOpacity(0.3),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               )
@@ -355,7 +358,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           itemCount: list.length,
-          separatorBuilder: (context, _) => const SizedBox(height: 16),
+          separatorBuilder: (_,__) => const SizedBox(height: 16),
           itemBuilder: (context, index) {
             final p = list[index];
             return _buildFollowingCard(context, p);
@@ -375,7 +378,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.08),
+            color: Colors.grey.withOpacity(0.08),
             spreadRadius: 2,
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -459,9 +462,9 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppColors.deepPurple.withValues(alpha: 0.08),
+                          color: AppColors.deepPurple.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.3)),
+                          border: Border.all(color: AppColors.deepPurple.withOpacity(0.3)),
                         ),
                         child: const Text('طلب خدمة', style: TextStyle(
                           fontFamily: 'Cairo',
@@ -560,18 +563,18 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.05),
+            color: Colors.grey.withOpacity(0.05),
             offset: const Offset(0, 4),
             blurRadius: 10,
           )
         ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+        border: Border.all(color: Colors.grey.withOpacity(0.1)),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: CircleAvatar(
           radius: 20,
-          backgroundColor: AppColors.deepPurple.withValues(alpha: 0.1),
+          backgroundColor: AppColors.deepPurple.withOpacity(0.1),
           child: const Icon(Icons.person, color: AppColors.deepPurple),
         ),
         title: Text(
@@ -594,7 +597,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
            width: 32,
            height: 32,
            decoration: BoxDecoration(
-             color: AppColors.primaryLight.withValues(alpha: 0.5),
+             color: AppColors.primaryLight.withOpacity(0.5),
              shape: BoxShape.circle,
            ),
            child: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.deepPurple),
@@ -647,7 +650,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
+            color: Colors.grey.withOpacity(0.1),
             blurRadius: 8,
             offset: const Offset(0, 4),
           )
@@ -699,7 +702,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                   Image.network(
                     item.fileUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
+                    errorBuilder: (_,__,___) => Container(
                       color: AppColors.primaryLight,
                       child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
@@ -709,7 +712,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
+                          color: Colors.black.withOpacity(0.5),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
@@ -726,7 +729,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                   children: [
                     CircleAvatar(
                       radius: 10, 
-                      backgroundColor: AppColors.deepPurple.withValues(alpha: 0.1),
+                      backgroundColor: AppColors.deepPurple.withOpacity(0.1),
                       child: const Icon(Icons.person, size: 12, color: AppColors.deepPurple)
                     ),
                     const SizedBox(width: 6),
@@ -766,10 +769,10 @@ class _InteractiveScreenState extends State<InteractiveScreen>
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight.withValues(alpha: 0.3),
+                color: AppColors.primaryLight.withOpacity(0.3),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 48, color: AppColors.deepPurple.withValues(alpha: 0.5)),
+              child: Icon(icon, size: 48, color: AppColors.deepPurple.withOpacity(0.5)),
             ),
             const SizedBox(height: 24),
             Text(
@@ -816,3 +819,12 @@ class _InteractiveScreenState extends State<InteractiveScreen>
     );
   }
 }
+'''
+
+file_path = r'c:\Users\manso\nawafeth\mobile\lib\screens\interactive_screen.dart'
+try:
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    print("Success")
+except Exception as e:
+    print(f"Error: {e}")
