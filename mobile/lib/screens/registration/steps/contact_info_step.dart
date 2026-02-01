@@ -586,9 +586,9 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
             hint: "+9665xxxxxxxx",
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
-            readOnly: widget.isInitialRegistration &&
-                widget.phoneExternalController != null &&
-                phoneController.text.trim().isNotEmpty,
+            // أثناء التسجيل: اسمح للمستخدم بتعديل رقم الجوال دائماً.
+            // الحفظ يتم عند الإرسال من صفحة التسجيل عبر AccountApi.updateMe.
+            readOnly: false,
           ),
         ),
         _sectionCard(

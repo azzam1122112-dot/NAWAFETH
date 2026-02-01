@@ -11,7 +11,6 @@ import 'steps/contact_info_step.dart';
 
 import '../../services/providers_api.dart';
 import '../../services/account_api.dart';
-import '../../services/account_api.dart';
 
 // لوحة المزود بعد التسجيل
 import '../provider_dashboard/provider_home_screen.dart';
@@ -270,6 +269,10 @@ class _RegisterServiceProviderPageState
     });
 
     try {
+      // Ensure the primary phone is saved on the user account.
+      // Provider registration endpoint does not include phone in its payload.
+      await AccountApi().updateMe({'phone': phone});
+
       await ProvidersApi().registerProvider(
         providerType: _providerTypeToBackend(_accountTypeAr),
         displayName: displayName,
