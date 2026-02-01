@@ -1,17 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/colors.dart';
+import '../../utils/user_scoped_prefs.dart';
 
 import '../../services/account_api.dart';
 import '../../services/session_storage.dart';
 
 // ⬇️ استيراد القوالب الموجودة
-import '../registration/steps/service_details_step.dart';
 import '../registration/steps/additional_details_step.dart';
 import '../registration/steps/contact_info_step.dart';
 import '../registration/steps/language_location_step.dart';
 import '../registration/steps/content_step.dart';
 import '../registration/steps/seo_step.dart';
+
+import 'provider_completion_utils.dart';
+import 'provider_service_categories_screen.dart';
 
 class ProviderProfileCompletionScreen extends StatefulWidget {
   const ProviderProfileCompletionScreen({super.key});
@@ -50,23 +55,10 @@ class _ProviderProfileCompletionScreenState
 
   double get _baseCompletion {
     // يعكس فعلياً ما هو موجود في الباكند (بدون بيانات وهمية).
-    final me = _me;
-    if (me == null) return 0.0;
-
-    bool hasName() {
-      final first = (me['first_name'] ?? '').toString().trim();
-      final last = (me['last_name'] ?? '').toString().trim();
-      final user = (me['username'] ?? '').toString().trim();
-      return first.isNotEmpty || last.isNotEmpty || user.isNotEmpty;
-    }
-
-    bool hasPhone() => (me['phone'] ?? '').toString().trim().isNotEmpty;
-    bool hasEmail() => (me['email'] ?? '').toString().trim().isNotEmpty;
-
-    final parts = <bool>[hasName(), hasPhone(), hasEmail()];
-    final done = parts.where((v) => v).length;
-    final ratio = done / parts.length;
-    return (_baseCompletionMax * ratio).clamp(0.0, _baseCompletionMax);
+    return ProviderCompletionUtils.baseCompletionFromMe(
+      _me,
+      baseMax: _baseCompletionMax,
+    );
   }
 
   double get _completionPercent {
@@ -83,11 +75,20 @@ class _ProviderProfileCompletionScreenState
   Future<void> _reloadSectionFlags() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final userId = await UserScopedPrefs.readUserId();
+      final updated = <String, bool>{};
+      for (final id in _sections.keys) {
+        final baseKey = 'provider_section_done_$id';
+        updated[id] = (await UserScopedPrefs.getBoolScoped(
+              prefs,
+              baseKey,
+              userId: userId,
+            )) ??
+            false;
+      }
       if (!mounted) return;
       setState(() {
-        for (final id in _sections.keys) {
-          _sections[id] = prefs.getBool('provider_section_done_$id') ?? false;
-        }
+        _sections.addAll(updated);
       });
     } catch (_) {
       // Best-effort.
@@ -121,35 +122,23 @@ class _ProviderProfileCompletionScreenState
 
     switch (id) {
       case "basic":
-        // عرض البيانات الأساسية (عرض فقط)
+        // تعديل البيانات الأساسية (حفظ تلقائي)
         await Navigator.push<bool>(
           context,
           MaterialPageRoute(
             builder:
-                (_) => _BasicInfoScreen(
-                  fullName: _fullName,
-                  username: _username,
-                  phone: _phone,
-                  email: _email,
-                ),
+                (_) => const _BasicInfoScreen(),
           ),
         );
         // قسم الأساسيات محسوب من الباكند
+        await _bootstrap();
         return;
 
       case "service_details":
-        // هذه خطوة بدون Scaffold، نغلفها بواجهة بسيطة
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => _SingleStepWrapper(
-                  title: "تفاصيل الخدمة",
-                  child: ServiceDetailsStep(
-                    onBack: () => Navigator.pop(context, false),
-                    onNext: () => Navigator.pop(context, true),
-                  ),
-                ),
+            builder: (_) => const ProviderServiceCategoriesScreen(),
           ),
         );
         break;
@@ -234,7 +223,13 @@ class _ProviderProfileCompletionScreenState
     if (result == true && id != "basic") {
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('provider_section_done_$id', true);
+        final userId = await UserScopedPrefs.readUserId();
+        await UserScopedPrefs.setBoolScoped(
+          prefs,
+          'provider_section_done_$id',
+          true,
+          userId: userId,
+        );
       } catch (_) {
         // ignore
       }
@@ -247,31 +242,25 @@ class _ProviderProfileCompletionScreenState
   @override
   void initState() {
     super.initState();
-    _sectionWeights = _buildSectionWeights();
+    _sectionWeights = ProviderCompletionUtils.buildSectionWeights(
+      keys: _sections.keys.toList(growable: false),
+      total: _optionalTotalPercent,
+    );
     _bootstrap();
-  }
-
-  Map<String, int> _buildSectionWeights() {
-    // توزيع 70% على 6 أقسام بدون كسور:
-    // 70 / 6 = 11 والباقي 4 → 4 أقسام = 12% و قسمين = 11% (المجموع 70%)
-    final keys = _sections.keys.toList(growable: false);
-    final base = _optionalTotalPercent ~/ keys.length; // 11
-    var remainder = _optionalTotalPercent - (base * keys.length); // 4
-
-    final weights = <String, int>{};
-    for (final k in keys) {
-      final extra = remainder > 0 ? 1 : 0;
-      if (remainder > 0) remainder -= 1;
-      weights[k] = base + extra;
-    }
-    return weights;
   }
 
   Future<void> _bootstrap() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final userId = await UserScopedPrefs.readUserId();
       for (final id in _sections.keys) {
-        _sections[id] = prefs.getBool('provider_section_done_$id') ?? false;
+        final baseKey = 'provider_section_done_$id';
+        _sections[id] = (await UserScopedPrefs.getBoolScoped(
+              prefs,
+              baseKey,
+              userId: userId,
+            )) ??
+            false;
       }
 
       final loggedIn = await const SessionStorage().isLoggedIn();
@@ -986,82 +975,271 @@ class _ProviderProfileCompletionScreenState
   }
 }
 
-/// 🔹 شاشة لمعاينة البيانات الأساسية (من الباكند)
-class _BasicInfoScreen extends StatelessWidget {
-  final String? fullName;
-  final String? username;
-  final String? phone;
-  final String? email;
+/// 🔹 شاشة تعديل البيانات الأساسية (من الباكند) مع حفظ تلقائي
+class _BasicInfoScreen extends StatefulWidget {
+  const _BasicInfoScreen();
 
-  const _BasicInfoScreen({
-    required this.fullName,
-    required this.username,
-    required this.phone,
-    required this.email,
-  });
+  @override
+  State<_BasicInfoScreen> createState() => _BasicInfoScreenState();
+}
+
+class _BasicInfoScreenState extends State<_BasicInfoScreen> {
+  final _firstName = TextEditingController();
+  final _lastName = TextEditingController();
+  final _phone = TextEditingController();
+  final _email = TextEditingController();
+  String? _username;
+
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    for (final c in [_firstName, _lastName, _phone, _email]) {
+      c.addListener(_onAnyChange);
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    for (final c in [_firstName, _lastName, _phone, _email]) {
+      c.removeListener(_onAnyChange);
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final me = await AccountApi().me();
+
+      String s(dynamic v) => (v ?? '').toString();
+
+      _firstName.text = s(me['first_name']).trim();
+      _lastName.text = s(me['last_name']).trim();
+      _phone.text = s(me['phone']).trim();
+      _email.text = s(me['email']).trim();
+      _username = s(me['username']).trim().isEmpty ? null : s(me['username']).trim();
+
+      // Also persist to secure storage for other screens.
+      await const SessionStorage().saveProfile(
+        username: _username,
+        email: _email.text.trim().isEmpty ? null : _email.text.trim(),
+        firstName: _firstName.text.trim().isEmpty ? null : _firstName.text.trim(),
+        lastName: _lastName.text.trim().isEmpty ? null : _lastName.text.trim(),
+        phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'تعذر تحميل بيانات الحساب.';
+      });
+    }
+  }
+
+  void _onAnyChange() {
+    if (_loading) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 650), () async {
+      await _save();
+    });
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      final patch = <String, dynamic>{
+        'first_name': _firstName.text.trim(),
+        'last_name': _lastName.text.trim(),
+        'phone': _phone.text.trim(),
+      };
+      // Email is optional to update; if backend rejects, we'll show an error.
+      if (_email.text.trim().isNotEmpty) {
+        patch['email'] = _email.text.trim();
+      }
+
+      final res = await AccountApi().updateMe(patch);
+      await const SessionStorage().saveProfile(
+        username: (res['username'] ?? _username)?.toString(),
+        email: (res['email'] ?? '').toString(),
+        firstName: (res['first_name'] ?? '').toString(),
+        lastName: (res['last_name'] ?? '').toString(),
+        phone: (res['phone'] ?? '').toString(),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _username = (res['username'] ?? _username)?.toString().trim();
+        _saving = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ البيانات حالياً.')),
+      );
+    }
+  }
+
+  InputDecoration _dec(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontFamily: 'Cairo'),
+      prefixIcon: Icon(icon),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "بيانات التسجيل الأساسية",
-          style: TextStyle(fontFamily: "Cairo"),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "هذه البيانات تُجلب من حسابك في النظام.",
-              style: TextStyle(fontFamily: "Cairo", color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text("الاسم", style: TextStyle(fontFamily: 'Cairo')),
-              subtitle: Text(
-                fullName ?? '—',
-                style: const TextStyle(fontFamily: 'Cairo'),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.alternate_email),
-              title: const Text(
-                "اسم المستخدم",
-                style: TextStyle(fontFamily: 'Cairo'),
-              ),
-              subtitle: Text(
-                username == null ? '—' : '@$username',
-                style: const TextStyle(fontFamily: 'Cairo'),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.phone),
-              title: const Text(
-                "رقم الجوال",
-                style: TextStyle(fontFamily: 'Cairo'),
-              ),
-              subtitle: Text(
-                phone ?? '—',
-                style: const TextStyle(fontFamily: 'Cairo'),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.email_outlined),
-              title: const Text(
-                "البريد الإلكتروني",
-                style: TextStyle(fontFamily: 'Cairo'),
-              ),
-              subtitle: Text(
-                email ?? '—',
-                style: const TextStyle(fontFamily: 'Cairo'),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey[100],
+        appBar: AppBar(
+          title: const Text('بيانات التسجيل الأساسية', style: TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: AppColors.deepPurple,
+          foregroundColor: Colors.white,
+          actions: [
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 12),
+              child: Center(
+                child: _saving
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.check_circle, color: Colors.white),
               ),
             ),
           ],
         ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!, style: const TextStyle(fontFamily: 'Cairo')),
+                        const SizedBox(height: 10),
+                        ElevatedButton(
+                          onPressed: _load,
+                          child: const Text('إعادة المحاولة', style: TextStyle(fontFamily: 'Cairo')),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x14000000), blurRadius: 10, offset: Offset(0, 4)),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, color: AppColors.deepPurple),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'يتم حفظ التغييرات تلقائياً.',
+                                style: TextStyle(fontFamily: 'Cairo', color: Colors.grey[700]),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      if (_username != null)
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.alternate_email, color: Colors.black54),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '@$_username',
+                                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (_username != null) const SizedBox(height: 14),
+                      TextField(
+                        controller: _firstName,
+                        decoration: _dec('الاسم الأول', Icons.person_outline),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _lastName,
+                        decoration: _dec('اسم العائلة', Icons.badge_outlined),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _phone,
+                        keyboardType: TextInputType.phone,
+                        decoration: _dec('رقم الجوال', Icons.phone_outlined),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: _dec('البريد الإلكتروني', Icons.email_outlined),
+                      ),
+                      const SizedBox(height: 18),
+                      ElevatedButton.icon(
+                        onPressed: _saving ? null : () async {
+                          await _save();
+                        },
+                        icon: const Icon(Icons.save),
+                        label: const Text('حفظ الآن', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ],
+                  ),
       ),
     );
   }

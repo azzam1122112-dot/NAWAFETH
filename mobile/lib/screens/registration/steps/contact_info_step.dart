@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../utils/user_scoped_prefs.dart';
 
 import '../../../services/account_api.dart';
 import '../../../services/providers_api.dart';
@@ -145,7 +146,12 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   Future<void> _loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftKey);
+      final userId = await UserScopedPrefs.readUserId();
+      final raw = await UserScopedPrefs.getStringScoped(
+        prefs,
+        _draftKey,
+        userId: userId,
+      );
       if (raw == null || raw.trim().isEmpty) return;
       final data = jsonDecode(raw);
       if (data is! Map) return;
@@ -183,6 +189,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     _draftTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = await UserScopedPrefs.readUserId();
         final data = <String, dynamic>{
           'phone': phoneController.text.trim(),
           'whatsapp': whatsappController.text.trim(),
@@ -190,7 +197,12 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
           'website': websiteController.text.trim(),
           'social': socialControllers.map((c) => c.text.trim()).toList(growable: false),
         };
-        await prefs.setString(_draftKey, jsonEncode(data));
+        await UserScopedPrefs.setStringScoped(
+          prefs,
+          _draftKey,
+          jsonEncode(data),
+          userId: userId,
+        );
       } catch (_) {
         // ignore
       }
@@ -201,8 +213,14 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     if (widget.isInitialRegistration) return;
     final done = whatsappController.text.trim().isNotEmpty;
     // Best-effort; no need to await.
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setBool('provider_section_done_contact_full', done);
+    SharedPreferences.getInstance().then((prefs) async {
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.setBoolScoped(
+        prefs,
+        'provider_section_done_contact_full',
+        done,
+        userId: userId,
+      );
     }).catchError((_) {});
   }
 

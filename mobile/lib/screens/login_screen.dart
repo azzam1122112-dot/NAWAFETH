@@ -8,6 +8,7 @@ import '../services/session_storage.dart';
 import '../services/app_snackbar.dart';
 import '../services/role_sync.dart';
 import '../services/role_controller.dart';
+import '../utils/local_user_state.dart';
 import 'twofa_screen.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
@@ -49,7 +50,13 @@ class _LoginScreenState extends State<LoginScreen> {
           return s.isEmpty ? null : s;
         }
 
+        final userId = me['id'] is int ? me['id'] as int : int.tryParse((me['id'] ?? '').toString());
+        if (userId != null) {
+          await LocalUserState.setActiveUserId(userId);
+        }
+
         await const SessionStorage().saveProfile(
+          userId: userId,
           username: nonEmpty(me['username']),
           email: nonEmpty(me['email']),
           firstName: nonEmpty(me['first_name']),

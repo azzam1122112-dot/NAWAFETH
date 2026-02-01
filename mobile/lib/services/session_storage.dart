@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class SessionStorage {
   static const _accessKey = 'access_token';
   static const _refreshKey = 'refresh_token';
+  static const _userIdKey = 'user_id';
   static const _phoneKey = 'phone';
   static const _usernameKey = 'username';
   static const _emailKey = 'email';
@@ -22,16 +23,28 @@ class SessionStorage {
   Future<String?> readAccessToken() => _secure.read(key: _accessKey);
   Future<String?> readRefreshToken() => _secure.read(key: _refreshKey);
 
+  Future<void> saveUserId(int userId) => _secure.write(key: _userIdKey, value: userId.toString());
+
+  Future<int?> readUserId() async {
+    final raw = await _secure.read(key: _userIdKey);
+    if (raw == null) return null;
+    return int.tryParse(raw.trim());
+  }
+
   Future<void> savePhone(String phone) => _secure.write(key: _phoneKey, value: phone);
   Future<String?> readPhone() => _secure.read(key: _phoneKey);
 
   Future<void> saveProfile({
+    int? userId,
     String? username,
     String? email,
     String? firstName,
     String? lastName,
     String? phone,
   }) async {
+    if (userId != null) {
+      await _secure.write(key: _userIdKey, value: userId.toString());
+    }
     if (username != null) {
       await _secure.write(key: _usernameKey, value: username);
     }
@@ -74,6 +87,7 @@ class SessionStorage {
   Future<void> clear() async {
     await _secure.delete(key: _accessKey);
     await _secure.delete(key: _refreshKey);
+    await _secure.delete(key: _userIdKey);
     await _secure.delete(key: _phoneKey);
     await _secure.delete(key: _usernameKey);
     await _secure.delete(key: _emailKey);

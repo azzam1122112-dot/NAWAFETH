@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 
+import '../../utils/user_scoped_prefs.dart';
+
 // استيراد الخطوات
 import 'steps/personal_info_step.dart';
 import 'steps/service_classification_step.dart';
@@ -97,6 +99,7 @@ class _RegisterServiceProviderPageState
   Future<void> _saveDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final userId = await UserScopedPrefs.readUserId();
       final draft = <String, dynamic>{
         'display_name': _displayNameCtrl.text,
         'bio': _bioCtrl.text,
@@ -107,7 +110,12 @@ class _RegisterServiceProviderPageState
         'accepts_urgent': _acceptsUrgent,
         'step': _currentStep,
       };
-      await prefs.setString(_draftPrefsKey, jsonEncode(draft));
+      await UserScopedPrefs.setStringScoped(
+        prefs,
+        _draftPrefsKey,
+        jsonEncode(draft),
+        userId: userId,
+      );
     } catch (_) {
       // best-effort
     }
@@ -116,7 +124,12 @@ class _RegisterServiceProviderPageState
   Future<void> _loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftPrefsKey);
+      final userId = await UserScopedPrefs.readUserId();
+      final raw = await UserScopedPrefs.getStringScoped(
+        prefs,
+        _draftPrefsKey,
+        userId: userId,
+      );
       if (raw == null || raw.trim().isEmpty) return;
 
       final decoded = jsonDecode(raw);
@@ -313,7 +326,8 @@ class _RegisterServiceProviderPageState
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isProviderRegistered', true);
       await RoleController.instance.setProviderMode(true);
-      await prefs.remove(_draftPrefsKey);
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.removeScoped(prefs, _draftPrefsKey, userId: userId);
 
       if (!mounted) return;
       setState(() {

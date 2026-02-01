@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../utils/user_scoped_prefs.dart';
+
 class AdditionalDetailsStep extends StatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onBack;
@@ -45,7 +47,12 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   Future<void> _loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftKey);
+      final userId = await UserScopedPrefs.readUserId();
+      final raw = await UserScopedPrefs.getStringScoped(
+        prefs,
+        _draftKey,
+        userId: userId,
+      );
       if (raw == null || raw.trim().isEmpty) return;
       final data = jsonDecode(raw);
       if (data is! Map) return;
@@ -84,12 +91,18 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
     _draftTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = await UserScopedPrefs.readUserId();
         final data = <String, dynamic>{
           'about': aboutController.text.trim(),
           'qualifications': qualifications,
           'experiences': experiences,
         };
-        await prefs.setString(_draftKey, jsonEncode(data));
+        await UserScopedPrefs.setStringScoped(
+          prefs,
+          _draftKey,
+          jsonEncode(data),
+          userId: userId,
+        );
       } catch (_) {
         // ignore
       }
@@ -98,14 +111,21 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
 
   void _updateSectionDone() {
     final done = aboutController.text.trim().isNotEmpty || qualifications.isNotEmpty || experiences.isNotEmpty;
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setBool('provider_section_done_additional', done);
+    SharedPreferences.getInstance().then((prefs) async {
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.setBoolScoped(
+        prefs,
+        'provider_section_done_additional',
+        done,
+        userId: userId,
+      );
     }).catchError((_) {});
   }
 
   void _clearDraft() {
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.remove(_draftKey);
+    SharedPreferences.getInstance().then((prefs) async {
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.removeScoped(prefs, _draftKey, userId: userId);
     }).catchError((_) {});
   }
 

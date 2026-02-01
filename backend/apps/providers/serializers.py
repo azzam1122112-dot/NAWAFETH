@@ -136,3 +136,24 @@ class UserPublicSerializer(serializers.ModelSerializer):
             return (f"{first} {last}").strip()
         username = (getattr(obj, "username", "") or "").strip()
         return username or "مستخدم"
+
+
+class MyProviderSubcategoriesSerializer(serializers.Serializer):
+    subcategory_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=True,
+        required=True,
+    )
+
+    def validate_subcategory_ids(self, value):
+        ids = list(dict.fromkeys(value))  # de-dupe, keep order
+        if not ids:
+            return []
+
+        existing = set(
+            SubCategory.objects.filter(id__in=ids, is_active=True).values_list("id", flat=True)
+        )
+        missing = [i for i in ids if i not in existing]
+        if missing:
+            raise serializers.ValidationError(f"تصنيفات فرعية غير صالحة: {missing}")
+        return ids

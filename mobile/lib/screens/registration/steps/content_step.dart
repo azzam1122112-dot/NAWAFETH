@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../utils/user_scoped_prefs.dart';
+
 class ContentStep extends StatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onBack;
@@ -37,7 +39,12 @@ class _ContentStepState extends State<ContentStep> {
   Future<void> _loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftKey);
+      final userId = await UserScopedPrefs.readUserId();
+      final raw = await UserScopedPrefs.getStringScoped(
+        prefs,
+        _draftKey,
+        userId: userId,
+      );
       if (raw == null || raw.trim().isEmpty) {
         _updateSectionDone();
         return;
@@ -114,6 +121,7 @@ class _ContentStepState extends State<ContentStep> {
     _draftTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = await UserScopedPrefs.readUserId();
         final list = sections
             .map(
               (s) => {
@@ -125,7 +133,12 @@ class _ContentStepState extends State<ContentStep> {
               },
             )
             .toList(growable: false);
-        await prefs.setString(_draftKey, jsonEncode(list));
+        await UserScopedPrefs.setStringScoped(
+          prefs,
+          _draftKey,
+          jsonEncode(list),
+          userId: userId,
+        );
       } catch (_) {
         // ignore
       }
@@ -134,8 +147,14 @@ class _ContentStepState extends State<ContentStep> {
 
   void _updateSectionDone() {
     final done = sections.isNotEmpty;
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setBool('provider_section_done_content', done);
+    SharedPreferences.getInstance().then((prefs) async {
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.setBoolScoped(
+        prefs,
+        'provider_section_done_content',
+        done,
+        userId: userId,
+      );
     }).catchError((_) {});
   }
 
@@ -690,7 +709,12 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_editorDraftKey);
+      final userId = await UserScopedPrefs.readUserId();
+      final raw = await UserScopedPrefs.getStringScoped(
+        prefs,
+        _editorDraftKey,
+        userId: userId,
+      );
       if (raw == null || raw.trim().isEmpty) return;
       final data = jsonDecode(raw);
       if (data is! Map) return;
@@ -748,6 +772,7 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
     _draftTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = await UserScopedPrefs.readUserId();
         final data = <String, dynamic>{
           'title': _titleController.text.trim(),
           'description': _descController.text.trim(),
@@ -755,7 +780,12 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
           'video_paths': _videos.map((v) => v.path).toList(),
           'image_paths': _images.map((i) => i.path).toList(),
         };
-        await prefs.setString(_editorDraftKey, jsonEncode(data));
+        await UserScopedPrefs.setStringScoped(
+          prefs,
+          _editorDraftKey,
+          jsonEncode(data),
+          userId: userId,
+        );
       } catch (_) {
         // ignore
       }
@@ -763,8 +793,9 @@ class _NewSectionEditorState extends State<NewSectionEditor> {
   }
 
   void _clearEditorDraft() {
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.remove(_editorDraftKey);
+    SharedPreferences.getInstance().then((prefs) async {
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.removeScoped(prefs, _editorDraftKey, userId: userId);
     }).catchError((_) {});
   }
 

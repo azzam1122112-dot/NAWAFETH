@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/providers_api.dart';
+import '../../../utils/user_scoped_prefs.dart';
 import '../../provider_dashboard/google_map_location_picker_screen.dart';
 
 class LanguageLocationStep extends StatefulWidget {
@@ -43,6 +44,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   Future<void> _saveDraftNow() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final userId = await UserScopedPrefs.readUserId();
       final data = <String, dynamic>{
         'selected_languages': selectedLanguages,
         'custom_languages': customLanguages,
@@ -50,7 +52,12 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         'lng': _selectedCenter?.longitude,
         'location_text': locationController.text.trim(),
       };
-      await prefs.setString(_draftKey, jsonEncode(data));
+      await UserScopedPrefs.setStringScoped(
+        prefs,
+        _draftKey,
+        jsonEncode(data),
+        userId: userId,
+      );
     } catch (_) {
       // ignore
     }
@@ -101,7 +108,12 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   Future<void> _loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftKey);
+      final userId = await UserScopedPrefs.readUserId();
+      final raw = await UserScopedPrefs.getStringScoped(
+        prefs,
+        _draftKey,
+        userId: userId,
+      );
       if (raw == null || raw.trim().isEmpty) return;
       final data = jsonDecode(raw);
       if (data is! Map) return;
@@ -154,6 +166,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
     _draftTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = await UserScopedPrefs.readUserId();
         final data = <String, dynamic>{
           'selected_languages': selectedLanguages,
           'custom_languages': customLanguages,
@@ -161,7 +174,12 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
           'lng': _selectedCenter?.longitude,
           'location_text': locationController.text.trim(),
         };
-        await prefs.setString(_draftKey, jsonEncode(data));
+        await UserScopedPrefs.setStringScoped(
+          prefs,
+          _draftKey,
+          jsonEncode(data),
+          userId: userId,
+        );
       } catch (_) {
         // ignore
       }
@@ -171,8 +189,14 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   void _updateSectionDone() {
     final done =
         selectedLanguages.isNotEmpty || customLanguages.isNotEmpty || _selectedCenter != null;
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setBool('provider_section_done_lang_loc', done);
+    SharedPreferences.getInstance().then((prefs) async {
+      final userId = await UserScopedPrefs.readUserId();
+      await UserScopedPrefs.setBoolScoped(
+        prefs,
+        'provider_section_done_lang_loc',
+        done,
+        userId: userId,
+      );
     }).catchError((_) {});
   }
 

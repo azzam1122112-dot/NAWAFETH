@@ -12,6 +12,7 @@ import '../screens/about_screen.dart';
 import '../screens/contact_screen.dart';
 import '../main.dart';
 import '../services/session_storage.dart';
+import '../utils/local_user_state.dart';
 import '../services/account_api.dart';
 import '../services/app_snackbar.dart';
 import '../utils/auth_guard.dart';
@@ -56,6 +57,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
   }
 
   Future<void> _logout() async {
+    await LocalUserState.clearOnLogout();
     await const SessionStorage().clear();
     if (!mounted) return;
     setState(() {});

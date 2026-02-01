@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count, F, Max
 from django.db.models.functions import Coalesce
+from django.db import transaction
 
 from apps.accounts.models import User
 
@@ -14,12 +15,15 @@ from .models import (
 	Category,
 	ProviderFollow,
 	ProviderLike,
+	ProviderCategory,
 	ProviderPortfolioItem,
 	ProviderPortfolioLike,
 	ProviderProfile,
+	SubCategory,
 )
 from .serializers import (
 	CategorySerializer,
+	MyProviderSubcategoriesSerializer,
 	ProviderPortfolioItemCreateSerializer,
 	ProviderPortfolioItemSerializer,
 	ProviderProfileSerializer,
@@ -40,6 +44,45 @@ class MyProviderProfileView(generics.RetrieveUpdateAPIView):
 		if not provider_profile:
 			raise NotFound("provider_profile_not_found")
 		return provider_profile
+
+
+class MyProviderSubcategoriesView(APIView):
+	"""Get/update the authenticated provider's service subcategories.
+
+	Used by the mobile app to power provider inbox filtering.
+	"""
+
+	permission_classes = [IsAtLeastProvider]
+
+	def get(self, request):
+		provider = getattr(request.user, "provider_profile", None)
+		if not provider:
+			raise NotFound("provider_profile_not_found")
+
+		ids = list(
+			ProviderCategory.objects.filter(provider=provider)
+			.values_list("subcategory_id", flat=True)
+		)
+		return Response({"subcategory_ids": ids}, status=status.HTTP_200_OK)
+
+	def put(self, request):
+		provider = getattr(request.user, "provider_profile", None)
+		if not provider:
+			raise NotFound("provider_profile_not_found")
+
+		serializer = MyProviderSubcategoriesSerializer(data=request.data)
+		serializer.is_valid(raise_exception=True)
+		ids = serializer.validated_data.get("subcategory_ids", [])
+
+		with transaction.atomic():
+			ProviderCategory.objects.filter(provider=provider).delete()
+			if ids:
+				ProviderCategory.objects.bulk_create(
+					[ProviderCategory(provider=provider, subcategory_id=sid) for sid in ids]
+				)
+
+		# Return updated ids (normalized)
+		return Response({"subcategory_ids": ids}, status=status.HTTP_200_OK)
 
 
 class CategoryListView(generics.ListAPIView):

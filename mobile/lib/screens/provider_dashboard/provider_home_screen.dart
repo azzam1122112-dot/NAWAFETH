@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -11,15 +10,15 @@ import '../../services/account_api.dart';
 import '../../services/api_config.dart';
 import '../../services/providers_api.dart';
 import '../../services/role_controller.dart';
-import '../../constants/colors.dart';
+import '../../utils/user_scoped_prefs.dart';
 
 import '../../widgets/bottom_nav.dart';
 import '../../widgets/custom_drawer.dart';
 
-import 'profile_tab.dart'; 
 import 'services_tab.dart'; 
 import 'reviews_tab.dart'; 
-import '../interactive_screen.dart';
+import 'provider_completion_utils.dart';
+import 'provider_orders_screen.dart';
 import 'provider_profile_completion_screen.dart';
 import '../plans_screen.dart';
 import '../additional_services_screen.dart';
@@ -48,7 +47,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   int? _followersCount;
   int? _likesReceivedCount;
   double _profileCompletion = 0.0;
-  int? _providerId;
 
   @override
   void initState() {
@@ -80,45 +78,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       final providerDisplayName = (myProfile?['display_name'] ?? '').toString().trim();
       final providerCity = (myProfile?['city'] ?? '').toString().trim();
 
-      // --- Profile Completion Logic ---
-      double baseCompletion() {
-        bool hasName() {
-           final first = (me['first_name'] ?? '').toString().trim();
-           final last = (me['last_name'] ?? '').toString().trim();
-           final user = (me['username'] ?? '').toString().trim();
-           return first.isNotEmpty || last.isNotEmpty || user.isNotEmpty;
-        }
-        bool hasPhone() => (me['phone'] ?? '').toString().trim().isNotEmpty;
-        bool hasEmail() => (me['email'] ?? '').toString().trim().isNotEmpty;
-
-        const baseMax = 0.30;
-        final parts = <bool>[hasName(), hasPhone(), hasEmail()];
-        final done = parts.where((v) => v).length;
-        final ratio = done / parts.length;
-        return (baseMax * ratio).clamp(0.0, baseMax);
+      // --- Profile Completion Logic (shared) ---
+      final userId = await UserScopedPrefs.readUserId();
+      final sectionDone = <String, bool>{};
+      for (final id in ProviderCompletionUtils.sectionKeys) {
+        final baseKey = 'provider_section_done_$id';
+        sectionDone[id] =
+            (await UserScopedPrefs.getBoolScoped(prefs, baseKey, userId: userId)) ?? false;
       }
-
-      const optionalTotal = 70;
-      const sectionKeys = <String>[
-        'service_details', 'additional', 'contact_full', 'lang_loc', 'content', 'seo',
-      ];
-      Map<String, int> buildWeights() {
-        final base = optionalTotal ~/ sectionKeys.length;
-        var remainder = optionalTotal - (base * sectionKeys.length);
-        final weights = <String, int>{};
-        for (final k in sectionKeys) {
-          final extra = remainder > 0 ? 1 : 0;
-          if (remainder > 0) remainder -= 1;
-          weights[k] = base + extra;
-        }
-        return weights;
-      }
-      final weights = buildWeights();
-      final completedOptional = sectionKeys.where((id) {
-        return prefs.getBool('provider_section_done_$id') == true;
-      }).fold<int>(0, (sum, id) => sum + (weights[id] ?? 0));
-      final completionPercent = (baseCompletion() + (completedOptional / 100.0)).clamp(0.0, 1.0);
-      // -------------------------------
+      final completionPercent = ProviderCompletionUtils.completionPercent(
+        me: me,
+        sectionDone: sectionDone,
+      );
+      // ----------------------------------------
 
       String? link;
       if (providerId != null) {
@@ -127,7 +99,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
       if (!mounted) return;
       setState(() {
-        _providerId = providerId;
         _providerShareLink = link;
         _followersCount = followersCount;
         _likesReceivedCount = likesReceivedCount;
@@ -225,9 +196,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                     icon: const Icon(Icons.more_vert, color: Colors.white),
                     onSelected: (v) async {
                       if (v == 'client_mode') {
-                        await RoleController.instance.setProviderMode(false);
-                         if (!context.mounted) return;
-                        Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
+                        await _switchToClientMode();
                       }
                     },
                     itemBuilder: (context) => [
@@ -406,7 +375,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   Widget _buildCompletionCard() {
-    final percent = (_profileCompletion * 100).toInt();
+    final percent = (_profileCompletion * 100).round();
     return GestureDetector(
       onTap: () {
          Navigator.push(
@@ -461,7 +430,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           children: [
             Expanded(child: _actionCard('الخدمات', Icons.design_services_outlined, Colors.purple, () => _navToServices())),
             const SizedBox(width: 16),
-            Expanded(child: _actionCard('الطلبات', Icons.assignment_outlined, Colors.orange, () => _navToOrders())),
+            Expanded(child: _actionCard('تتبع الطلبات', Icons.track_changes_outlined, Colors.orange, () => _navToOrders())),
           ],
         ),
         const SizedBox(height: 16),
@@ -469,7 +438,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           children: [
             Expanded(child: _actionCard('التقييمات', Icons.rate_review_outlined, Colors.green, () => _navToReviews())),
             const SizedBox(width: 16),
-            Expanded(child: _actionCard('المحفظة', Icons.account_balance_wallet_outlined, Colors.blueGrey, () {})),
+            Expanded(child: _actionCard('الملف الشخصي', Icons.person_outline, Colors.blueGrey, () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()));
+            })),
           ],
         ),
       ],
@@ -565,11 +536,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     )));
   }
 
-   void _navToOrders() {
-     // Check route name for provider orders
-     // Navigator.pushNamed(context, '/provider_orders');
-     // Or direct push
-     Navigator.push(context, MaterialPageRoute(builder: (_) => const InteractiveScreen(mode: InteractiveMode.provider, initialTabIndex: 0))); 
+  void _navToOrders() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderOrdersScreen()));
+  }
+
+  Future<void> _switchToClientMode() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('جاري التبديل إلى حساب العميل...')),
+    );
+    await RoleController.instance.setProviderMode(false);
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
   }
 
   void _navToReviews() {

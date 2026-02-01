@@ -114,6 +114,66 @@ class MarketplaceApi {
     }
   }
 
+  Future<List<dynamic>> getMyProviderRequests() async {
+    final token = await _session.readAccessToken();
+    if (token == null) return [];
+
+    try {
+      final response = await _dio.get(
+        '${ApiConfig.apiPrefix}/marketplace/provider/requests/',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return response.data;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<dynamic>> getAvailableUrgentRequestsForProvider() async {
+    final token = await _session.readAccessToken();
+    if (token == null) return [];
+
+    try {
+      final response = await _dio.get(
+        '${ApiConfig.apiPrefix}/marketplace/provider/urgent/available/',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return response.data;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<bool> acceptUrgentRequest({required int requestId}) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/urgent/accept/',
+        data: {
+          'request_id': requestId,
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<Offer>> getRequestOffers(String requestId) async {
     final token = await _session.readAccessToken();
     if (token == null) return [];

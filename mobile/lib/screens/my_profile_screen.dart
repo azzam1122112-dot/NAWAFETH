@@ -9,6 +9,7 @@ import '../widgets/bottom_nav.dart';
 import 'interactive_screen.dart';
 import 'registration/register_service_provider.dart';
 import 'provider_dashboard/provider_home_screen.dart';
+import 'login_settings_screen.dart';
 import '../widgets/custom_drawer.dart';
 import '../services/account_api.dart';
 import '../services/session_storage.dart';
@@ -611,39 +612,95 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   }
 
   Widget _buildActionGrid() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      childAspectRatio: 1.5,
-      children: [
-        _actionCard(
-          title: 'طلباتي',
-          icon: Icons.assignment_outlined,
-          color: Colors.blue,
-          onTap: () => Navigator.pushNamed(context, '/orders'),
+    return _profileEntryCard(
+      title: 'الملف الشخصي',
+      subtitle: 'إدارة بياناتك وإعدادات الدخول',
+      icon: Icons.person_outline_rounded,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginSettingsScreen()),
+        );
+      },
+    );
+  }
+
+  Widget _profileEntryCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    VoidCallback? onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.deepPurple.withValues(alpha: 0.95),
+                        AppColors.deepPurple.withValues(alpha: 0.70),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.softBlue,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_left_rounded, color: Colors.grey[500]),
+              ],
+            ),
+          ),
         ),
-        _actionCard(
-          title: 'المحفظة',
-          icon: Icons.account_balance_wallet_outlined,
-          color: Colors.green,
-          onTap: () { /* TODO: Wallet screen */ },
-        ),
-        _actionCard(
-          title: 'الإعدادات', 
-          icon: Icons.settings_outlined, 
-          color: Colors.orange,
-          onTap: () => Navigator.pushNamed(context, '/settings'), // Adjust route as needed
-        ),
-        _actionCard(
-          title: 'الدعم والمساعدة',
-          icon: Icons.headset_mic_outlined,
-          color: Colors.redAccent,
-          onTap: () => Navigator.pushNamed(context, '/contact'),
-        ),
-      ],
+      ),
     );
   }
 
@@ -774,7 +831,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('جاري الانتقال للوحة التحكم...'),
+                        content: Text('جاري الانتقال إلى لوحة مقدم الخدمة...'),
                         backgroundColor: Colors.green,
                       ),
                     );
@@ -797,7 +854,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                    padding: const EdgeInsets.symmetric(vertical: 14),
                  ),
                  child: const Text(
-                   'الدخول للوحة التحكم',
+                   'الدخول إلى لوحة مقدم الخدمة',
                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                  ),
                ),

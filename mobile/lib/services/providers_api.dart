@@ -206,4 +206,39 @@ class ProvidersApi {
     }
     return Map<String, dynamic>.from(res.data as Map);
   }
+
+  Future<List<int>> getMyProviderSubcategories() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/subcategories/');
+      if (res.data is Map) {
+        final map = Map<String, dynamic>.from(res.data as Map);
+        final list = map['subcategory_ids'];
+        if (list is List) {
+          return list.map((e) => int.tryParse(e.toString()) ?? 0).where((v) => v > 0).toList();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<int>> setMyProviderSubcategories(List<int> subcategoryIds) async {
+    final payload = <String, dynamic>{
+      'subcategory_ids': subcategoryIds,
+    };
+    final res = await _dio.put(
+      '${ApiConfig.apiPrefix}/providers/me/subcategories/',
+      data: payload,
+    );
+
+    if (res.data is Map) {
+      final map = Map<String, dynamic>.from(res.data as Map);
+      final list = map['subcategory_ids'];
+      if (list is List) {
+        return list.map((e) => int.tryParse(e.toString()) ?? 0).where((v) => v > 0).toList();
+      }
+    }
+    return subcategoryIds;
+  }
 }

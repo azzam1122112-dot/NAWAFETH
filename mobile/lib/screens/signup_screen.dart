@@ -6,9 +6,11 @@ import '../widgets/custom_drawer.dart';
 import '../widgets/app_bar.dart';
 
 import '../services/auth_api.dart';
+import '../services/account_api.dart';
 import '../services/session_storage.dart';
 import '../services/role_sync.dart';
 import '../services/role_controller.dart';
+import '../utils/local_user_state.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
@@ -102,13 +104,37 @@ class _SignUpScreenState extends State<SignUpScreen> {
         acceptTerms: _agreeToTerms,
       );
 
-      await const SessionStorage().saveProfile(
-        username: _usernameController.text.trim(),
-        email: _emailController.text.trim(),
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        phone: (await const SessionStorage().readPhone())?.trim(),
-      );
+      // Best-effort: persist canonical identity (including userId) for per-user local state.
+      try {
+        final me = await AccountApi().me(accessToken: accessToken);
+
+        String? nonEmpty(dynamic v) {
+          final s = (v ?? '').toString().trim();
+          return s.isEmpty ? null : s;
+        }
+
+        final userId = me['id'] is int ? me['id'] as int : int.tryParse((me['id'] ?? '').toString());
+        if (userId != null) {
+          await LocalUserState.setActiveUserId(userId);
+        }
+
+        await const SessionStorage().saveProfile(
+          userId: userId,
+          username: nonEmpty(me['username']) ?? _usernameController.text.trim(),
+          email: nonEmpty(me['email']) ?? _emailController.text.trim(),
+          firstName: nonEmpty(me['first_name']) ?? _firstNameController.text.trim(),
+          lastName: nonEmpty(me['last_name']) ?? _lastNameController.text.trim(),
+          phone: nonEmpty(me['phone']) ?? (await const SessionStorage().readPhone())?.trim(),
+        );
+      } catch (_) {
+        await const SessionStorage().saveProfile(
+          username: _usernameController.text.trim(),
+          email: _emailController.text.trim(),
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          phone: (await const SessionStorage().readPhone())?.trim(),
+        );
+      }
 
       // Best-effort: ensure local role flags match backend.
       try {
