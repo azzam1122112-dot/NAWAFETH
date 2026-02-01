@@ -76,31 +76,37 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       if (!mounted) return;
       
       final newMode = hasProviderProfile ? InteractiveMode.provider : InteractiveMode.client;
+
+      // Re-init tab controller with correct length based on mode.
+      // Swap controllers first, then dispose the old one to avoid
+      // "A TabController was used after being disposed" during rebuilds.
+      final newLength = newMode == InteractiveMode.provider ? 3 : 2;
+      final newIndex = widget.initialTabIndex.clamp(0, newLength - 1);
+      final newController = TabController(length: newLength, vsync: this, initialIndex: newIndex);
+      final oldController = _tabController;
+
       setState(() {
         _effectiveMode = newMode;
         _capabilitiesLoaded = true;
         _myHandle = username.isEmpty ? null : '@$username';
+        _tabController = newController;
       });
-      
-      // Re-init tab controller with correct length based on mode
-      final newLength = newMode == InteractiveMode.provider ? 3 : 2;
-      // Preserve index if possible, else default to 0
-      final newIndex = widget.initialTabIndex.clamp(0, newLength - 1);
-      
-      _tabController.dispose();
-      _tabController = TabController(length: newLength, vsync: this, initialIndex: newIndex);
+      oldController.dispose();
       
     } catch (_) {
       if (!mounted) return;
       // Default fallback to Client mode
+
+      final newController = TabController(length: 2, vsync: this, initialIndex: 0);
+      final oldController = _tabController;
+
       setState(() {
         _effectiveMode = InteractiveMode.client;
         _capabilitiesLoaded = true;
         _myHandle = null;
+        _tabController = newController;
       });
-      
-      _tabController.dispose();
-      _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
+      oldController.dispose();
     }
     _reload();
   }
@@ -163,7 +169,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       child: Scaffold(
         drawer: const CustomDrawer(),
         appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(118),
+          preferredSize: const Size.fromHeight(140),
           child: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -186,9 +192,10 @@ class _InteractiveScreenState extends State<InteractiveScreen>
             child: SafeArea(
               bottom: false,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
                         const SizedBox(width: 44),
@@ -208,9 +215,13 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                             ),
                           ),
                         ),
-                        IconButton(
-                          onPressed: () => Scaffold.of(context).openDrawer(),
-                          icon: const Icon(Icons.menu_rounded, color: Color(0xFF3B215E)),
+                        Builder(
+                          builder: (scaffoldContext) {
+                            return IconButton(
+                              onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                              icon: const Icon(Icons.menu_rounded, color: Color(0xFF3B215E)),
+                            );
+                          },
                         ),
                       ],
                     ),
