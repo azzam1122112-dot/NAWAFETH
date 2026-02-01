@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../services/account_api.dart';
 import '../../services/api_config.dart';
 import '../../services/providers_api.dart';
+import '../../services/reviews_api.dart';
 import '../../services/role_controller.dart';
 import '../../utils/user_scoped_prefs.dart';
 
@@ -47,6 +48,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   int? _followersCount;
   int? _likesReceivedCount;
   double _profileCompletion = 0.0;
+
+  double _ratingAvg = 0.0;
+  int _ratingCount = 0;
 
   @override
   void initState() {
@@ -97,6 +101,42 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         link = '${ApiConfig.baseUrl}${ApiConfig.apiPrefix}/providers/$providerId/';
       }
 
+      // --- Provider Rating (real, non-dummy) ---
+      double ratingAvg = 0.0;
+      int ratingCount = 0;
+      if (providerId != null) {
+        final rating = await ReviewsApi().getProviderRatingSummary(providerId);
+        final avg = rating?['avg_rating'] ??
+            rating?['average'] ??
+            rating?['avg'] ??
+            rating?['rating'] ??
+            0;
+        final count = rating?['reviews_count'] ??
+            rating?['count'] ??
+            rating?['total'] ??
+            0;
+
+        double asDouble(dynamic v) {
+          if (v is double) return v;
+          if (v is int) return v.toDouble();
+          if (v is num) return v.toDouble();
+          return double.tryParse((v ?? '').toString()) ?? 0.0;
+        }
+
+        int asIntSafe(dynamic v) {
+          if (v is int) return v;
+          if (v is num) return v.toInt();
+          return int.tryParse((v ?? '').toString()) ?? 0;
+        }
+
+        ratingAvg = asDouble(avg);
+        ratingCount = asIntSafe(count);
+        if (ratingCount <= 0) {
+          ratingAvg = 0.0;
+          ratingCount = 0;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _providerShareLink = link;
@@ -105,6 +145,8 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         _providerDisplayName = providerDisplayName.isEmpty ? null : providerDisplayName;
         _providerCity = providerCity.isEmpty ? null : providerCity;
         _profileCompletion = completionPercent;
+        _ratingAvg = ratingAvg;
+        _ratingCount = ratingCount;
         _isLoading = false;
       });
     } catch (e) {
@@ -354,7 +396,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           Container(width: 1, height: 40, color: Colors.grey[200]),
           _statItem(
              label: 'التقييم', 
-             value: '4.8',
+             value: _ratingAvg.toStringAsFixed(1),
              icon: Icons.star_border,
              color: Colors.amber
           ),
@@ -377,11 +419,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   Widget _buildCompletionCard() {
     final percent = (_profileCompletion * 100).round();
     return GestureDetector(
-      onTap: () {
-         Navigator.push(
-           context,
-           MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()),
-         );
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()),
+        );
+        await _loadProviderData();
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -439,7 +482,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             Expanded(child: _actionCard('التقييمات', Icons.rate_review_outlined, Colors.green, () => _navToReviews())),
             const SizedBox(width: 16),
             Expanded(child: _actionCard('الملف الشخصي', Icons.person_outline, Colors.blueGrey, () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen())).then((_) => _loadProviderData());
             })),
           ],
         ),
