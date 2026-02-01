@@ -20,13 +20,11 @@ class ReviewsTab extends StatefulWidget {
 }
 
 class _ReviewsTabState extends State<ReviewsTab> {
-  static const Color _mainColor = Colors.deepPurple;
-
-  Map<String, dynamic>? _meCache;
-
   bool _loading = true;
-  double? _ratingAvg;
-  int? _ratingCount;
+  String? _error;
+
+  int? _providerId;
+  Map<String, dynamic>? _rating;
   List<Map<String, dynamic>> _reviews = const [];
 
   @override
@@ -36,211 +34,301 @@ class _ReviewsTabState extends State<ReviewsTab> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _rating = null;
+      _reviews = const [];
+    });
+
     try {
-      int? providerId = widget.providerId;
-      providerId ??= () {
-        final meId = _meCache?['provider_profile_id'];
-        if (meId is int) return meId;
-        return int.tryParse((meId ?? '').toString());
-      }();
+      final providerId = widget.providerId ?? await _resolveProviderId();
+      _providerId = providerId;
 
-      if (providerId == null) {
-        final me = await AccountApi().me();
-        _meCache = me;
-        final id = me['provider_profile_id'];
-        providerId = id is int ? id : int.tryParse((id ?? '').toString());
-      }
-      if (providerId == null) {
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _ratingAvg = null;
-          _ratingCount = null;
-          _reviews = const [];
-        });
-        return;
-      }
-
-      final ratingJson = await ReviewsApi().getProviderRatingSummary(providerId);
-      final reviewsJson = await ReviewsApi().getProviderReviews(providerId);
-
-      double? asDouble(dynamic v) {
-        if (v is double) return v;
-        if (v is int) return v.toDouble();
-        if (v is num) return v.toDouble();
-        return double.tryParse((v ?? '').toString());
-      }
-
-      int? asInt(dynamic v) {
-        if (v is int) return v;
-        if (v is num) return v.toInt();
-        return int.tryParse((v ?? '').toString());
-      }
+      final rating = await ReviewsApi().getProviderRatingSummary(providerId);
+      final reviews = await ReviewsApi().getProviderReviews(providerId);
 
       if (!mounted) return;
       setState(() {
+        _rating = rating;
+        _reviews = reviews;
         _loading = false;
-        _ratingAvg = ratingJson == null ? null : asDouble(ratingJson['rating_avg']);
-        _ratingCount = ratingJson == null ? null : asInt(ratingJson['rating_count']);
-        _reviews = reviewsJson;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
+        _error = e.toString();
         _loading = false;
-        _ratingAvg = null;
-        _ratingCount = null;
-        _reviews = const [];
       });
     }
   }
 
-  Widget _buildStars(double rating, {double size = 22}) {
+  Future<int> _resolveProviderId() async {
+    final me = await AccountApi().me();
+    final id = me['id'];
+    if (id is int) return id;
+    if (id is String) return int.parse(id);
+    throw StateError('Cannot resolve provider id from /accounts/me/.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('تعذر تحميل التقييمات', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final body = RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildSummaryCard(context),
+          const SizedBox(height: 12),
+          Text('المراجعات', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (_reviews.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text('لا توجد مراجعات حتى الآن')),
+            )
+          else
+            ..._reviews.map((r) => _ReviewCard(review: r, providerId: _providerId)),
+        ],
+      ),
+    );
+
+    if (widget.embedded) {
+      return Directionality(textDirection: TextDirection.rtl, child: body);
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('التقييمات'),
+          backgroundColor: Colors.deepPurple,
+          foregroundColor: Colors.white,
+        ),
+        body: body,
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(BuildContext context) {
+    final rating = _rating ?? const <String, dynamic>{};
+
+    final avg = rating['avg_rating'] ?? rating['average'] ?? rating['avg'] ?? rating['rating'] ?? 0;
+    final count = rating['reviews_count'] ?? rating['count'] ?? rating['total'] ?? 0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ملخص التقييم', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 6),
+                  Text('متوسط التقييم: ${_fmtNum(avg)}'),
+                  Text('عدد المراجعات: ${_fmtNum(count)}'),
+                ],
+              ),
+            ),
+            const Icon(Icons.star, size: 28, color: Colors.amber),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _fmtNum(Object? value) {
+    if (value == null) return '0';
+    if (value is num) return value.toString();
+    return value.toString();
+  }
+}
+
+class _ReviewCard extends StatelessWidget {
+  final dynamic review;
+  final int? providerId;
+
+  const _ReviewCard({required this.review, required this.providerId});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (review is Map<String, dynamic>) ? (review as Map<String, dynamic>) : <String, dynamic>{};
+
+    final author = map['client_name'] ?? map['author_name'] ?? map['client'] ?? map['author'] ?? 'عميل';
+    final rating = map['rating'] ?? map['stars'];
+    final comment = map['comment'] ?? map['text'] ?? map['review'] ?? '';
+    final createdAt = map['created_at'] ?? map['createdAt'];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    author.toString(),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                if (rating != null) _Stars(rating: rating),
+              ],
+            ),
+            if (createdAt != null) ...[
+              const SizedBox(height: 4),
+              Text(createdAt.toString(), style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (comment.toString().trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(comment.toString()),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Stars extends StatelessWidget {
+  final Object rating;
+
+  const _Stars({required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _asDouble(rating).clamp(0, 5);
+    final full = value.floor();
+    final half = (value - full) >= 0.5 ? 1 : 0;
+    final empty = 5 - full - half;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: List.generate(5, (index) {
-        if (index < rating.floor()) {
-          return Icon(Icons.star, color: Colors.amber, size: size);
-        } else if (index < rating) {
-          return Icon(Icons.star_half, color: Colors.amber, size: size);
-        } else {
-          return Icon(Icons.star_border, color: Colors.grey.shade400, size: size);
-        }
-      }),
+      children: [
+        for (int i = 0; i < full; i++) const Icon(Icons.star, size: 16, color: Colors.amber),
+        if (half == 1) const Icon(Icons.star_half, size: 16, color: Colors.amber),
+        for (int i = 0; i < empty; i++) const Icon(Icons.star_border, size: 16, color: Colors.amber),
+      ],
+    );
+  }
+
+  double _asDouble(Object v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+}
+/*
+import 'package:flutter/material.dart';
+
+import '../../services/account_api.dart';
+import '../../services/reviews_api.dart';
+            )
+          else
+            ..._reviews.map((r) {
+              final rating = (r['rating'] ?? 0);
+              final ratingD = (rating is num)
+                  ? rating.toDouble()
+                  : double.tryParse(rating.toString()) ?? 0.0;
+
+              final comment = (r['comment'] ?? '').toString().trim();
+              final customerName = (r['client_name'] ?? '').toString().trim();
+              final customerPhone = (r['client_phone'] ?? '').toString().trim();
+              final customerLabel = customerName.isNotEmpty
+                  ? customerName
+                  : (customerPhone.isNotEmpty ? customerPhone : 'عميل');
+
+              final createdAt = (r['created_at'] ?? '').toString().trim();
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            customerLabel,
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (widget.onOpenChat != null)
+                          IconButton(
+                            tooltip: 'محادثة',
+                            onPressed: () => widget.onOpenChat?.call(customerLabel),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              size: 18,
+                              color: _mainColor,
+                            ),
+                          ),
+                        _buildStars(ratingD, size: 18),
+                      ],
+                    ),
+                    if (createdAt.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        createdAt,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Text(
+                      comment.isEmpty ? '—' : comment,
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final Widget body = _loading
-        ? const Center(child: CircularProgressIndicator())
-        : RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        _ratingAvg == null ? '—' : _ratingAvg!.toStringAsFixed(2),
-                        style: const TextStyle(
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
-                          color: _mainColor,
-                          height: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _buildStars(_ratingAvg ?? 0, size: 30),
-                      const SizedBox(height: 6),
-                      Text(
-                        _ratingCount == null ? '— مراجعة' : 'بناءً على $_ratingCount مراجعة',
-                        style: const TextStyle(fontFamily: 'Cairo', color: Colors.black54, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'مراجعات العملاء',
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                if (_reviews.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 20),
-                    child: Center(
-                      child: Text(
-                        'لا توجد مراجعات حتى الآن',
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade700),
-                      ),
-                    ),
-                  )
-                else
-                  ..._reviews.map((r) {
-                    final rating = (r['rating'] ?? 0);
-                    final ratingD = (rating is num)
-                        ? rating.toDouble()
-                        : double.tryParse(rating.toString()) ?? 0.0;
-
-                    final comment = (r['comment'] ?? '').toString().trim();
-                    final customerName = (r['client_name'] ?? '').toString().trim();
-                    final customerPhone = (r['client_phone'] ?? '').toString().trim();
-                    final customerLabel = customerName.isNotEmpty
-                        ? customerName
-                        : (customerPhone.isNotEmpty ? customerPhone : 'عميل');
-
-                    final createdAt = (r['created_at'] ?? '').toString().trim();
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  customerLabel,
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              if (widget.onOpenChat != null)
-                                IconButton(
-                                  tooltip: 'محادثة',
-                                  onPressed: () => widget.onOpenChat?.call(customerLabel),
-                                  icon: const Icon(
-                                    Icons.chat_bubble_outline,
-                                    size: 18,
-                                    color: _mainColor,
-                                  ),
-                                ),
-                              _buildStars(ratingD, size: 18),
-                            ],
-                          ),
-                          if (createdAt.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              createdAt,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 11,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          Text(
-                            comment.isEmpty ? '—' : comment,
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.black87),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-              ],
-            ),
-          );
+    final body = _buildBody();
 
     if (widget.embedded) {
       return Directionality(textDirection: TextDirection.rtl, child: body);
@@ -253,7 +341,7 @@ class _ReviewsTabState extends State<ReviewsTab> {
           backgroundColor: _mainColor,
           iconTheme: const IconThemeData(color: Colors.white),
           title: const Text(
-            'المراجعات',
+            'التقييمات',
             style: TextStyle(
               fontFamily: 'Cairo',
               color: Colors.white,
@@ -274,307 +362,6 @@ class _ReviewsTabState extends State<ReviewsTab> {
     );
   }
 }
-
-/*
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("تم الفرز حسب: $value")),
-                    );
-                  }
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // 💬 المراجعات
-          _buildReviewTile(
-            'أبو محمد',
-            4.5,
-            'خدمة رائعة وسرعة في التنفيذ 👌',
-            'قبل يومين',
-          ),
-          _buildReviewTile(
-            'نورة',
-            3.5,
-            'جيدة عمومًا لكن السعر مرتفع قليلاً.',
-            'قبل أسبوع',
-          ),
-          _buildReviewTile(
-            'عبدالله',
-            5.0,
-            'أفضل تجربة تعاملت معها، أنصح به.',
-            'قبل شهر',
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 📊 بند تقييم فردي
-  Widget _buildCriteriaRow(String title, double rating) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-            ),
-          ),
-          _buildStars(rating, size: 18),
-          const SizedBox(width: 6),
-          Text(
-            rating.toStringAsFixed(1),
-            style: const TextStyle(fontSize: 13, color: Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 💬 مراجعة عميل
-  Widget _buildReviewTile(
-    String name,
-    double rating,
-    String comment,
-    String date,
-  ) {
-    _replyControllers.putIfAbsent(name, () => TextEditingController());
-    final isLiked = _isLiked[name] ?? false;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.deepPurple.shade100,
-                  child: Text(
-                    name.characters.first,
-                    style: const TextStyle(
-                      color: Colors.deepPurple,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        date,
-                        style: const TextStyle(
-                          color: Colors.black45,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _buildStars(rating, size: 18),
-                const SizedBox(width: 4),
-                PopupMenuButton<String>(
-                  tooltip: 'خيارات التقييم',
-                  icon: const Icon(
-                    Icons.more_vert,
-                    color: Colors.deepPurple,
-                    size: 20,
-                  ),
-                  onSelected: (value) async {
-                    switch (value) {
-                      case 'like':
-                        _toggleLike(name);
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isLiked
-                                  ? 'تم إلغاء الإعجاب'
-                                  : 'تم تسجيل الإعجاب',
-                            ),
-                          ),
-                        );
-                        break;
-                      case 'reply':
-                        _toggleReply(name);
-                        break;
-                      case 'chat':
-                        await _openChat(name);
-                        break;
-                    }
-                  },
-                  itemBuilder: (context) {
-                    return [
-                      const PopupMenuItem<String>(
-                        enabled: false,
-                        child: Text(
-                          'خيارات التقييم',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.deepPurple,
-                          ),
-                        ),
-                      ),
-                      const PopupMenuDivider(),
-                      PopupMenuItem<String>(
-                        value: 'like',
-                        child: Row(
-                          children: [
-                            Icon(
-                              isLiked
-                                  ? Icons.thumb_up
-                                  : Icons.thumb_up_alt_outlined,
-                              size: 18,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 10),
-                            Text(isLiked ? 'إلغاء الإعجاب' : 'الإعجاب'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem<String>(
-                        value: 'reply',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.reply,
-                              size: 18,
-                              color: Colors.deepPurple,
-                            ),
-                            SizedBox(width: 10),
-                            Text('الرد على التقييم'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem<String>(
-                        value: 'chat',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 18,
-                              color: Colors.deepPurple,
-                            ),
-                            SizedBox(width: 10),
-                            Text('فتح محادثة مع العميل'),
-                          ],
-                        ),
-                      ),
-                    ];
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(comment, style: const TextStyle(fontSize: 14, height: 1.4)),
-            
-            // ✅ عرض الردود المرسلة
-            if (_replies[name] != null && _replies[name]!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ...(_replies[name]!.map((reply) {
-                return Container(
-                  margin: const EdgeInsets.only(top: 8, right: 16),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.deepPurple.withOpacity(0.2),
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.verified,
-                            size: 16,
-                            color: Colors.deepPurple,
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'رد من مقدم الخدمة',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Colors.deepPurple,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            reply['date'] ?? '',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.black45,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        reply['text'] ?? '',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList()),
-            ],
-            
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () {
-                  _toggleReply(name);
-                },
-                icon: const Icon(
-                  Icons.reply,
-                  size: 18,
-                  color: Colors.deepPurple,
-                ),
-                label: const Text(
-                  "رد",
-                  style: TextStyle(color: Colors.deepPurple),
-                ),
-              ),
-            ),
-            if (_isReplying[name] ?? false) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: _replyControllers[name],
-                decoration: InputDecoration(
                   hintText: "اكتب ردك هنا...",
                   filled: true,
                   fillColor: Colors.grey.shade100,

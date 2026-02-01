@@ -9,6 +9,8 @@ class SessionStorage {
   static const _emailKey = 'email';
   static const _firstNameKey = 'first_name';
   static const _lastNameKey = 'last_name';
+  static const _securityCodeKey = 'security_code';
+  static const _faceIdCodeKey = 'face_id_code';
 
   final FlutterSecureStorage _secure;
 
@@ -84,6 +86,12 @@ class SessionStorage {
     return token != null && token.trim().isNotEmpty;
   }
 
+  Future<void> saveSecurityCode(String code) => _secure.write(key: _securityCodeKey, value: code);
+  Future<String?> readSecurityCode() => _secure.read(key: _securityCodeKey);
+
+  Future<void> saveFaceIdCode(String code) => _secure.write(key: _faceIdCodeKey, value: code);
+  Future<String?> readFaceIdCode() => _secure.read(key: _faceIdCodeKey);
+
   Future<void> clear() async {
     await _secure.delete(key: _accessKey);
     await _secure.delete(key: _refreshKey);
@@ -93,5 +101,7 @@ class SessionStorage {
     await _secure.delete(key: _emailKey);
     await _secure.delete(key: _firstNameKey);
     await _secure.delete(key: _lastNameKey);
+    await _secure.delete(key: _securityCodeKey);
+    await _secure.delete(key: _faceIdCodeKey);
   }
 }
