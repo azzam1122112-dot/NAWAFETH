@@ -2,16 +2,26 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Count
+from django.db.models import Count, F, Max
+from django.db.models.functions import Coalesce
 
 from apps.accounts.models import User
 
 from apps.accounts.models import UserRole
 from apps.accounts.permissions import IsAtLeastClient, IsAtLeastPhoneOnly, IsAtLeastProvider
 
-from .models import Category, ProviderFollow, ProviderLike, ProviderProfile
+from .models import (
+	Category,
+	ProviderFollow,
+	ProviderLike,
+	ProviderPortfolioItem,
+	ProviderPortfolioLike,
+	ProviderProfile,
+)
 from .serializers import (
 	CategorySerializer,
+	ProviderPortfolioItemCreateSerializer,
+	ProviderPortfolioItemSerializer,
 	ProviderProfileSerializer,
 	ProviderProfileMeSerializer,
 	ProviderPublicSerializer,
@@ -94,10 +104,84 @@ class MyFollowingProvidersView(generics.ListAPIView):
 	def get_queryset(self):
 		return (
 			ProviderProfile.objects.filter(followers__user=self.request.user)
-			.annotate(followers_count=Count("followers"), likes_count=Count("likes"))
+			.annotate(
+				followers_count=Count("followers"),
+				likes_count=Count("likes"),
+				activity_at=Coalesce(
+					Max("portfolio_items__created_at"),
+					F("updated_at"),
+					F("created_at"),
+				),
+			)
 			.distinct()
-			.order_by("-id")
+			.order_by("-activity_at", "-id")
 		)
+
+
+class ProviderPortfolioListView(generics.ListAPIView):
+	"""Public portfolio items for a provider."""
+
+	serializer_class = ProviderPortfolioItemSerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		provider_id = self.kwargs.get("provider_id")
+		return ProviderPortfolioItem.objects.filter(provider_id=provider_id).order_by("-created_at", "-id")
+
+
+class MyProviderPortfolioListCreateView(generics.ListCreateAPIView):
+	"""Portfolio items for the authenticated provider (list + add)."""
+
+	permission_classes = [IsAtLeastProvider]
+
+	def get_queryset(self):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			return ProviderPortfolioItem.objects.none()
+		return ProviderPortfolioItem.objects.filter(provider=pp).order_by("-created_at", "-id")
+
+	def get_serializer_class(self):
+		if self.request.method == "POST":
+			return ProviderPortfolioItemCreateSerializer
+		return ProviderPortfolioItemSerializer
+
+	def perform_create(self, serializer):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			raise NotFound("provider_profile_not_found")
+		serializer.save(provider=pp)
+
+
+class MyLikedPortfolioItemsView(generics.ListAPIView):
+	"""Portfolio media the current user liked (Favorites: images/videos)."""
+
+	serializer_class = ProviderPortfolioItemSerializer
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def get_queryset(self):
+		return (
+			ProviderPortfolioItem.objects.filter(likes__user=self.request.user)
+			.select_related("provider", "provider__user")
+			.distinct()
+			.order_by("-created_at", "-id")
+		)
+
+
+class LikePortfolioItemView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def post(self, request, item_id: int):
+		item = generics.get_object_or_404(ProviderPortfolioItem, id=item_id)
+		ProviderPortfolioLike.objects.get_or_create(user=request.user, item=item)
+		return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class UnlikePortfolioItemView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def post(self, request, item_id: int):
+		ProviderPortfolioLike.objects.filter(user=request.user, item_id=item_id).delete()
+		return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
 class MyLikedProvidersView(generics.ListAPIView):

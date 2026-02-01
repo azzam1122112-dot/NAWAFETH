@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../models/category.dart';
+import '../models/provider_portfolio_item.dart';
 import '../models/provider.dart';
 import '../models/user_summary.dart';
 import 'api_config.dart';
@@ -81,6 +82,48 @@ class ProvidersApi {
       return list;
     } catch (e) {
       return [];
+    }
+  }
+
+  Future<List<ProviderPortfolioItem>> getMyFavoriteMedia() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/favorites/');
+      final list = (res.data as List)
+          .map((e) => ProviderPortfolioItem.fromJson(e))
+          .toList();
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<ProviderPortfolioItem>> getProviderPortfolio(int providerId) async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/$providerId/portfolio/');
+      final list = (res.data as List)
+          .map((e) => ProviderPortfolioItem.fromJson(e))
+          .toList();
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<bool> likePortfolioItem(int itemId) async {
+    try {
+      await _dio.post('${ApiConfig.apiPrefix}/providers/portfolio/$itemId/like/');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> unlikePortfolioItem(int itemId) async {
+    try {
+      await _dio.post('${ApiConfig.apiPrefix}/providers/portfolio/$itemId/unlike/');
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

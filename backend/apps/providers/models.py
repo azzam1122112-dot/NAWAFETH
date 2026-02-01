@@ -64,9 +64,49 @@ class ProviderProfile(models.Model):
     rating_count = models.PositiveIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
         return self.display_name
+
+
+class ProviderPortfolioItem(models.Model):
+    FILE_TYPE_CHOICES = (
+        ("image", "صورة"),
+        ("video", "فيديو"),
+    )
+
+    provider = models.ForeignKey(
+        ProviderProfile,
+        on_delete=models.CASCADE,
+        related_name="portfolio_items",
+    )
+    file_type = models.CharField(max_length=20, choices=FILE_TYPE_CHOICES)
+    file = models.FileField(upload_to="providers/portfolio/%Y/%m/")
+    caption = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"PortfolioItem {self.pk} ({self.file_type}) for Provider {self.provider_id}"
+
+
+class ProviderPortfolioLike(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="portfolio_likes",
+    )
+    item = models.ForeignKey(
+        ProviderPortfolioItem,
+        on_delete=models.CASCADE,
+        related_name="likes",
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "item"], name="uniq_like_user_portfolio_item"),
+        ]
 
 
 class ProviderCategory(models.Model):
