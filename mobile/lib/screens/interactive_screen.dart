@@ -168,9 +168,35 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       textDirection: TextDirection.rtl,
       child: Scaffold(
         drawer: const CustomDrawer(),
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(140),
-          child: Container(
+        appBar: AppBar(
+          elevation: 0,
+          centerTitle: false,
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          automaticallyImplyLeading: false,
+          titleSpacing: 16,
+          title: Text(
+            _myHandle ?? 'تفاعلي',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF3B215E),
+            ),
+          ),
+          actions: [
+            Builder(
+              builder: (scaffoldContext) {
+                return IconButton(
+                  onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                  icon: const Icon(Icons.menu_rounded, color: Color(0xFF3B215E)),
+                );
+              },
+            ),
+          ],
+          flexibleSpace: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topRight,
@@ -186,67 +212,30 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                   color: Color(0x14000000),
                   blurRadius: 14,
                   offset: Offset(0, 6),
-                )
+                ),
               ],
             ),
-            child: SafeArea(
-              bottom: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 44),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              _myHandle ?? 'تفاعلي',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF3B215E),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Builder(
-                          builder: (scaffoldContext) {
-                            return IconButton(
-                              onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
-                              icon: const Icon(Icons.menu_rounded, color: Color(0xFF3B215E)),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(230),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0x2A7C3AED)),
-                      ),
-                      child: TabBar(
-                        controller: _tabController,
-                        labelColor: const Color(0xFF5A2FA6),
-                        unselectedLabelColor: const Color(0xFF8C7AA7),
-                        indicatorColor: const Color(0xFF5A2FA6),
-                        indicatorWeight: 3,
-                        labelStyle: tabStyle,
-                        splashFactory: NoSplash.splashFactory,
-                        tabs: tabs,
-                      ),
-                    ),
-                  ),
-                ],
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(56),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(230),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0x2A7C3AED)),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  labelColor: const Color(0xFF5A2FA6),
+                  unselectedLabelColor: const Color(0xFF8C7AA7),
+                  indicatorColor: const Color(0xFF5A2FA6),
+                  indicatorWeight: 3,
+                  labelStyle: tabStyle,
+                  splashFactory: NoSplash.splashFactory,
+                  tabs: tabs,
+                ),
               ),
             ),
           ),
