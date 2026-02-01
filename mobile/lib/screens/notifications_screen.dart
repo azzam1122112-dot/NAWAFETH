@@ -3,6 +3,7 @@ import 'notification_settings_screen.dart'; // ✅ صفحة الإعدادات
 import '../utils/auth_guard.dart';
 import '../models/app_notification.dart';
 import '../services/notifications_api.dart';
+import '../services/role_controller.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -29,12 +30,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.initState();
     _loadInitial();
     _scroll.addListener(_onScroll);
+    RoleController.instance.notifier.addListener(_onRoleChanged);
   }
 
   @override
   void dispose() {
+    RoleController.instance.notifier.removeListener(_onRoleChanged);
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _onRoleChanged() {
+    // Refresh list when switching client/provider.
+    _loadInitial();
   }
 
   void _onScroll() {

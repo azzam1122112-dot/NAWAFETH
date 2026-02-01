@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
 import 'chat_detail_screen.dart';
+import '../services/role_controller.dart';
 
 class MyChatsScreen extends StatefulWidget {
   const MyChatsScreen({super.key});
@@ -18,9 +18,12 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
 
   bool _isProviderAccount = false;
 
+  void _handleRoleChange() {
+    _loadAccountType();
+  }
+
   Future<void> _loadAccountType() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isProvider = prefs.getBool('isProvider') ?? false;
+    final isProvider = RoleController.instance.notifier.value.isProvider;
     if (!mounted) return;
     setState(() {
       _isProviderAccount = isProvider;
@@ -33,7 +36,14 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   @override
   void initState() {
     super.initState();
+    RoleController.instance.notifier.addListener(_handleRoleChange);
     _loadAccountType();
+  }
+
+  @override
+  void dispose() {
+    RoleController.instance.notifier.removeListener(_handleRoleChange);
+    super.dispose();
   }
 
   List<Map<String, dynamic>> chats = [

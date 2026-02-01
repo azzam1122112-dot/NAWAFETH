@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 
 import 'notifications_api.dart';
+import 'role_controller.dart';
 
 class NotificationsBadgeController with WidgetsBindingObserver {
   NotificationsBadgeController._();
@@ -28,7 +29,13 @@ class NotificationsBadgeController with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
     _active = true;
+    RoleController.instance.notifier.addListener(_onRoleChanged);
     _startTimer();
+    refresh();
+  }
+
+  void _onRoleChanged() {
+    // Role switched (client/provider). Refresh unread count for the active account.
     refresh();
   }
 

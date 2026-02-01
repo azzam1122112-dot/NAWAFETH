@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/account_api.dart';
 import '../../services/api_config.dart';
 import '../../services/providers_api.dart';
+import '../../services/role_controller.dart';
 
 import '../../widgets/app_bar.dart';
 import '../../widgets/bottom_nav.dart';
@@ -585,8 +586,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('isProvider', false);
+                    await RoleController.instance.setProviderMode(false);
                     
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -615,7 +615,11 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                         ),
                       );
                       
-                      Navigator.pushReplacementNamed(context, '/profile');
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        '/profile',
+                        (route) => false,
+                      );
                     }
                   },
                   borderRadius: BorderRadius.circular(30),

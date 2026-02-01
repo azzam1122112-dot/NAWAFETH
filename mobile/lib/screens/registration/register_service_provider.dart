@@ -11,9 +11,8 @@ import 'steps/contact_info_step.dart';
 
 import '../../services/providers_api.dart';
 import '../../services/account_api.dart';
+import '../../services/role_controller.dart';
 
-// لوحة المزود بعد التسجيل
-import '../provider_dashboard/provider_home_screen.dart';
 import '../signup_screen.dart';
 
 class RegisterServiceProviderPage extends StatefulWidget {
@@ -283,7 +282,7 @@ class _RegisterServiceProviderPageState
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isProviderRegistered', true);
-      await prefs.setBool('isProvider', true);
+      await RoleController.instance.setProviderMode(true);
       await prefs.remove(_draftPrefsKey);
 
       if (!mounted) return;
@@ -681,14 +680,14 @@ class _RegisterServiceProviderPageState
                   onPressed: () async {
                     // ✅ حفظ نوع المستخدم كمقدم خدمة
                     final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('isProvider', true);
                     await prefs.setBool('isProviderRegistered', true);
+                    await RoleController.instance.setProviderMode(true);
                     
-                    Navigator.pushReplacement(
+                    if (!context.mounted) return;
+                    Navigator.pushNamedAndRemoveUntil(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const ProviderHomeScreen(),
-                      ),
+                      '/profile',
+                      (route) => false,
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -709,8 +708,8 @@ class _RegisterServiceProviderPageState
                   onPressed: () async {
                     // ✅ حفظ نوع المستخدم كمقدم خدمة حتى لو أغلق الآن
                     final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('isProvider', true);
                     await prefs.setBool('isProviderRegistered', true);
+                    await RoleController.instance.setProviderMode(true);
                     
                     setState(() => _showSuccessOverlay = false);
                   },

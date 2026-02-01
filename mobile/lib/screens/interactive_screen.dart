@@ -68,25 +68,32 @@ class _InteractiveScreenState extends State<InteractiveScreen>
   }
 
   Future<void> _loadCapabilitiesAndReload() async {
-    // Check if current user is provider to adjust API calls if needed
+    // Always load identity (and only auto-detect mode when widget.mode == auto).
     try {
       final me = await _accountApi.me();
       final hasProviderProfile = me['has_provider_profile'] == true;
       final username = (me['username'] ?? '').toString().trim();
       if (!mounted) return;
       
-      final newMode = hasProviderProfile ? InteractiveMode.provider : InteractiveMode.client;
+      final newMode = widget.mode == InteractiveMode.auto
+          ? (hasProviderProfile ? InteractiveMode.provider : InteractiveMode.client)
+          : widget.mode;
+
+      // Defensive: never allow provider mode if backend says no provider profile.
+      final effectiveMode = (newMode == InteractiveMode.provider && !hasProviderProfile)
+          ? InteractiveMode.client
+          : newMode;
 
       // Re-init tab controller with correct length based on mode.
       // Swap controllers first, then dispose the old one to avoid
       // "A TabController was used after being disposed" during rebuilds.
-      final newLength = newMode == InteractiveMode.provider ? 3 : 2;
+      final newLength = effectiveMode == InteractiveMode.provider ? 3 : 2;
       final newIndex = widget.initialTabIndex.clamp(0, newLength - 1);
       final newController = TabController(length: newLength, vsync: this, initialIndex: newIndex);
       final oldController = _tabController;
 
       setState(() {
-        _effectiveMode = newMode;
+        _effectiveMode = effectiveMode;
         _capabilitiesLoaded = true;
         _myHandle = username.isEmpty ? null : '@$username';
         _tabController = newController;
@@ -95,13 +102,19 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       
     } catch (_) {
       if (!mounted) return;
-      // Default fallback to Client mode
+      // If backend call fails (offline/401/etc), fall back to the requested mode.
+      // This keeps client/provider behaving like separate accounts.
+      final effectiveMode = widget.mode == InteractiveMode.provider
+          ? InteractiveMode.provider
+          : InteractiveMode.client;
 
-      final newController = TabController(length: 2, vsync: this, initialIndex: 0);
+      final newLength = effectiveMode == InteractiveMode.provider ? 3 : 2;
+      final newIndex = widget.initialTabIndex.clamp(0, newLength - 1);
+      final newController = TabController(length: newLength, vsync: this, initialIndex: newIndex);
       final oldController = _tabController;
 
       setState(() {
-        _effectiveMode = InteractiveMode.client;
+        _effectiveMode = effectiveMode;
         _capabilitiesLoaded = true;
         _myHandle = null;
         _tabController = newController;

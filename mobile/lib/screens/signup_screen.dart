@@ -8,6 +8,7 @@ import '../widgets/app_bar.dart';
 import '../services/auth_api.dart';
 import '../services/session_storage.dart';
 import '../services/role_sync.dart';
+import '../services/role_controller.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
@@ -111,6 +112,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       // Best-effort: ensure local role flags match backend.
       try {
         await RoleSync.sync(accessToken: accessToken);
+        await RoleController.instance.refreshFromPrefs();
       } catch (_) {
         // ignore
       }

@@ -7,6 +7,7 @@ import '../services/account_api.dart';
 import '../services/session_storage.dart';
 import '../services/app_snackbar.dart';
 import '../services/role_sync.dart';
+import '../services/role_controller.dart';
 import 'twofa_screen.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
@@ -61,6 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // Best-effort: sync provider/client role flags for UI.
       try {
         await RoleSync.sync(accessToken: result.access);
+        await RoleController.instance.refreshFromPrefs();
       } catch (_) {
         // ignore
       }

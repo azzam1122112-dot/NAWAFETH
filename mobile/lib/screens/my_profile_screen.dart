@@ -13,6 +13,7 @@ import 'provider_dashboard/provider_home_screen.dart';
 import '../widgets/custom_drawer.dart';
 import '../services/account_api.dart';
 import '../services/session_storage.dart';
+import '../services/role_controller.dart';
 
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
@@ -70,6 +71,8 @@ class _MyProfileScreenState extends State<MyProfileScreen>
       if (!isProviderRegisteredBackend) {
         await prefs.setBool('isProvider', false);
       }
+
+      await RoleController.instance.refreshFromPrefs();
 
       // Sync identity + real counters (best-effort)
       String? nonEmpty(dynamic v) {
@@ -542,7 +545,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                           return;
                                         }
 
-                                        await prefs.setBool('isProvider', true);
+                                        await RoleController.instance.setProviderMode(true);
 
                                         if (!context.mounted) return;
 
@@ -573,6 +576,14 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                           _isLoading = true;
                                         });
                                         await _checkUserType();
+
+                                        if (!context.mounted) return;
+                                        // Reset stack so all tabs/routes reflect provider account.
+                                        Navigator.pushNamedAndRemoveUntil(
+                                          context,
+                                          '/profile',
+                                          (route) => false,
+                                        );
                                       },
                                       borderRadius: BorderRadius.circular(30),
                                       child: Padding(
@@ -754,10 +765,16 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                         value: favoritesText,
                         onTap: () {
                           // ينتقل لتفاعلي > المحفوظات
+                          final isProviderAccount = RoleController.instance.notifier.value.isProvider;
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const InteractiveScreen(initialTabIndex: 1),
+                              builder: (_) => InteractiveScreen(
+                                mode: isProviderAccount
+                                    ? InteractiveMode.provider
+                                    : InteractiveMode.client,
+                                initialTabIndex: 1,
+                              ),
                             ),
                           );
                         },
@@ -768,10 +785,16 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                         value: followingText,
                         onTap: () {
                           // ينتقل لتفاعلي > من أتابع
+                          final isProviderAccount = RoleController.instance.notifier.value.isProvider;
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const InteractiveScreen(initialTabIndex: 0),
+                              builder: (_) => InteractiveScreen(
+                                mode: isProviderAccount
+                                    ? InteractiveMode.provider
+                                    : InteractiveMode.client,
+                                initialTabIndex: 0,
+                              ),
                             ),
                           );
                         },
@@ -781,10 +804,16 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                         icon: Icons.thumb_up_alt_outlined,
                         value: interactionText,
                         onTap: () {
+                          final isProviderAccount = RoleController.instance.notifier.value.isProvider;
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const InteractiveScreen(initialTabIndex: 0),
+                              builder: (_) => InteractiveScreen(
+                                mode: isProviderAccount
+                                    ? InteractiveMode.provider
+                                    : InteractiveMode.client,
+                                initialTabIndex: 0,
+                              ),
                             ),
                           );
                         },

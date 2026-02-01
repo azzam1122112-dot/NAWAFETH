@@ -7,6 +7,9 @@ import 'screens/my_chats_screen.dart';
 import 'screens/interactive_screen.dart';
 import 'screens/my_profile_screen.dart';
 import 'screens/add_service_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/provider_dashboard/provider_home_screen.dart';
+import 'screens/provider_dashboard/provider_orders_screen.dart';
 
 // 🟢 الشاشات الجديدة
 import 'screens/login_screen.dart';
@@ -20,6 +23,7 @@ import 'screens/onboarding_screen.dart';
 
 import 'services/app_snackbar.dart';
 import 'services/notifications_badge_controller.dart';
+import 'services/role_controller.dart';
 
 /// 🌙 وحدة تحكم للثيم واللغة
 class MyThemeController extends InheritedWidget {
@@ -45,8 +49,9 @@ class MyThemeController extends InheritedWidget {
       oldWidget.themeMode != themeMode || oldWidget.locale != locale;
 }
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await RoleController.instance.initialize();
   NotificationsBadgeController.instance.initialize();
   runApp(const NawafethApp());
 }
@@ -129,11 +134,36 @@ class _NawafethAppState extends State<NawafethApp> {
         initialRoute: '/onboarding', // شاشة البداية عند أول تشغيل
         routes: {
           '/onboarding': (context) => const OnboardingScreen(),
-          '/home': (context) => const HomeScreen(),
+          '/home': (context) => ValueListenableBuilder<RoleState>(
+            valueListenable: RoleController.instance.notifier,
+            builder: (context, role, _) {
+              return role.isProvider ? const ProviderHomeScreen() : const HomeScreen();
+            },
+          ),
           '/chats': (context) => const MyChatsScreen(),
-          '/orders': (context) => const OrdersHubScreen(),
-          '/interactive': (context) => const InteractiveScreen(),
-          '/profile': (context) => const MyProfileScreen(),
+          '/orders': (context) => ValueListenableBuilder<RoleState>(
+            valueListenable: RoleController.instance.notifier,
+            builder: (context, role, _) {
+              return role.isProvider
+                  ? const ProviderOrdersScreen()
+                  : const OrdersHubScreen();
+            },
+          ),
+          '/interactive': (context) => ValueListenableBuilder<RoleState>(
+            valueListenable: RoleController.instance.notifier,
+            builder: (context, role, _) {
+              return InteractiveScreen(
+                mode: role.isProvider ? InteractiveMode.provider : InteractiveMode.client,
+              );
+            },
+          ),
+          '/profile': (context) => ValueListenableBuilder<RoleState>(
+            valueListenable: RoleController.instance.notifier,
+            builder: (context, role, _) {
+              return role.isProvider ? const ProviderHomeScreen() : const MyProfileScreen();
+            },
+          ),
+          '/notifications': (context) => const NotificationsScreen(),
           '/add_service': (context) => const AddServiceScreen(),
 
           // ✅ الشاشات الجديدة

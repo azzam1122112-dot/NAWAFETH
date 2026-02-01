@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
-
-// ✅ استدعاء شاشة الإشعارات
-import '../screens/notifications_screen.dart';
-import '../screens/my_chats_screen.dart';
 import '../services/notifications_badge_controller.dart';
 
 class NotificationsIconButton extends StatefulWidget {
@@ -33,12 +29,7 @@ class _NotificationsIconButtonState extends State<NotificationsIconButton> {
                 color: widget.iconColor,
               ),
               onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationsScreen(),
-                  ),
-                );
+                await Navigator.pushNamed(context, '/notifications');
                 await NotificationsBadgeController.instance.refresh();
               },
             ),
@@ -224,12 +215,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               IconButton(
                 icon: Icon(Icons.chat_bubble_outline, color: iconColor),
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MyChatsScreen(),
-                    ),
-                  );
+                  Navigator.pushNamed(context, '/chats');
                 },
               ),
             ],
