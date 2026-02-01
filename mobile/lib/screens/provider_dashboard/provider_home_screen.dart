@@ -396,7 +396,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           Container(width: 1, height: 40, color: Colors.grey[200]),
           _statItem(
              label: 'التقييم', 
-             value: _ratingAvg.toStringAsFixed(1),
+             value: _ratingCount > 0
+                ? '${_ratingAvg.toStringAsFixed(1)} (${_ratingCount})'
+                : _ratingAvg.toStringAsFixed(1),
              icon: Icons.star_border,
              color: Colors.amber
           ),

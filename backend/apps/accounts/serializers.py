@@ -102,6 +102,40 @@ class CompleteRegistrationSerializer(serializers.Serializer):
         return attrs
 
 
+class MeUpdateSerializer(serializers.Serializer):
+    """Update the authenticated user's basic fields (no password change here)."""
+
+    phone = serializers.CharField(max_length=20, required=False)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    username = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True)
+    first_name = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True)
+    last_name = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True)
+
+    def validate_phone(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("رقم الجوال مطلوب")
+        return value
+
+    def validate_username(self, value: str | None):
+        if value is None:
+            return None
+        value = (value or "").strip()
+        return value or None
+
+    def validate_first_name(self, value: str | None):
+        if value is None:
+            return None
+        value = (value or "").strip()
+        return value or None
+
+    def validate_last_name(self, value: str | None):
+        if value is None:
+            return None
+        value = (value or "").strip()
+        return value or None
+
+
 class WalletSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     balance = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)

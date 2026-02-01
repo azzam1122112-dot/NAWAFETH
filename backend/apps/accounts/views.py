@@ -14,6 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .models import OTP, User, UserRole, Wallet
 from .serializers import (
     CompleteRegistrationSerializer,
+    MeUpdateSerializer,
     OTPSendSerializer,
     OTPVerifySerializer,
     WalletSerializer,
@@ -23,6 +24,71 @@ from .permissions import IsAtLeastPhoneOnly
 from .otp import generate_otp_code, otp_expiry
 
 logger = logging.getLogger(__name__)
+
+
+def _me_payload(user: User) -> dict:
+    has_provider_profile = False
+    try:
+        # related_name on ProviderProfile.user is "provider_profile"
+        has_provider_profile = bool(getattr(user, "provider_profile", None))
+    except Exception:
+        has_provider_profile = False
+
+    # Counts for client-side profile (best-effort)
+    following_count = 0
+    likes_count = 0
+    try:
+        following_count = user.provider_follows.count()
+    except Exception:
+        following_count = 0
+    try:
+        likes_count = user.provider_likes.count()
+    except Exception:
+        likes_count = 0
+
+    provider_profile_id = None
+    provider_display_name = None
+    provider_city = None
+    provider_followers_count = 0
+    provider_likes_received_count = 0
+    provider_rating_avg = None
+    provider_rating_count = 0
+    if has_provider_profile:
+        try:
+            pp = user.provider_profile
+            provider_profile_id = pp.id
+            provider_display_name = pp.display_name
+            provider_city = pp.city
+            provider_followers_count = pp.followers.count()
+            provider_likes_received_count = pp.likes.count()
+            provider_rating_avg = pp.rating_avg
+            provider_rating_count = pp.rating_count
+        except Exception:
+            pass
+
+    role_state = getattr(user, "role_state", None)
+    is_provider = bool(role_state == UserRole.PROVIDER) or has_provider_profile
+
+    return {
+        "id": user.id,
+        "phone": user.phone,
+        "email": user.email,
+        "username": user.username,
+        "first_name": getattr(user, "first_name", None),
+        "last_name": getattr(user, "last_name", None),
+        "role_state": role_state,
+        "has_provider_profile": has_provider_profile,
+        "is_provider": is_provider,
+        "following_count": following_count,
+        "likes_count": likes_count,
+        "provider_profile_id": provider_profile_id,
+        "provider_display_name": provider_display_name,
+        "provider_city": provider_city,
+        "provider_followers_count": provider_followers_count,
+        "provider_likes_received_count": provider_likes_received_count,
+        "provider_rating_avg": provider_rating_avg,
+        "provider_rating_count": provider_rating_count,
+    }
 
 
 def _client_ip(request) -> str | None:
@@ -83,7 +149,7 @@ class ThrottledTokenRefreshView(TokenRefreshView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "refresh"
 
-@api_view(["GET", "DELETE"])
+@api_view(["GET", "DELETE", "PATCH", "PUT"])
 @permission_classes([IsAuthenticated])
 def me_view(request):
     user = request.user
@@ -92,70 +158,31 @@ def me_view(request):
         user.delete()
         return Response({"ok": True}, status=status.HTTP_200_OK)
 
-    has_provider_profile = False
-    try:
-        # related_name on ProviderProfile.user is "provider_profile"
-        has_provider_profile = bool(getattr(user, "provider_profile", None))
-    except Exception:
-        has_provider_profile = False
+    if request.method in ("PATCH", "PUT"):
+        serializer = MeUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-    # Counts for client-side profile (best-effort)
-    following_count = 0
-    likes_count = 0
-    try:
-        following_count = user.provider_follows.count()
-    except Exception:
-        following_count = 0
-    try:
-        likes_count = user.provider_likes.count()
-    except Exception:
-        likes_count = 0
+        # Uniqueness safeguard for phone.
+        if "phone" in data:
+            new_phone = data.get("phone")
+            if new_phone and new_phone != user.phone:
+                if User.objects.filter(phone=new_phone).exclude(pk=user.pk).exists():
+                    return Response(
+                        {"phone": ["رقم الجوال مستخدم مسبقاً"]},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                user.phone = new_phone
 
-    provider_profile_id = None
-    provider_display_name = None
-    provider_city = None
-    provider_followers_count = 0
-    provider_likes_received_count = 0
-    provider_rating_avg = None
-    provider_rating_count = 0
-    if has_provider_profile:
-        try:
-            pp = user.provider_profile
-            provider_profile_id = pp.id
-            provider_display_name = pp.display_name
-            provider_city = pp.city
-            provider_followers_count = pp.followers.count()
-            provider_likes_received_count = pp.likes.count()
-            provider_rating_avg = pp.rating_avg
-            provider_rating_count = pp.rating_count
-        except Exception:
-            pass
+        # Optional fields (allow clearing by sending empty string)
+        for field in ("email", "username", "first_name", "last_name"):
+            if field in data:
+                val = data.get(field)
+                setattr(user, field, val)
 
-    role_state = getattr(user, "role_state", None)
-    is_provider = bool(role_state == UserRole.PROVIDER) or has_provider_profile
+        user.save()
 
-    return Response(
-        {
-            "id": user.id,
-            "phone": user.phone,
-            "email": user.email,
-            "username": user.username,
-            "first_name": getattr(user, "first_name", None),
-            "last_name": getattr(user, "last_name", None),
-            "role_state": role_state,
-            "has_provider_profile": has_provider_profile,
-            "is_provider": is_provider,
-            "following_count": following_count,
-            "likes_count": likes_count,
-            "provider_profile_id": provider_profile_id,
-            "provider_display_name": provider_display_name,
-            "provider_city": provider_city,
-            "provider_followers_count": provider_followers_count,
-            "provider_likes_received_count": provider_likes_received_count,
-            "provider_rating_avg": provider_rating_avg,
-            "provider_rating_count": provider_rating_count,
-        }
-    )
+    return Response(_me_payload(user))
 
 
 @api_view(["POST"])

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:dio/dio.dart';
+
 import '../services/account_api.dart';
 import '../services/session_storage.dart';
 
@@ -152,6 +154,38 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
           const SnackBar(content: Text('تغيير كلمة المرور غير مدعوم من هذه الشاشة حالياً')),
         );
       }
+    } on DioException catch (e) {
+      String message = 'تعذر حفظ البيانات، تحقق من الاتصال ثم أعد المحاولة';
+      final data = e.response?.data;
+      if (data is Map) {
+        final detail = (data['detail'] ?? '').toString().trim();
+        if (detail.isNotEmpty) {
+          message = detail;
+        } else {
+          // Try to show first field error (e.g., phone/username/email).
+          for (final entry in data.entries) {
+            final key = entry.key?.toString();
+            final val = entry.value;
+            if (key == null) continue;
+            if (val is List && val.isNotEmpty) {
+              message = val.first.toString();
+              break;
+            }
+            if (val is String && val.trim().isNotEmpty) {
+              message = val.trim();
+              break;
+            }
+          }
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

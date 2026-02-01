@@ -180,9 +180,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   String get providerSubCategory =>
       widget.providerSubCategory ?? 'استشارات قانونية';
 
-  double get providerRating => _fullProfile?.ratingAvg ?? widget.providerRating ?? 4.9;
+  double get providerRating => _fullProfile?.ratingAvg ?? widget.providerRating ?? 0.0;
 
-  int get providerOperations => _fullProfile?.ratingCount ?? widget.providerOperations ?? 120;
+  int get providerOperations => _fullProfile?.ratingCount ?? widget.providerOperations ?? 0;
 
   String get providerImage => widget.providerImage ?? 'assets/images/8410.jpeg';
 
