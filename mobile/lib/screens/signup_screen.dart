@@ -107,6 +107,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: _emailController.text.trim(),
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
+        phone: (await const SessionStorage().readPhone())?.trim(),
       );
 
       // Best-effort: ensure local role flags match backend.

@@ -40,6 +40,22 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
 
   Timer? _draftTimer;
 
+  Future<void> _saveDraftNow() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = <String, dynamic>{
+        'selected_languages': selectedLanguages,
+        'custom_languages': customLanguages,
+        'lat': _selectedCenter?.latitude,
+        'lng': _selectedCenter?.longitude,
+        'location_text': locationController.text.trim(),
+      };
+      await prefs.setString(_draftKey, jsonEncode(data));
+    } catch (_) {
+      // ignore
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +88,8 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         locationController.text =
             '(${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)})';
       });
+      // Keep local draft in sync when backend location changes.
+      await _saveDraftNow();
       _updateSectionDone();
     } catch (_) {
       // Best-effort.
@@ -91,12 +109,6 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       List<String> asStringList(dynamic v) {
         if (v is! List) return <String>[];
         return v.map((e) => (e ?? '').toString()).where((s) => s.trim().isNotEmpty).toList();
-      }
-
-      int? asInt(dynamic v) {
-        if (v is int) return v;
-        if (v is num) return v.toInt();
-        return int.tryParse((v ?? '').toString());
       }
 
       double? asDouble(dynamic v) {
@@ -181,6 +193,29 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       return;
     }
 
+    // Ensure draft + backend location are in sync best-effort.
+    () async {
+      // If user typed coordinates but didn't use the picker, try to parse them.
+      if (_selectedCenter == null) {
+        final text = locationController.text.trim();
+        final m = RegExp(r'\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?').firstMatch(text);
+        if (m != null) {
+          final lat = double.tryParse(m.group(1) ?? '');
+          final lng = double.tryParse(m.group(2) ?? '');
+          if (lat != null && lng != null) {
+            _selectedCenter = LatLng(lat, lng);
+          }
+        }
+      }
+
+      await _saveDraftNow();
+
+      final point = _selectedCenter;
+      if (point != null) {
+        await _saveLocationToBackendBestEffort(point, showSnack: false);
+      }
+    }();
+
     _scheduleDraftSave();
     widget.onNext();
   }
@@ -207,12 +242,13 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
           '(${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)})';
     });
 
+    await _saveDraftNow();
     await _saveLocationToBackendBestEffort(point);
     _scheduleDraftSave();
     _updateSectionDone();
   }
 
-  Future<void> _saveLocationToBackendBestEffort(LatLng point) async {
+  Future<void> _saveLocationToBackendBestEffort(LatLng point, {bool showSnack = true}) async {
     if (_savingLocation) return;
     setState(() => _savingLocation = true);
     try {
@@ -221,6 +257,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         'lng': point.longitude,
       });
       if (!mounted) return;
+      if (!showSnack) return;
       if (res == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر حفظ الموقع حالياً.')),
@@ -232,9 +269,11 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_formatDioError(e))),
-      );
+      if (showSnack) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_formatDioError(e))),
+        );
+      }
     } finally {
       if (mounted) setState(() => _savingLocation = false);
     }

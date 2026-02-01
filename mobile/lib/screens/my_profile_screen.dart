@@ -97,10 +97,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         email: email,
         firstName: firstName,
         lastName: lastName,
+        phone: phone,
       );
-      if (phone != null) {
-        await const SessionStorage().savePhone(phone);
-      }
+      
 
       int? asInt(dynamic v) {
         if (v is int) return v;

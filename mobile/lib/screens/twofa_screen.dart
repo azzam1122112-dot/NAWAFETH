@@ -146,6 +146,7 @@ class _TwoFAScreenState extends State<TwoFAScreen> {
           email: nonEmpty(me['email']),
           firstName: nonEmpty(me['first_name']),
           lastName: nonEmpty(me['last_name']),
+          phone: nonEmpty(me['phone']),
         );
       } catch (_) {
         // ignore

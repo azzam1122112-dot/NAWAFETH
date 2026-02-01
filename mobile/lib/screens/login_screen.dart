@@ -54,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
           email: nonEmpty(me['email']),
           firstName: nonEmpty(me['first_name']),
           lastName: nonEmpty(me['last_name']),
+          phone: nonEmpty(me['phone']),
         );
       } catch (_) {
         // ignore

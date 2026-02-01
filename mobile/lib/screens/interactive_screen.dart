@@ -5,6 +5,8 @@ import '../models/provider_portfolio_item.dart';
 import '../models/user_summary.dart';
 import '../services/account_api.dart';
 import '../services/providers_api.dart';
+import '../constants/colors.dart';
+import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
 import 'network_video_player_screen.dart';
@@ -183,51 +185,59 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         drawer: const CustomDrawer(),
         appBar: AppBar(
           elevation: 0,
+          scrolledUnderElevation: 0,
+          toolbarHeight: 60,
           centerTitle: false,
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           automaticallyImplyLeading: false,
-          titleSpacing: 16,
-          title: Text(
-            _myHandle ?? 'تفاعلي',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF3B215E),
-            ),
-          ),
-          actions: [
-            Builder(
-              builder: (scaffoldContext) {
-                return IconButton(
-                  onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
-                  icon: const Icon(Icons.menu_rounded, color: Color(0xFF3B215E)),
-                );
-              },
-            ),
-          ],
-          flexibleSpace: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [
-                  Color(0xFFF7ECFF),
-                  Color(0xFFFDEBFA),
-                  Color(0xFFF6F3FF),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 14,
-                  offset: Offset(0, 6),
+          titleSpacing: 0,
+          title: Builder(
+            builder: (appBarContext) {
+              final theme = Theme.of(appBarContext);
+              final isDark = theme.brightness == Brightness.dark;
+              final iconColor = isDark ? Colors.white : AppColors.primaryDark;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.menu, color: iconColor),
+                      onPressed: () {
+                        final scaffold = Scaffold.maybeOf(appBarContext);
+                        if (scaffold?.hasDrawer ?? false) {
+                          scaffold!.openDrawer();
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _myHandle ?? 'تفاعلي',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                          color: isDark ? Colors.white : AppColors.deepPurple,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    NotificationsIconButton(iconColor: iconColor),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.chat_bubble_outline, color: iconColor),
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/chats');
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(56),

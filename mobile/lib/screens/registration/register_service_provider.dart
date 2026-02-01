@@ -12,6 +12,7 @@ import 'steps/contact_info_step.dart';
 import '../../services/providers_api.dart';
 import '../../services/account_api.dart';
 import '../../services/role_controller.dart';
+import '../../services/session_storage.dart';
 
 import '../signup_screen.dart';
 
@@ -160,6 +161,22 @@ class _RegisterServiceProviderPageState
   }
 
   Future<void> _prefillFromAccount() async {
+    // Fast prefill from local storage (so fields are populated immediately).
+    try {
+      const storage = SessionStorage();
+      final localFull = (await storage.readFullName())?.trim();
+      final localPhone = (await storage.readPhone())?.trim();
+
+      if (_phoneCtrl.text.trim().isEmpty && localPhone != null && localPhone.isNotEmpty) {
+        _phoneCtrl.text = localPhone;
+      }
+      if (_displayNameCtrl.text.trim().isEmpty && localFull != null && localFull.isNotEmpty) {
+        _displayNameCtrl.text = localFull;
+      }
+    } catch (_) {
+      // ignore
+    }
+
     try {
       final me = await AccountApi().me();
       final phone = (me['phone'] ?? '').toString().trim();
@@ -173,6 +190,19 @@ class _RegisterServiceProviderPageState
       if (_displayNameCtrl.text.trim().isEmpty && fullName.isNotEmpty) {
         _displayNameCtrl.text = fullName;
       }
+
+      // Persist latest identity best-effort.
+      String? nonEmpty(dynamic v) {
+        final s = (v ?? '').toString().trim();
+        return s.isEmpty ? null : s;
+      }
+      await const SessionStorage().saveProfile(
+        username: nonEmpty(me['username']),
+        email: nonEmpty(me['email']),
+        firstName: nonEmpty(me['first_name']),
+        lastName: nonEmpty(me['last_name']),
+        phone: nonEmpty(me['phone']),
+      );
       await _saveDraft();
     } catch (_) {
       // ignore

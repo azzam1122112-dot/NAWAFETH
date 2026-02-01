@@ -283,6 +283,25 @@ class _ProviderProfileCompletionScreenState
         return;
       }
 
+      // Prefill from local secure storage so the UI shows something even offline.
+      try {
+        const storage = SessionStorage();
+        final localFull = (await storage.readFullName())?.trim();
+        final localUser = (await storage.readUsername())?.trim();
+        final localEmail = (await storage.readEmail())?.trim();
+        final localPhone = (await storage.readPhone())?.trim();
+        if (mounted) {
+          setState(() {
+            _fullName = (localFull == null || localFull.isEmpty) ? _fullName : localFull;
+            _username = (localUser == null || localUser.isEmpty) ? _username : localUser;
+            _email = (localEmail == null || localEmail.isEmpty) ? _email : localEmail;
+            _phone = (localPhone == null || localPhone.isEmpty) ? _phone : localPhone;
+          });
+        }
+      } catch (_) {
+        // ignore
+      }
+
       final me = await AccountApi().me();
 
       String? nonEmpty(dynamic v) {
@@ -301,6 +320,19 @@ class _ProviderProfileCompletionScreenState
         if (last != null) last,
       ];
       final fullName = fullNameParts.isEmpty ? null : fullNameParts.join(' ');
+
+      // Persist identity for other screens (profile / provider registration completion).
+      try {
+        await const SessionStorage().saveProfile(
+          username: username,
+          email: email,
+          firstName: first,
+          lastName: last,
+          phone: phone,
+        );
+      } catch (_) {
+        // ignore
+      }
 
       if (!mounted) return;
       setState(() {

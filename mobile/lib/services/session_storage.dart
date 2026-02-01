@@ -30,6 +30,7 @@ class SessionStorage {
     String? email,
     String? firstName,
     String? lastName,
+    String? phone,
   }) async {
     if (username != null) {
       await _secure.write(key: _usernameKey, value: username);
@@ -42,6 +43,9 @@ class SessionStorage {
     }
     if (lastName != null) {
       await _secure.write(key: _lastNameKey, value: lastName);
+    }
+    if (phone != null) {
+      await _secure.write(key: _phoneKey, value: phone);
     }
   }
 
