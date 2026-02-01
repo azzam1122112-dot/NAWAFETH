@@ -94,6 +94,27 @@ class _ProviderProfileCompletionScreenState
     }
   }
 
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    await _bootstrap();
+    await _reloadSectionFlags();
+  }
+
+  String? _nextRecommendedSectionId() {
+    // ترتيب واضح: الأهم أولاً ثم التحسينات الاختيارية.
+    const important = <String>["service_details", "contact_full", "lang_loc"];
+    const optional = <String>["additional", "content", "seo"];
+
+    for (final id in important) {
+      if ((_sections[id] ?? false) == false) return id;
+    }
+    for (final id in optional) {
+      if ((_sections[id] ?? false) == false) return id;
+    }
+    return null;
+  }
+
   // فتح شاشة القسم ثم تحديده كمكتمل إذا رجع بقيمة true
   Future<void> _openSection(String id) async {
     bool? result;
@@ -322,165 +343,548 @@ class _ProviderProfileCompletionScreenState
           elevation: 0,
           backgroundColor: Colors.transparent,
           centerTitle: true,
-          iconTheme: const IconThemeData(color: Colors.black87),
+          iconTheme: const IconThemeData(color: Colors.white),
           title: const Text(
             "إكمال الملف التعريفي",
             style: TextStyle(
               fontFamily: "Cairo",
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: Colors.white,
             ),
           ),
         ),
+        extendBodyBehindAppBar: true,
         body: SafeArea(
-          child: Column(
-            children: [
-              // 🔹 كرت النسبة العامة
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+          top: false,
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _buildHeroHeader(percent: percent),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: _basicSectionTile(),
                 ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                  child: _buildSectionTitle(
+                    title: 'خطوات مهمة',
+                    subtitle: 'اختصرها عليك: هذه أهم 3 خطوات لظهور ملفك بشكل قوي.',
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        "نسبة اكتمال الملف",
-                        style: TextStyle(
-                          fontFamily: "Cairo",
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                      _luxSectionTile(
+                        id: "service_details",
+                        title: "تفاصيل الخدمة",
+                        subtitle: "أضف خدمة واحدة على الأقل باسم واضح.",
+                        icon: Icons.home_repair_service_outlined,
+                        color: Colors.indigo,
+                        isOptional: false,
                       ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(40),
-                        child: LinearProgressIndicator(
-                          value: _completionPercent,
-                          minHeight: 7,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            AppColors.deepPurple,
-                          ),
-                        ),
+                      _luxSectionTile(
+                        id: "contact_full",
+                        title: "معلومات التواصل",
+                        subtitle: "واتساب/هاتف وروابط التواصل (اختياري جزئياً).",
+                        icon: Icons.call_outlined,
+                        color: Colors.blue,
+                        isOptional: false,
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Text(
-                            "$percent%",
-                            style: const TextStyle(
-                              fontFamily: "Cairo",
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Expanded(
-                            child: Text(
-                              "حوالي 30٪ من التسجيل الأساسي، والباقي من إكمال الأقسام أدناه.",
-                              style: TextStyle(
-                                fontFamily: "Cairo",
-                                fontSize: 11,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ),
-                        ],
+                      _luxSectionTile(
+                        id: "lang_loc",
+                        title: "اللغة والموقع",
+                        subtitle: "حدد لغاتك وموقعك لتصل لعملائك أسرع.",
+                        icon: Icons.language_outlined,
+                        color: Colors.orange,
+                        isOptional: false,
                       ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  children: [
-                    // ✅ كرت الأساسيات (مكتمل)
-                    _basicSectionTile(),
-                    const SizedBox(height: 4),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  child: _buildOptionalPanel(),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 22)),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomBar(percent: percent),
+      ),
+    );
+  }
 
-                    // ✅ باقي الأقسام
-                    _sectionTile(
-                      id: "service_details",
-                      title: "تفاصيل الخدمة",
-                      subtitle: "اسم الخدمة ووصف مختصر.",
-                        extra:
-                          "يمثل ${_sectionPercent('service_details')}٪ من اكتمال الملف.",
-                      icon: Icons.home_repair_service_outlined,
-                      color: Colors.indigo,
+  Widget _buildHeroHeader({required int percent}) {
+    final nextId = _nextRecommendedSectionId();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 78, 16, 18),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [Color(0xFF3F2B96), Color(0xFF6A4CFF)],
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(26),
+          bottomRight: Radius.circular(26),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ملفك — بشكل احترافي',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    _sectionTile(
-                      id: "additional",
-                      title: "معلومات إضافية عنك وخدماتك",
-                      subtitle: "تفاصيل موسّعة عن خدماتك ومؤهلاتك وخبراتك.",
-                        extra:
-                          "يمثل ${_sectionPercent('additional')}٪ من اكتمال الملف.",
-                      icon: Icons.notes_outlined,
-                      color: Colors.teal,
+                    const SizedBox(height: 6),
+                    const Text(
+                      'املأ المهم أولاً… والباقي اختياري لتحسين ظهورك وثقة العملاء.',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        color: Colors.white70,
+                        fontSize: 12.5,
+                        height: 1.3,
+                      ),
                     ),
-                    _sectionTile(
-                      id: "contact_full", // 💡 نستخدم نفس المفتاح الموجود في الماب
-                      title: "معلومات التواصل الكاملة",
-                      subtitle:
-                          "روابط التواصل الاجتماعي، واتساب، موقع إلكتروني، رابط موقعك.",
-                        extra:
-                          "يمثل ${_sectionPercent('contact_full')}٪ من اكتمال الملف.",
-                      icon: Icons.call_outlined,
-                      color: Colors.blue,
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _glassChip(text: 'سهولة تعبئة', icon: Icons.touch_app_outlined),
+                        _glassChip(text: 'حفظ تلقائي داخل الأقسام', icon: Icons.auto_awesome),
+                      ],
                     ),
-                    _sectionTile(
-                      id: "lang_loc",
-                      title: "اللغة والموقع الجغرافي",
-                      subtitle: "اللغات التي تجيدها وتحديد موقعك الجغرافي الدقيق.",
-                        extra:
-                          "يمثل ${_sectionPercent('lang_loc')}٪ من اكتمال الملف.",
-                      icon: Icons.language_outlined,
-                      color: Colors.orange,
-                    ),
-                    _sectionTile(
-                      id: "content",
-                      title: "محتوى أعمالك (Portfolio)",
-                      subtitle: "أضف صوراً أو نماذج من أعمالك السابقة.",
-                        extra:
-                          "يمثل ${_sectionPercent('content')}٪ من اكتمال الملف.",
-                      icon: Icons.image_outlined,
-                      color: Colors.purple,
-                    ),
-                    _sectionTile(
-                      id: "seo",
-                      title: "SEO والكلمات المفتاحية",
-                      subtitle: "تعريف محركات البحث بنوعية خدمتك.",
-                      extra:
-                          "يمثل ${_sectionPercent('seo')}٪ من اكتمال الملف.",
-                      icon: Icons.search,
-                      color: Colors.blueGrey,
-                    ),
-                    const SizedBox(height: 16),
                   ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _buildProgressRing(percent: percent),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed:
+                      nextId == null ? null : () => _openSection(nextId),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF3F2B96),
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                  label: Text(
+                    nextId == null ? 'ملفك مكتمل' : 'متابعة الخطوة التالية',
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: _refresh,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white70),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text(
+                  'تحديث',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressRing({required int percent}) {
+    final v = (percent / 100).clamp(0.0, 1.0);
+    return Container(
+      width: 86,
+      height: 86,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: v),
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, _) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 58,
+                height: 58,
+                child: CircularProgressIndicator(
+                  value: value,
+                  strokeWidth: 6,
+                  backgroundColor: Colors.white.withValues(alpha: 0.18),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              Text(
+                '$percent%',
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _glassChip({required String text, required IconData icon}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle({required String title, required String subtitle}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.w900,
+            fontSize: 15,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 12,
+            color: Colors.grey.shade600,
+            height: 1.25,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptionalPanel() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          collapsedIconColor: Colors.black45,
+          iconColor: Colors.black54,
+          title: const Text(
+            'تحسينات اختيارية (تزيد ثقة العملاء)',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+            ),
+          ),
+          subtitle: Text(
+            'هذه الأقسام ليست إلزامية، لكنها تعطي ملفك شكلاً أفخم وظهوراً أفضل.',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              color: Colors.grey.shade600,
+              height: 1.25,
+            ),
+          ),
+          children: [
+            _luxSectionTile(
+              id: 'additional',
+              title: 'معلومات إضافية',
+              subtitle: 'خبراتك، مؤهلاتك، ونبذة أعمق.',
+              icon: Icons.notes_outlined,
+              color: Colors.teal,
+              isOptional: true,
+            ),
+            _luxSectionTile(
+              id: 'content',
+              title: 'معرض الأعمال (Portfolio)',
+              subtitle: 'صور ونماذج أعمالك السابقة.',
+              icon: Icons.image_outlined,
+              color: Colors.purple,
+              isOptional: true,
+            ),
+            _luxSectionTile(
+              id: 'seo',
+              title: 'SEO والكلمات المفتاحية',
+              subtitle: 'كلمات تساعد العملاء في الوصول لك.',
+              icon: Icons.search,
+              color: Colors.blueGrey,
+              isOptional: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _luxSectionTile({
+    required String id,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required bool isOptional,
+  }) {
+    final done = _sections[id] ?? false;
+    final weight = _sectionPercent(id);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: done ? color.withValues(alpha: 0.45) : Colors.grey.shade200,
+          width: done ? 1.4 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ListTile(
+        onTap: () => _openSection(id),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13.8,
+                ),
+              ),
+            ),
+            if (isOptional)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'اختياري',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 11.5,
+                  color: Colors.grey.shade700,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  if (done)
+                    const Icon(Icons.check_circle, color: Colors.green, size: 18)
+                  else
+                    Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      done ? 'مكتمل' : 'غير مكتمل',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11.2,
+                        fontWeight: FontWeight.w800,
+                        color: done ? Colors.green : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$weight%+',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                      fontSize: 11.2,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_left, color: Colors.black45),
+      ),
+    );
+  }
+
+  Widget _buildBottomBar({required int percent}) {
+    final nextId = _nextRecommendedSectionId();
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: nextId == null ? null : () => _openSection(nextId),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.deepPurple,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  nextId == null ? 'مكتمل ($percent%)' : 'متابعة',
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton(
+              onPressed: () => Navigator.maybePop(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.black87,
+                side: BorderSide(color: Colors.grey.shade300),
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text(
+                'لاحقاً',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -501,9 +905,13 @@ class _ProviderProfileCompletionScreenState
       ),
       child: ListTile(
         onTap: () => _openSection("basic"),
-        leading: CircleAvatar(
-          radius: 20,
-          backgroundColor: Colors.white,
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: Icon(
             Icons.person_pin_circle_outlined,
             color: AppColors.deepPurple,
@@ -517,97 +925,30 @@ class _ProviderProfileCompletionScreenState
             fontSize: 14,
           ),
         ),
-        subtitle: const Text(
-          "المعلومات الأساسية + تصنيف الاختصاص + بيانات التواصل الأساسية.\nتمت تعبئتها أثناء التسجيل.",
+        subtitle: Text(
+          "تمت تعبئتها أثناء التسجيل. اضغط للمعاينة.",
           style: TextStyle(
             fontFamily: "Cairo",
             fontSize: 11.5,
-            color: Colors.black54,
-            height: 1.4,
+            color: Colors.grey.shade700,
+            height: 1.25,
           ),
         ),
-        trailing: Text(
-          "$basePercent%",
-          style: const TextStyle(
-            fontFamily: 'Cairo',
-            fontWeight: FontWeight.w800,
-            color: Colors.green,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 🔷 كروت باقي الأقسام
-  Widget _sectionTile({
-    required String id,
-    required String title,
-    required String subtitle,
-    required String extra,
-    required IconData icon,
-    required Color color,
-  }) {
-    final done = _sections[id] ?? false;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-                        color: Colors.black12.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(
-          color: done ? color.withValues(alpha: 0.4) : Colors.grey.shade200,
-          width: done ? 1.4 : 1,
-        ),
-      ),
-      child: ListTile(
-        onTap: () => _openSection(id),
-        leading: CircleAvatar(
-          radius: 20,
-          backgroundColor: color.withValues(alpha: 0.08),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontFamily: "Cairo",
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              subtitle,
+              "$basePercent%",
               style: const TextStyle(
-                fontFamily: "Cairo",
-                fontSize: 11.5,
-                color: Colors.black54,
-                height: 1.4,
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w900,
+                color: Colors.green,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              extra,
-              style: TextStyle(
-                fontFamily: "Cairo",
-                fontSize: 10.5,
-                color: Colors.grey.shade600,
-              ),
-            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_left, color: Colors.black45),
           ],
         ),
-        trailing:
-            done
-                ? const Icon(Icons.check_circle, color: Colors.green, size: 22)
-                : const Icon(Icons.chevron_left, color: Colors.black45),
       ),
     );
   }
