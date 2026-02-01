@@ -490,21 +490,22 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                           // ✅ زر التبديل إلى وضع مقدم الخدمة (يظهر فقط إذا كان مسجلاً)
                           if (isProviderRegistered)
                             Positioned(
-                              top: 8,
+                              top: 12,
                               right: 16,
                               child: SafeArea(
                                 bottom: false,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.95),
-                                    borderRadius: BorderRadius.circular(25),
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(30),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.2),
+                                        color: Colors.black.withOpacity(0.15),
                                         blurRadius: 8,
-                                        offset: const Offset(0, 2),
+                                        offset: const Offset(0, 3),
                                       ),
                                     ],
+                                    border: Border.all(color: Colors.deepPurple.shade100, width: 1),
                                   ),
                                   child: Material(
                                     color: Colors.transparent,
@@ -524,7 +525,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                                   SizedBox(width: 12),
                                                   Expanded(
                                                     child: Text(
-                                                      'حسابك عميل فقط حالياً. سجّل كمقدم خدمة أولاً ليظهر حساب مقدم الخدمة.',
+                                                      'حسابك عميل فقط حالياً. سجّل كمقدم خدمة أولاً.',
                                                       style: TextStyle(
                                                         fontFamily: 'Cairo',
                                                         fontSize: 14,
@@ -545,7 +546,6 @@ class _MyProfileScreenState extends State<MyProfileScreen>
 
                                         if (!context.mounted) return;
 
-                                        // إظهار إشعار التبديل
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
                                             content: const Row(
@@ -554,7 +554,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                                 SizedBox(width: 12),
                                                 Expanded(
                                                   child: Text(
-                                                    'تم التبديل إلى حساب مقدم الخدمة بنجاح',
+                                                    'جاري الانتقال للوحة التحكم...',
                                                     style: TextStyle(
                                                       fontFamily: 'Cairo',
                                                       fontSize: 14,
@@ -564,11 +564,8 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                               ],
                                             ),
                                             backgroundColor: Colors.green,
-                                            duration: const Duration(seconds: 5),
+                                            duration: const Duration(seconds: 2),
                                             behavior: SnackBarBehavior.floating,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
                                           ),
                                         );
 
@@ -577,29 +574,29 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                                         });
                                         await _checkUserType();
                                       },
-                                      borderRadius: BorderRadius.circular(25),
+                                      borderRadius: BorderRadius.circular(30),
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
+                                          horizontal: 14,
                                           vertical: 8,
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: const [
-                                            Icon(
-                                              Icons.business_center,
-                                              size: 18,
-                                              color: Colors.deepPurple,
-                                            ),
-                                            SizedBox(width: 6),
                                             Text(
-                                              'مقدم خدمة',
+                                              'لوحة مقدم الخدمة',
                                               style: TextStyle(
-                                                fontSize: 13,
+                                                fontSize: 12,
                                                 fontWeight: FontWeight.bold,
                                                 color: Colors.deepPurple,
                                                 fontFamily: 'Cairo',
                                               ),
+                                            ),
+                                            SizedBox(width: 6),
+                                            Icon(
+                                              Icons.arrow_forward_ios,
+                                              size: 14,
+                                              color: Colors.deepPurple,
                                             ),
                                           ],
                                         ),
@@ -666,6 +663,34 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                   ],
                 ),
                 const SizedBox(height: 30),
+                
+                // ✅ شارة حساب العميل لتوضيح الواجهة
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.person, size: 14, color: Colors.grey.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'حساب مستخدم',
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
                 if (_fullName != null) ...[
                   Text(
                     _fullName!,

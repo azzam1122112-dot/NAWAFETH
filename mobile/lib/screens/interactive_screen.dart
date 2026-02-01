@@ -33,91 +33,91 @@ class InteractiveScreen extends StatefulWidget {
 class _InteractiveScreenState extends State<InteractiveScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // ignore: unused_field
   late InteractiveMode _effectiveMode;
 
   final ProvidersApi _providersApi = ProvidersApi();
   final AccountApi _accountApi = AccountApi();
 
+  // ignore: unused_field
   bool _hasProviderProfile = false;
   bool _capabilitiesLoaded = false;
 
-  Future<List<ProviderProfile>>? _clientFollowingFuture;
-  Future<List<ProviderProfile>>? _clientSavedFuture;
-  Future<List<UserSummary>>? _providerFollowersFuture;
-  Future<List<UserSummary>>? _providerLikersFuture;
+  // Data Futures
+  Future<List<ProviderProfile>>? _followingFuture;
+  Future<List<UserSummary>>? _followersFuture;
+  Future<List<ProviderProfile>>? _favoritesFuture;
 
   @override
   void initState() {
     super.initState();
-    _effectiveMode = widget.mode == InteractiveMode.auto ? InteractiveMode.client : widget.mode;
-    final tabsCount = _tabsCountForMode(_effectiveMode);
-    final initial = widget.initialTabIndex.clamp(0, tabsCount - 1);
-    _tabController = TabController(length: tabsCount, vsync: this, initialIndex: initial);
+    // Default mode; will update in _loadCapabilitiesAndReload
+    _effectiveMode =
+        widget.mode == InteractiveMode.auto ? InteractiveMode.client : widget.mode;
+    
+    // Initialize controller with dummy length. We will re-initialize it once mode is confirmed.
+    // Client: 2 tabs (Following, Favorites)
+    // Provider: 3 tabs (Following, Followers, Favorites)
+    final initialLength = _effectiveMode == InteractiveMode.provider ? 3 : 2;
+    _tabController = TabController(
+      length: initialLength, 
+      vsync: this, 
+      initialIndex: 0 // Will clamp/reset later
+    );
+    
     _loadCapabilitiesAndReload();
   }
 
-  int _tabsCountForMode(InteractiveMode mode) => 2;
-
   Future<void> _loadCapabilitiesAndReload() async {
-    final needsCapabilityLookup =
-        widget.mode == InteractiveMode.provider || widget.mode == InteractiveMode.auto;
-    if (!needsCapabilityLookup) {
-      setState(() {
-        _hasProviderProfile = false;
-        _capabilitiesLoaded = true;
-        _effectiveMode = widget.mode;
-      });
-      _reload();
-      return;
-    }
-
+    // Check if current user is provider to adjust API calls if needed
     try {
       final me = await _accountApi.me();
       final hasProviderProfile = me['has_provider_profile'] == true;
       if (!mounted) return;
+      
+      final newMode = hasProviderProfile ? InteractiveMode.provider : InteractiveMode.client;
       setState(() {
         _hasProviderProfile = hasProviderProfile;
+        _effectiveMode = newMode;
         _capabilitiesLoaded = true;
-        if (widget.mode == InteractiveMode.auto) {
-          _effectiveMode = hasProviderProfile ? InteractiveMode.provider : InteractiveMode.client;
-        } else {
-          _effectiveMode = widget.mode;
-        }
       });
+      
+      // Re-init tab controller with correct length based on mode
+      final newLength = newMode == InteractiveMode.provider ? 3 : 2;
+      // Preserve index if possible, else default to 0
+      final newIndex = widget.initialTabIndex.clamp(0, newLength - 1);
+      
+      _tabController.dispose();
+      _tabController = TabController(length: newLength, vsync: this, initialIndex: newIndex);
+      
     } catch (_) {
       if (!mounted) return;
+      // Default fallback to Client mode
       setState(() {
         _hasProviderProfile = false;
+        _effectiveMode = InteractiveMode.client;
         _capabilitiesLoaded = true;
-        if (widget.mode == InteractiveMode.auto) {
-          _effectiveMode = InteractiveMode.client;
-        } else {
-          _effectiveMode = widget.mode;
-        }
       });
+      
+      _tabController.dispose();
+      _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
     }
-
-    if (!mounted) return;
     _reload();
   }
 
   void _reload() {
     setState(() {
-      if (_effectiveMode == InteractiveMode.client) {
-        _clientFollowingFuture = _providersApi.getMyFollowingProviders();
-        _clientSavedFuture = _providersApi.getMyLikedProviders();
-        _providerFollowersFuture = null;
-        _providerLikersFuture = null;
-      } else {
-        _clientFollowingFuture = null;
-        _clientSavedFuture = null;
-        _providerFollowersFuture = _hasProviderProfile
-            ? _providersApi.getMyProviderFollowers()
-            : Future.value(const <UserSummary>[]);
-        _providerLikersFuture = _hasProviderProfile
-            ? _providersApi.getMyProviderLikers()
-            : Future.value(const <UserSummary>[]);
-      }
+      // 1. Following: Providers I follow (Client/Provider can follow)
+      _followingFuture = _providersApi.getMyFollowingProviders();
+      
+      // 2. Followers: Users following ME. 
+      // If I am a Provider, I have followers. 
+      // If Client, this might be empty usually, but "It should be the same".
+      _followersFuture = _providersApi.getMyProviderFollowers();
+
+      // 3. Favorites: Providers I Liked (or "Projects" I liked)
+      // Using 'getMyLikedProviders' as proxy for Favorites
+      _favoritesFuture = _providersApi.getMyLikedProviders();
     });
   }
 
@@ -132,6 +132,37 @@ class _InteractiveScreenState extends State<InteractiveScreen>
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
+    // Custom Tab Indicator/Label styles
+    const tabStyle = TextStyle(
+      fontFamily: 'Cairo',
+      fontSize: 14,
+      fontWeight: FontWeight.bold,
+    );
+
+    // Decide tabs based on mode
+    final isClient = _effectiveMode == InteractiveMode.client;
+    final tabs = isClient 
+      ? const [
+          Tab(text: 'من أتابع', icon: Icon(Icons.bookmark_border)),
+          Tab(text: 'مفضلتي', icon: Icon(Icons.thumb_up_alt_outlined)),
+        ]
+      : const [
+          Tab(text: 'من أتابع', icon: Icon(Icons.bookmark_border)),
+          Tab(text: 'متابعيني', icon: Icon(Icons.person_add_alt)),
+          Tab(text: 'مفضلتي', icon: Icon(Icons.thumb_up_alt_outlined)),
+        ];
+
+    final views = isClient
+      ? [
+          _buildFollowingTab(),
+          _buildFavoritesTab(),
+        ]
+      : [
+          _buildFollowingTab(),
+          _buildFollowersTab(),
+          _buildFavoritesTab(),
+        ];
+
     return Scaffold(
       drawer: const CustomDrawer(),
       appBar: AppBar(
@@ -140,39 +171,327 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         backgroundColor: theme.appBarTheme.backgroundColor,
         bottom: TabBar(
           controller: _tabController,
-          labelColor: primaryColor,
+          labelColor: Colors.deepPurple,
           unselectedLabelColor: Colors.grey,
-          indicatorColor: primaryColor,
+          indicatorColor: Colors.deepPurple,
           indicatorWeight: 3,
-          labelStyle: const TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-          ),
-          tabs: _effectiveMode == InteractiveMode.client
-              ? const [
-                  Tab(text: 'من أتابع', icon: Icon(Icons.group)),
-                  Tab(text: 'المحفوظات', icon: Icon(Icons.bookmark)),
-                ]
-              : const [
-                  Tab(text: 'المتابعون', icon: Icon(Icons.groups_rounded)),
-                  Tab(text: 'المعجبون', icon: Icon(Icons.thumb_up_alt_outlined)),
-                ],
+          labelStyle: tabStyle,
+          tabs: tabs,
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: _effectiveMode == InteractiveMode.client
-            ? [
-                _buildClientFollowingTab(),
-                _buildClientSavedTab(),
-              ]
-            : [
-                _buildProviderFollowersTab(),
-                _buildProviderLikersTab(),
-              ],
+        children: views,
       ),
       bottomNavigationBar: const CustomBottomNav(currentIndex: 2),
+    );
+  }
+
+  // --- TAB 1: Following (من أتابع) ---
+  Widget _buildFollowingTab() {
+     return FutureBuilder<List<ProviderProfile>>(
+      future: _followingFuture,
+      builder: (context, snapshot) {
+        if (!_capabilitiesLoaded || snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final list = snapshot.data ?? [];
+        if (list.isEmpty) {
+          return _emptyState(
+            icon: Icons.bookmark_border,
+            title: 'لا تتابع أحداً بعد',
+            subtitle: 'تصفح مقدمي الخدمات وابدأ بمتابعتهم لتظهر تحديثاتهم هنا.',
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: list.length,
+          itemBuilder: (context, index) {
+            final p = list[index];
+            // Render as a "Project" card style as per Image 1
+            return _buildFollowingCard(p);
+          },
+        );
+      },
+    );
+  }
+
+  // Card style like Image 1: Pinkish bg, Avatar+Handle, Content
+  Widget _buildFollowingCard(ProviderProfile p) {
+    // If we have an image URL from backend, use it. Otherwise, use a standard asset or null.
+    // Assuming ProviderProfile model might be extended in future to hold 'projectImage' etc.
+    // For now we rely on p.placeholderImage or similar IF it comes from real data, 
+    // but user requested "No fake data". So if data is missing, we show text or empty.
+    
+    // Clean data extraction
+    final name = p.displayName ?? ''; 
+    final bio = p.bio ?? '';
+    final hasImage = false; // Until backend provides real project images url
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDEAF8), // Light pinkish background match
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.pink.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Handle + Avatar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                '@${p.id}', // Using ID as handle since username not always available in this model
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Colors.grey.shade700,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (p.isVerifiedBlue) 
+                const Icon(Icons.verified, color: Colors.blue, size: 16),
+              const SizedBox(width: 4),
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.white,
+                child: const Icon(Icons.person, color: Colors.grey), 
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Content
+          Center(
+            child: Column(
+              children: [
+                if (name.isNotEmpty)
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                if (bio.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    bio,
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+                if (hasImage) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    height: 120, 
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      // Image logic when available
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 2: Followers (متابعيني) ---
+  Widget _buildFollowersTab() {
+    return FutureBuilder<List<UserSummary>>(
+      future: _followersFuture,
+      builder: (context, snapshot) {
+        if (!_capabilitiesLoaded || snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final list = snapshot.data ?? [];
+        if (list.isEmpty) {
+          return _emptyState(
+            icon: Icons.groups_rounded,
+            title: 'لا يوجد متابعون حالياً',
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final u = list[index];
+            return _buildFollowerItem(u);
+          },
+        );
+      },
+    );
+  }
+
+  // List Item style like Image 2: Pink bg strip, User info
+  Widget _buildFollowerItem(UserSummary u) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDEAF8), // Light pinkish
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end, // RTL alignment
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '@${u.username ?? u.id}', 
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
+                Text(
+                  u.displayName, 
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.white,
+                child: const Icon(Icons.person, color: Colors.grey),
+              ),
+              // Optional badge like in image
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.star, color: Colors.white, size: 10),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 3: Favorites (مفضلتي) ---
+  Widget _buildFavoritesTab() {
+    return FutureBuilder<List<ProviderProfile>>(
+      future: _favoritesFuture,
+      builder: (context, snapshot) {
+        if (!_capabilitiesLoaded || snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final list = snapshot.data ?? [];
+        if (list.isEmpty) {
+          return _emptyState(
+            icon: Icons.thumb_up_alt_outlined,
+            title: 'لم تقم بالإعجاب بأي شيء بعد',
+          );
+        }
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.85, 
+          ),
+          itemCount: list.length,
+          itemBuilder: (context, index) {
+            final p = list[index];
+            return _buildFavoriteCard(p);
+          },
+        );
+      },
+    );
+  }
+
+  // Grid Card like Image 3
+  Widget _buildFavoriteCard(ProviderProfile p) {
+    // Only show real data. If no image is provided from backend, show initial or simple placeholder color, 
+    // but do not insert fake asset path.
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade300, 
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Stack(
+        children: [
+          // If we had a real image URL, we would load it here.
+          // Since we don't use fake data, we leave it as a solid color tile with the name.
+          Center(
+             child: Padding(
+               padding: const EdgeInsets.all(8.0),
+               child: Text(
+                 p.displayName ?? '',
+                 textAlign: TextAlign.center,
+                 style: const TextStyle(
+                   fontFamily: 'Cairo',
+                   fontSize: 12,
+                   color: Colors.black54,
+                 ),
+               ),
+             ),
+          ),
+
+          // Overlay Info
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '@${p.id}',
+                  style: const TextStyle(
+                    color: Colors.black87, 
+                    fontSize: 10, 
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: Colors.white,
+                  child: const Icon(Icons.person, size: 14, color: Colors.black),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -187,7 +506,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 46, color: Colors.grey.shade500),
+            Icon(icon, size: 46, color: Colors.grey.shade400),
             const SizedBox(height: 10),
             Text(
               title,
@@ -195,6 +514,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                 fontFamily: 'Cairo',
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
+                color: Colors.grey,
               ),
               textAlign: TextAlign.center,
             ),
@@ -204,7 +524,8 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                 subtitle,
                 style: TextStyle(
                   fontFamily: 'Cairo',
-                  color: Colors.grey.shade600,
+                  color: Colors.grey.shade500,
+                  fontSize: 13,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -212,6 +533,10 @@ class _InteractiveScreenState extends State<InteractiveScreen>
             const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: _reload,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.deepPurple,
+                side: const BorderSide(color: Colors.deepPurple),
+              ),
               icon: const Icon(Icons.refresh),
               label: const Text('تحديث', style: TextStyle(fontFamily: 'Cairo')),
             ),
@@ -221,316 +546,5 @@ class _InteractiveScreenState extends State<InteractiveScreen>
     );
   }
 
-  Widget _providerCard(ProviderProfile p) {
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final displayName = (p.displayName ?? '').trim().isEmpty ? '—' : p.displayName!.trim();
-    final city = (p.city ?? '').trim().isEmpty ? '—' : p.city!.trim();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12.withValues(alpha: 0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          radius: 22,
-          backgroundColor: primaryColor.withValues(alpha: 0.10),
-          child: Icon(Icons.person, color: primaryColor),
-        ),
-        title: Text(
-          displayName,
-          style: TextStyle(
-            color: primaryColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-            fontFamily: 'Cairo',
-          ),
-        ),
-        subtitle: Text(
-          'المدينة: $city · المتابعون: ${p.followersCount} · الإعجابات: ${p.likesCount}',
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: 'عرض الملف',
-              icon: const Icon(Icons.open_in_new),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProviderProfileScreen(providerId: p.id.toString()),
-                  ),
-                );
-              },
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: const Icon(Icons.chat, size: 18, color: Colors.white),
-              label: const Text(
-                'مراسلة',
-                style: TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo'),
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatDetailScreen(
-                      name: displayName,
-                      isOnline: false,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _userCard(UserSummary u) {
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final initials = u.displayName.isNotEmpty ? u.displayName.characters.first : 'م';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12.withValues(alpha: 0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          radius: 22,
-          backgroundColor: primaryColor.withValues(alpha: 0.10),
-          child: Text(
-            initials,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontWeight: FontWeight.w800,
-              color: primaryColor,
-            ),
-          ),
-        ),
-        title: Text(
-          u.displayName,
-          style: TextStyle(
-            color: primaryColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-            fontFamily: 'Cairo',
-          ),
-        ),
-        subtitle: Text(
-          u.username == null ? '—' : '@${u.username}',
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        trailing: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: primaryColor,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          icon: const Icon(Icons.chat, size: 18, color: Colors.white),
-          label: const Text(
-            'مراسلة',
-            style: TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo'),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChatDetailScreen(
-                  name: u.displayName,
-                  isOnline: false,
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClientFollowingTab() {
-    final future = _clientFollowingFuture;
-    if (future == null) return const SizedBox.shrink();
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        _reload();
-        await future;
-      },
-      child: FutureBuilder<List<ProviderProfile>>(
-        future: future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final list = snapshot.data ?? const <ProviderProfile>[];
-          if (list.isEmpty) {
-            return _emptyState(
-              icon: Icons.group_outlined,
-              title: 'لا تتابع أي مقدم خدمة حالياً',
-              subtitle: 'ابدأ بمتابعة مقدمي الخدمات لتظهر هنا.',
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(14),
-            itemCount: list.length,
-            itemBuilder: (context, index) => _providerCard(list[index]),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildClientSavedTab() {
-    final future = _clientSavedFuture;
-    if (future == null) return const SizedBox.shrink();
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        _reload();
-        await future;
-      },
-      child: FutureBuilder<List<ProviderProfile>>(
-        future: future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final list = snapshot.data ?? const <ProviderProfile>[];
-          if (list.isEmpty) {
-            return _emptyState(
-              icon: Icons.bookmark_border,
-              title: 'لا توجد عناصر في المحفوظات',
-              subtitle: 'سيظهر هنا ما قمت بحفظه/الإعجاب به.',
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(14),
-            itemCount: list.length,
-            itemBuilder: (context, index) => _providerCard(list[index]),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildProviderFollowersTab() {
-    if (!_capabilitiesLoaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (!_hasProviderProfile) {
-      return _emptyState(
-        icon: Icons.groups_rounded,
-        title: 'لا يوجد متابعون حتى الآن',
-        subtitle: 'أكمل تسجيل مقدم الخدمة لتظهر قائمة المتابعين هنا.',
-      );
-    }
-
-    final future = _providerFollowersFuture;
-    if (future == null) return const SizedBox.shrink();
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        _reload();
-        await future;
-      },
-      child: FutureBuilder<List<UserSummary>>(
-        future: future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final list = snapshot.data ?? const <UserSummary>[];
-          if (list.isEmpty) {
-            return _emptyState(
-              icon: Icons.groups_rounded,
-              title: 'لا يوجد متابعون حتى الآن',
-              subtitle: 'سيظهر المتابعون هنا عند متابعة ملفك كمقدم خدمة.',
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(14),
-            itemCount: list.length,
-            itemBuilder: (context, index) => _userCard(list[index]),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildProviderLikersTab() {
-    if (!_capabilitiesLoaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (!_hasProviderProfile) {
-      return _emptyState(
-        icon: Icons.thumb_up_alt_outlined,
-        title: 'لا توجد إعجابات حتى الآن',
-        subtitle: 'أكمل تسجيل مقدم الخدمة لتظهر قائمة المعجبين هنا.',
-      );
-    }
-
-    final future = _providerLikersFuture;
-    if (future == null) return const SizedBox.shrink();
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        _reload();
-        await future;
-      },
-      child: FutureBuilder<List<UserSummary>>(
-        future: future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final list = snapshot.data ?? const <UserSummary>[];
-          if (list.isEmpty) {
-            return _emptyState(
-              icon: Icons.thumb_up_alt_outlined,
-              title: 'لا توجد إعجابات حتى الآن',
-              subtitle: 'سيظهر المعجبون هنا عند إعجاب العملاء بملفك.',
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(14),
-            itemCount: list.length,
-            itemBuilder: (context, index) => _userCard(list[index]),
-          );
-        },
-      ),
-    );
-  }
 }

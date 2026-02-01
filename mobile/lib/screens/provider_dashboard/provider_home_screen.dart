@@ -309,7 +309,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     );
   }
 
-  // عنصر إحصائية بسيط
+  // عنصر إحصائية بتصميم كرت
   Widget _statItem({
     required IconData icon,
     required String label,
@@ -319,29 +319,54 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20, color: mainColor),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontFamily: "Cairo",
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade100),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: "Cairo",
-                fontSize: 11,
-                color: Colors.grey.shade700,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: mainColor.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 20, color: mainColor),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontFamily: "Cairo",
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: "Cairo",
+                  fontSize: 11,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -539,42 +564,22 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         ),
         // زر الكاميرا وزر التبديل
         Positioned(
-          top: 8,
-          left: 16,
-          child: SafeArea(
-            bottom: false,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: IconButton(
-                icon: const Icon(
-                  Icons.photo_camera_outlined,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                onPressed: () => _pickImage(isCover: true),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 8,
+          top: 12,
           right: 16,
           child: SafeArea(
             bottom: false,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95),
-                borderRadius: BorderRadius.circular(25),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
+                    color: Colors.black.withOpacity(0.15),
                     blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    offset: const Offset(0, 3),
                   ),
                 ],
+                border: Border.all(color: Colors.deepPurple.shade100, width: 1),
               ),
               child: Material(
                 color: Colors.transparent,
@@ -584,16 +589,15 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                     await prefs.setBool('isProvider', false);
                     
                     if (mounted) {
-                      // إظهار إشعار التبديل
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Row(
                             children: [
-                              Icon(Icons.check_circle, color: Colors.white),
+                              Icon(Icons.person_outline, color: Colors.white),
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'تم التبديل إلى حساب العميل بنجاح',
+                                  'تم التبديل إلى وضع العميل',
                                   style: TextStyle(
                                     fontFamily: 'Cairo',
                                     fontSize: 14,
@@ -602,8 +606,8 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                               ),
                             ],
                           ),
-                          backgroundColor: Colors.green,
-                          duration: const Duration(seconds: 5),
+                          backgroundColor: Colors.indigo,
+                          duration: const Duration(seconds: 3),
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -614,25 +618,25 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                       Navigator.pushReplacementNamed(context, '/profile');
                     }
                   },
-                  borderRadius: BorderRadius.circular(25),
+                  borderRadius: BorderRadius.circular(30),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
+                      horizontal: 14,
                       vertical: 8,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: const [
                         Icon(
-                          Icons.person,
-                          size: 18,
+                          Icons.swap_horiz, // أيقونة تبديل أوضح
+                          size: 20,
                           color: Colors.deepPurple,
                         ),
                         SizedBox(width: 6),
                         Text(
-                          'حساب عميل',
+                          'تبديل لنمط العميل',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: Colors.deepPurple,
                             fontFamily: 'Cairo',
@@ -642,6 +646,30 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                     ),
                   ),
                 ),
+              ),
+            ),
+          ),
+        ),
+        
+        // زر الكاميرا (يسار)
+        Positioned(
+          top: 12,
+          left: 16,
+          child: SafeArea(
+            bottom: false,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black38, // لون أغمق قليلاً للشفافية
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                icon: const Icon(
+                  Icons.photo_camera_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                tooltip: "تغيير الغلاف",
+                onPressed: () => _pickImage(isCover: true),
               ),
             ),
           ),
@@ -931,6 +959,40 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             children: [
               _buildHeader(),
               const SizedBox(height: 52),
+              
+              // ✅ شارة توضيحية لنمط مزود الخدمة
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.deepPurple.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.business_center, color: Colors.white, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'لوحة مزود الخدمة',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
