@@ -8,6 +8,7 @@ from apps.providers.models import ProviderProfile, SubCategory
 
 
 class RequestType(models.TextChoices):
+	NORMAL = "normal", "عادي"
 	COMPETITIVE = "competitive", "تنافسي"
 	URGENT = "urgent", "عاجل"
 

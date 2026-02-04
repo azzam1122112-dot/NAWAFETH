@@ -14,6 +14,10 @@ class ClientOrder {
   final DateTime createdAt;
   final String status; // جديد، تحت التنفيذ، مكتمل، ملغي
 
+  final String requestType; // normal | urgent | competitive
+  final String city;
+  final String? providerName;
+
   final String title;
   final String details;
   final List<ClientOrderAttachment> attachments;
@@ -45,6 +49,9 @@ class ClientOrder {
     required this.serviceCode,
     required this.createdAt,
     required this.status,
+    this.requestType = 'normal',
+    this.city = '',
+    this.providerName,
     required this.title,
     required this.details,
     this.attachments = const [],
@@ -74,12 +81,17 @@ class ClientOrder {
           return 'جديد';
         case 'sent':
           return 'أُرسل';
+        case 'accepted':
+          return 'مقبول';
         case 'in_progress':
           return 'تحت التنفيذ';
         case 'completed':
           return 'مكتمل';
+        case 'cancelled':
         case 'canceled':
           return 'ملغي';
+        case 'expired':
+          return 'منتهي';
         default:
           return status;
       }
@@ -91,6 +103,11 @@ class ClientOrder {
       // If date comes as string, parse it.
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       status: mapStatus(json['status'] ?? 'open'),
+      requestType: (json['request_type'] ?? 'normal').toString(),
+      city: (json['city'] ?? '').toString(),
+      providerName: (json['provider_name'] ?? '').toString().trim().isEmpty
+          ? null
+          : (json['provider_name'] ?? '').toString(),
       title: json['title'] ?? '',
       details: json['description'] ?? '',
     );
@@ -101,6 +118,9 @@ class ClientOrder {
     String? serviceCode,
     DateTime? createdAt,
     String? status,
+    String? requestType,
+    String? city,
+    String? providerName,
     String? title,
     String? details,
     List<ClientOrderAttachment>? attachments,
@@ -125,6 +145,9 @@ class ClientOrder {
       serviceCode: serviceCode ?? this.serviceCode,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
+      requestType: requestType ?? this.requestType,
+      city: city ?? this.city,
+      providerName: providerName ?? this.providerName,
       title: title ?? this.title,
       details: details ?? this.details,
       attachments: attachments ?? this.attachments,

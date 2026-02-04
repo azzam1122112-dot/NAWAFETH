@@ -19,6 +19,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'الكل';
+  String _selectedType = 'الكل';
 
   List<ClientOrder> _orders = [];
   bool _isLoading = true;
@@ -139,6 +140,10 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     final query = _searchController.text.trim();
     Iterable<ClientOrder> result = orders;
 
+    if (_selectedType != 'الكل') {
+      result = result.where((o) => _typeLabel(o.requestType) == _selectedType);
+    }
+
     if (_selectedFilter != 'الكل') {
       result = result.where((o) => o.status == _selectedFilter);
     }
@@ -153,6 +158,29 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     }
 
     return result.toList();
+  }
+
+  String _typeLabel(String raw) {
+    switch (raw.toLowerCase().trim()) {
+      case 'urgent':
+        return 'عاجل';
+      case 'competitive':
+        return 'عروض';
+      case 'normal':
+      default:
+        return 'عادي';
+    }
+  }
+
+  Color _typeColor(String label) {
+    switch (label) {
+      case 'عاجل':
+        return Colors.redAccent;
+      case 'عروض':
+        return Colors.blueGrey;
+      default:
+        return Colors.deepPurple;
+    }
   }
 
   Widget _filterChip({
@@ -283,6 +311,37 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                   children: [
                     _filterChip(
                       label: 'الكل',
+                      selected: _selectedType == 'الكل',
+                      onTap: () => setState(() => _selectedType = 'الكل'),
+                    ),
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      label: 'عادي',
+                      selected: _selectedType == 'عادي',
+                      onTap: () => setState(() => _selectedType = 'عادي'),
+                    ),
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      label: 'عاجل',
+                      selected: _selectedType == 'عاجل',
+                      onTap: () => setState(() => _selectedType = 'عاجل'),
+                    ),
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      label: 'عروض',
+                      selected: _selectedType == 'عروض',
+                      onTap: () => setState(() => _selectedType = 'عروض'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _filterChip(
+                      label: 'الكل',
                       selected: _selectedFilter == 'الكل',
                       onTap: () => setState(() => _selectedFilter = 'الكل'),
                     ),
@@ -291,6 +350,18 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       label: 'جديد',
                       selected: _selectedFilter == 'جديد',
                       onTap: () => setState(() => _selectedFilter = 'جديد'),
+                    ),
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      label: 'أُرسل',
+                      selected: _selectedFilter == 'أُرسل',
+                      onTap: () => setState(() => _selectedFilter = 'أُرسل'),
+                    ),
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      label: 'مقبول',
+                      selected: _selectedFilter == 'مقبول',
+                      onTap: () => setState(() => _selectedFilter = 'مقبول'),
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
@@ -309,6 +380,12 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       label: 'ملغي',
                       selected: _selectedFilter == 'ملغي',
                       onTap: () => setState(() => _selectedFilter = 'ملغي'),
+                    ),
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      label: 'منتهي',
+                      selected: _selectedFilter == 'منتهي',
+                      onTap: () => setState(() => _selectedFilter = 'منتهي'),
                     ),
                   ],
                 ),
@@ -340,6 +417,8 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
   Widget _orderCard({required ClientOrder order, required bool isDark}) {
     final statusColor = _statusColor(order.status);
+    final typeLabel = _typeLabel(order.requestType);
+    final typeColor = _typeColor(typeLabel);
 
     return InkWell(
       onTap: () => _openDetails(order),
@@ -353,14 +432,14 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
             color: isDark ? Colors.white10 : Colors.grey.shade200,
           ),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    order.id,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '#${order.id}  ${order.title}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -370,48 +449,77 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${order.title} ${order.serviceCode}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: typeColor.withAlpha(26),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: typeColor.withAlpha(90)),
+                  ),
+                  child: Text(
+                    typeLabel,
                     style: TextStyle(
+                      color: typeColor,
                       fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _formatDate(order.createdAt),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusColor.withAlpha(28),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: statusColor.withAlpha(80)),
+                  ),
+                  child: Text(
+                    order.status,
                     style: TextStyle(
+                      color: statusColor,
                       fontFamily: 'Cairo',
-                      fontSize: 12,
-                      color: isDark ? Colors.white54 : Colors.black54,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${order.serviceCode} • ${order.city.isEmpty ? '-' : order.city}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black54,
               ),
             ),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: statusColor.withAlpha(28),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: statusColor.withAlpha(80)),
+            const SizedBox(height: 6),
+            Text(
+              _formatDate(order.createdAt),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black54,
               ),
-              child: Text(
-                order.status,
+            ),
+            if ((order.providerName ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'المزود: ${order.providerName}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: statusColor,
                   fontFamily: 'Cairo',
                   fontSize: 12,
-                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white60 : Colors.black54,
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),

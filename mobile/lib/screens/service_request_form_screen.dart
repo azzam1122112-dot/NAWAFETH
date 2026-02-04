@@ -297,7 +297,11 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
     // Backend requires subcategory. If category has no subs, code might break if we force it.
     // We'll trust the validation logic below.
 
-    if (_deadline == null) {
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    final isTargeted = providerId != null;
+    final requestType = isTargeted ? 'normal' : 'competitive';
+
+    if (!isTargeted && _deadline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("يرجى تحديد آخر موعد لاستلام العروض")),
       );
@@ -333,13 +337,12 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
 
       // Note: deadline and attachments are now supported via updated MarketplaceApi.
 
-      final providerId = int.tryParse((widget.providerId ?? '').trim());
       final success = await MarketplaceApi().createRequest(
         subcategoryId: subcategoryId,
         title: _titleController.text,
         description: _detailsController.text,
         city: _cityController.text,
-        requestType: 'competitive',
+        requestType: requestType,
         providerId: providerId,
         images: _images,
         videos: _videos,
@@ -365,7 +368,7 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
                 ],
               ),
               content: const Text(
-                "تم إرسال طلب الخدمة بنجاح. سيتم إشعارك عند استلام العروض.",
+                "تم إرسال طلب الخدمة بنجاح.",
                 style: TextStyle(height: 1.5),
               ),
               actions: [

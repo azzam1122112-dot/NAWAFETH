@@ -3,10 +3,13 @@ from django.urls import path
 from .views import (
     AcceptOfferView,
     AvailableUrgentRequestsView,
+    AvailableCompetitiveRequestsView,
     CreateOfferView,
     MyClientRequestsView,
     MyClientRequestDetailView,
     MyProviderRequestsView,
+    ProviderAssignedRequestAcceptView,
+    ProviderAssignedRequestRejectView,
     provider_requests,
     RequestCancelView,
     RequestCompleteView,
@@ -31,9 +34,24 @@ urlpatterns = [
         name="provider_urgent_available",
     ),
     path(
+        "provider/competitive/available/",
+        AvailableCompetitiveRequestsView.as_view(),
+        name="provider_competitive_available",
+    ),
+    path(
         "provider/requests/",
         MyProviderRequestsView.as_view(),
         name="provider_requests",
+    ),
+    path(
+        "provider/requests/<int:request_id>/accept/",
+        ProviderAssignedRequestAcceptView.as_view(),
+        name="provider_request_accept",
+    ),
+    path(
+        "provider/requests/<int:request_id>/reject/",
+        ProviderAssignedRequestRejectView.as_view(),
+        name="provider_request_reject",
     ),
     # HTML view (keeps API route above intact)
     path(

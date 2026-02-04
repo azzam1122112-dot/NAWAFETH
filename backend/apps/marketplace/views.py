@@ -44,6 +44,16 @@ from apps.accounts.permissions import IsAtLeastClient
 logger = logging.getLogger(__name__)
 
 
+def _expire_urgent_requests() -> None:
+	now = timezone.now()
+	ServiceRequest.objects.filter(
+		request_type=RequestType.URGENT,
+		status__in=[RequestStatus.NEW, RequestStatus.SENT],
+		expires_at__isnull=False,
+		expires_at__lt=now,
+	).update(status=RequestStatus.EXPIRED)
+
+
 class ServiceRequestCreateView(generics.CreateAPIView):
 	serializer_class = ServiceRequestCreateSerializer
 	permission_classes = [IsAtLeastClient]
@@ -52,7 +62,11 @@ class ServiceRequestCreateView(generics.CreateAPIView):
 		request_type = serializer.validated_data["request_type"]
 
 		is_urgent = request_type == RequestType.URGENT
-		status_value = RequestStatus.SENT if is_urgent else RequestStatus.NEW
+		# Mobile expects the request to reach providers immediately.
+		# - urgent: SENT (available inbox) + expiry
+		# - competitive: SENT (providers can send offers)
+		# - normal: SENT (targeted provider inbox)
+		status_value = RequestStatus.SENT
 
 		expires_at = None
 		if is_urgent:
@@ -76,6 +90,7 @@ class UrgentRequestAcceptView(APIView):
 	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
 
 	def post(self, request):
+		_expire_urgent_requests()
 		serializer = UrgentRequestAcceptSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 
@@ -100,6 +115,16 @@ class UrgentRequestAcceptView(APIView):
 			if service_request.request_type != RequestType.URGENT:
 				return Response(
 					{"detail": "هذا الطلب ليس عاجلًا"},
+					status=status.HTTP_400_BAD_REQUEST,
+				)
+
+			# ✅ تحقق من الانتهاء
+			now = timezone.now()
+			if service_request.expires_at and service_request.expires_at < now:
+				service_request.status = RequestStatus.EXPIRED
+				service_request.save(update_fields=["status"])
+				return Response(
+					{"detail": "انتهت صلاحية الطلب"},
 					status=status.HTTP_400_BAD_REQUEST,
 				)
 
@@ -138,6 +163,7 @@ class AvailableUrgentRequestsView(generics.ListAPIView):
 	serializer_class = ServiceRequestListSerializer
 
 	def get_queryset(self):
+		_expire_urgent_requests()
 		provider = self.request.user.provider_profile
 
 		# subcategories التي يعمل بها مقدم الخدمة
@@ -168,11 +194,37 @@ class AvailableUrgentRequestsView(generics.ListAPIView):
 		return qs
 
 
+class AvailableCompetitiveRequestsView(generics.ListAPIView):
+	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
+	serializer_class = ServiceRequestListSerializer
+
+	def get_queryset(self):
+		provider = self.request.user.provider_profile
+
+		provider_subcats = ProviderCategory.objects.filter(provider=provider).values_list(
+			"subcategory_id",
+			flat=True,
+		)
+
+		return (
+			ServiceRequest.objects.select_related("client", "subcategory", "subcategory__category")
+			.filter(
+				request_type=RequestType.COMPETITIVE,
+				provider__isnull=True,
+				status=RequestStatus.SENT,
+				city=provider.city,
+				subcategory_id__in=provider_subcats,
+			)
+			.order_by("-created_at")
+		)
+
+
 class MyProviderRequestsView(generics.ListAPIView):
 	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
 	serializer_class = ServiceRequestListSerializer
 
 	def get_queryset(self):
+		_expire_urgent_requests()
 		provider = self.request.user.provider_profile
 		return (
 			ServiceRequest.objects.select_related("client", "subcategory", "subcategory__category")
@@ -186,6 +238,7 @@ class MyClientRequestsView(generics.ListAPIView):
 	serializer_class = ServiceRequestListSerializer
 
 	def get_queryset(self):
+		_expire_urgent_requests()
 		qs = (
 			ServiceRequest.objects.select_related("provider", "subcategory", "subcategory__category")
 			.filter(client=self.request.user)
@@ -214,6 +267,91 @@ class MyClientRequestsView(generics.ListAPIView):
 			)
 
 		return qs
+
+
+class ProviderAssignedRequestAcceptView(APIView):
+	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
+
+	def post(self, request, request_id: int):
+		_expire_urgent_requests()
+		provider = request.user.provider_profile
+
+		with transaction.atomic():
+			sr = (
+				ServiceRequest.objects.select_for_update()
+				.select_related("client", "provider")
+				.filter(id=request_id)
+				.first()
+			)
+
+			if not sr:
+				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+
+			if sr.provider_id != provider.id:
+				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
+
+			if sr.request_type == RequestType.COMPETITIVE:
+				return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
+
+			if sr.status not in (RequestStatus.NEW, RequestStatus.SENT):
+				return Response({"detail": "لا يمكن قبول الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
+
+			old = sr.status
+			sr.status = RequestStatus.ACCEPTED
+			sr.save(update_fields=["status"])
+			RequestStatusLog.objects.create(
+				request=sr,
+				actor=request.user,
+				from_status=old,
+				to_status=sr.status,
+				note="قبول من المزود",
+			)
+
+		return Response({"ok": True, "request_id": sr.id, "status": sr.status}, status=status.HTTP_200_OK)
+
+
+class ProviderAssignedRequestRejectView(APIView):
+	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
+
+	def post(self, request, request_id: int):
+		_expire_urgent_requests()
+		provider = request.user.provider_profile
+		s = RequestActionSerializer(data=request.data)
+		s.is_valid(raise_exception=True)
+		note = s.validated_data.get("note", "")
+
+		with transaction.atomic():
+			sr = (
+				ServiceRequest.objects.select_for_update()
+				.select_related("client", "provider")
+				.filter(id=request_id)
+				.first()
+			)
+
+			if not sr:
+				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+
+			if sr.provider_id != provider.id:
+				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
+
+			if sr.request_type == RequestType.COMPETITIVE:
+				return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
+
+			if sr.status not in (RequestStatus.NEW, RequestStatus.SENT):
+				return Response({"detail": "لا يمكن رفض الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
+
+			old = sr.status
+			sr.status = RequestStatus.CANCELLED
+			sr.save(update_fields=["status"])
+			RequestStatusLog.objects.create(
+				request=sr,
+				actor=request.user,
+				from_status=old,
+				to_status=sr.status,
+				note=note or "رفض من المزود",
+			)
+
+		return Response({"ok": True, "request_id": sr.id, "status": sr.status}, status=status.HTTP_200_OK)
 
 
 class MyClientRequestDetailView(generics.RetrieveAPIView):

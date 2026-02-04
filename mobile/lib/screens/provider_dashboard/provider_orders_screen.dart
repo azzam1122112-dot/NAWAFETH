@@ -28,14 +28,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   bool _loadingAssigned = true;
   bool _loadingUrgent = true;
+  bool _loadingCompetitive = true;
 
   List<Map<String, dynamic>> _assigned = const [];
   List<Map<String, dynamic>> _urgent = const [];
+  List<Map<String, dynamic>> _competitive = const [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -76,6 +78,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     await Future.wait([
       _fetchAssigned(),
       _fetchUrgent(),
+      _fetchCompetitive(),
     ]);
   }
 
@@ -114,6 +117,25 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       });
     } finally {
       if (mounted) setState(() => _loadingUrgent = false);
+    }
+  }
+
+  Future<void> _fetchCompetitive() async {
+    if (!mounted) return;
+    setState(() => _loadingCompetitive = true);
+    try {
+      final list = await MarketplaceApi().getAvailableCompetitiveRequestsForProvider();
+      if (!mounted) return;
+      setState(() {
+        _competitive = (list is List) ? list.cast<Map<String, dynamic>>() : const [];
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _competitive = const [];
+      });
+    } finally {
+      if (mounted) setState(() => _loadingCompetitive = false);
     }
   }
 
@@ -213,8 +235,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final statusColor = _statusColor(statusAr);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isUrgent = type == 'urgent';
-    final typeLabel = isUrgent ? 'عاجل' : 'تنافسي';
-    final typeColor = isUrgent ? Colors.redAccent : Colors.blueGrey;
+    final isCompetitive = type == 'competitive';
+    final typeLabel = isUrgent ? 'عاجل' : (isCompetitive ? 'عروض' : 'عادي');
+    final typeColor = isUrgent ? Colors.redAccent : (isCompetitive ? Colors.blueGrey : _mainColor);
+
+    final canAcceptRejectAssigned =
+        !urgentTab && !isCompetitive && (statusAr == 'أُرسل' || statusAr == 'جديد');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -310,10 +336,213 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 ),
               ),
             ),
-          ]
+          ] else if (canAcceptRejectAssigned) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _rejectAssigned(req),
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('رفض', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: BorderSide(color: Colors.red.withAlpha(120)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _acceptAssigned(req),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('قبول', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _mainColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _acceptAssigned(Map<String, dynamic> req) async {
+    final id = int.tryParse((req['id'] ?? '').toString());
+    if (id == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('قبول الطلب', style: TextStyle(fontFamily: 'Cairo')),
+          content: const Text('هل تريد قبول هذا الطلب؟', style: TextStyle(fontFamily: 'Cairo')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('قبول')),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final ok = await MarketplaceApi().acceptAssignedRequest(requestId: id);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'تم قبول الطلب.' : 'تعذر قبول الطلب حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: ok ? Colors.green : null,
+      ),
+    );
+
+    await _fetchAssigned();
+  }
+
+  Future<void> _rejectAssigned(Map<String, dynamic> req) async {
+    final id = int.tryParse((req['id'] ?? '').toString());
+    if (id == null) return;
+
+    final noteController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('رفض الطلب', style: TextStyle(fontFamily: 'Cairo')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('اكتب سبب الرفض (اختياري):', style: TextStyle(fontFamily: 'Cairo')),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteController,
+                maxLines: 2,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+              child: const Text('رفض'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final ok = await MarketplaceApi().rejectAssignedRequest(
+      requestId: id,
+      note: noteController.text,
+    );
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'تم رفض الطلب.' : 'تعذر رفض الطلب حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: ok ? Colors.green : null,
+      ),
+    );
+
+    await _fetchAssigned();
+  }
+
+  Future<void> _sendOffer(Map<String, dynamic> req) async {
+    final id = int.tryParse((req['id'] ?? '').toString());
+    if (id == null) return;
+
+    final priceController = TextEditingController();
+    final daysController = TextEditingController(text: '3');
+    final noteController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تقديم عرض', style: TextStyle(fontFamily: 'Cairo')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: priceController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'السعر (ريال)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: daysController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'المدة (بالأيام)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'ملاحظة (اختياري)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('إرسال العرض')),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final price = double.tryParse(priceController.text.trim());
+    final days = int.tryParse(daysController.text.trim());
+    if (price == null || price <= 0 || days == null || days <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تحقق من السعر والمدة', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+
+    final ok = await MarketplaceApi().createOffer(
+      requestId: id,
+      price: price,
+      durationDays: days,
+      note: noteController.text,
+    );
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'تم إرسال العرض.' : 'تعذر إرسال العرض.', style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: ok ? Colors.green : null,
+      ),
+    );
+
+    await _fetchCompetitive();
   }
 
   Widget _searchBar() {
@@ -368,9 +597,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     );
   }
 
-  Widget _tabBody({required bool urgentTab}) {
-    final loading = urgentTab ? _loadingUrgent : _loadingAssigned;
-    final list = urgentTab ? _urgent : _assigned;
+  Widget _tabBody({required int tabIndex}) {
+    final isAssigned = tabIndex == 0;
+    final isUrgent = tabIndex == 1;
+    final isCompetitive = tabIndex == 2;
+
+    final loading = isAssigned ? _loadingAssigned : (isUrgent ? _loadingUrgent : _loadingCompetitive);
+    final list = isAssigned ? _assigned : (isUrgent ? _urgent : _competitive);
     final filtered = _filtered(list);
 
     if (loading) {
@@ -378,7 +611,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     }
 
     return RefreshIndicator(
-      onRefresh: urgentTab ? _fetchUrgent : _fetchAssigned,
+      onRefresh: isAssigned ? _fetchAssigned : (isUrgent ? _fetchUrgent : _fetchCompetitive),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -386,13 +619,42 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           if (!widget.embedded) const SizedBox(height: 12),
           if (filtered.isEmpty)
             _emptyState(
-              urgentTab ? 'لا توجد طلبات عاجلة متاحة حالياً' : 'لا توجد طلبات حالياً',
-              urgentTab
+              isUrgent
+                  ? 'لا توجد طلبات عاجلة متاحة حالياً'
+                  : (isCompetitive ? 'لا توجد طلبات عروض متاحة حالياً' : 'لا توجد طلبات حالياً'),
+              isUrgent
                   ? 'تأكد من تفعيل الطلبات العاجلة واختيار تخصصاتك في إكمال الملف التعريفي.'
-                  : 'ستظهر الطلبات هنا عندما يتم إسنادها لك.',
+                  : (isCompetitive
+                      ? 'ستظهر هنا طلبات العروض المطابقة لتخصصك ومدينتك لتقديم عروضك.'
+                      : 'ستظهر الطلبات هنا عندما يتم إسنادها لك.'),
             )
           else
-            ...filtered.map((e) => _requestCard(e, urgentTab: urgentTab)),
+            ...filtered.map((e) {
+              if (isCompetitive) {
+                return Column(
+                  children: [
+                    _requestCard(e, urgentTab: false),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _sendOffer(e),
+                        icon: const Icon(Icons.local_offer_outlined),
+                        label: const Text('قدّم عرض', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueGrey,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              }
+              return _requestCard(e, urgentTab: isUrgent);
+            }),
         ],
       ),
     );
@@ -413,7 +675,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (widget.embedded) {
       return Directionality(
         textDirection: TextDirection.rtl,
-        child: _tabBody(urgentTab: false),
+        child: _tabBody(tabIndex: 0),
       );
     }
 
@@ -432,14 +694,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             tabs: const [
               Tab(text: 'طلباتي'),
               Tab(text: 'العاجلة المتاحة'),
+              Tab(text: 'العروض المتاحة'),
             ],
           ),
         ),
         body: TabBarView(
           controller: _tabController,
           children: [
-            _tabBody(urgentTab: false),
-            _tabBody(urgentTab: true),
+            _tabBody(tabIndex: 0),
+            _tabBody(tabIndex: 1),
+            _tabBody(tabIndex: 2),
           ],
         ),
       ),

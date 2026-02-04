@@ -38,17 +38,25 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         )
 
     def validate_request_type(self, value):
-        if value not in ("competitive", "urgent"):
+        if value not in ("normal", "competitive", "urgent"):
             raise serializers.ValidationError("نوع الطلب غير صحيح")
         return value
 
     def validate(self, attrs):
         provider = attrs.get("provider")
         request_type = attrs.get("request_type")
-        if provider is not None and request_type == "urgent":
+
+        if request_type == "normal" and provider is None:
             raise serializers.ValidationError({
-                "provider": "لا يمكن تحديد مزود لطلب عاجل"
+                "provider": "طلب عادي يتطلب تحديد مزود خدمة"
             })
+
+        if request_type == "urgent" and provider is not None:
+            if not getattr(provider, "accepts_urgent", False):
+                raise serializers.ValidationError({
+                    "provider": "هذا المزود لا يقبل الطلبات العاجلة"
+                })
+
         return attrs
 
     def create(self, validated_data):
@@ -100,6 +108,15 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
     subcategory_name = serializers.CharField(source="subcategory.name", read_only=True)
     category_name = serializers.CharField(source="subcategory.category.name", read_only=True)
     client_phone = serializers.CharField(source="client.phone", read_only=True)
+    client_name = serializers.SerializerMethodField()
+    provider_name = serializers.CharField(source="provider.display_name", read_only=True)
+    provider_phone = serializers.CharField(source="provider.user.phone", read_only=True)
+
+    def get_client_name(self, obj):
+        first = (getattr(obj.client, "first_name", "") or "").strip()
+        last = (getattr(obj.client, "last_name", "") or "").strip()
+        name = f"{first} {last}".strip()
+        return name or "-"
 
     class Meta:
         model = ServiceRequest
@@ -111,9 +128,13 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
             "status",
             "city",
             "created_at",
+            "provider",
+            "provider_name",
+            "provider_phone",
             "subcategory",
             "subcategory_name",
             "category_name",
+            "client_name",
             "client_phone",
         )
 

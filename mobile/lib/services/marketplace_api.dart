@@ -154,6 +154,25 @@ class MarketplaceApi {
     }
   }
 
+  Future<List<dynamic>> getAvailableCompetitiveRequestsForProvider() async {
+    final token = await _session.readAccessToken();
+    if (token == null) return [];
+
+    try {
+      final response = await _dio.get(
+        '${ApiConfig.apiPrefix}/marketplace/provider/competitive/available/',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return response.data;
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<bool> acceptUrgentRequest({required int requestId}) async {
     final token = await _session.readAccessToken();
     if (token == null) return false;
@@ -163,6 +182,77 @@ class MarketplaceApi {
         '${ApiConfig.apiPrefix}/marketplace/requests/urgent/accept/',
         data: {
           'request_id': requestId,
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> acceptAssignedRequest({required int requestId}) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/accept/',
+        data: {},
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> rejectAssignedRequest({required int requestId, String? note}) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/reject/',
+        data: {
+          if ((note ?? '').trim().isNotEmpty) 'note': note,
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> createOffer({
+    required int requestId,
+    required double price,
+    required int durationDays,
+    String? note,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/offers/create/',
+        data: {
+          'price': price,
+          'duration_days': durationDays,
+          if ((note ?? '').trim().isNotEmpty) 'note': note,
         },
         options: Options(
           headers: {
