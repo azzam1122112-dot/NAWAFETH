@@ -44,7 +44,14 @@ def test_review_only_after_completed_and_only_owner_and_no_duplicate():
     api.force_authenticate(user=other_user)
     r0 = api.post(
         f"/api/reviews/requests/{sr.id}/review/",
-        {"rating": 5, "comment": "x"},
+        {
+            "response_speed": 5,
+            "cost_value": 5,
+            "quality": 5,
+            "credibility": 5,
+            "on_time": 5,
+            "comment": "x",
+        },
         format="json",
     )
     assert r0.status_code in (400, 403)
@@ -53,7 +60,14 @@ def test_review_only_after_completed_and_only_owner_and_no_duplicate():
     api.force_authenticate(user=client_user)
     r1 = api.post(
         f"/api/reviews/requests/{sr.id}/review/",
-        {"rating": 5, "comment": "ممتاز"},
+        {
+            "response_speed": 5,
+            "cost_value": 5,
+            "quality": 5,
+            "credibility": 5,
+            "on_time": 5,
+            "comment": "ممتاز",
+        },
         format="json",
     )
     assert r1.status_code == 400
@@ -64,7 +78,14 @@ def test_review_only_after_completed_and_only_owner_and_no_duplicate():
 
     r2 = api.post(
         f"/api/reviews/requests/{sr.id}/review/",
-        {"rating": 4, "comment": "جيد"},
+        {
+            "response_speed": 4,
+            "cost_value": 4,
+            "quality": 4,
+            "credibility": 4,
+            "on_time": 4,
+            "comment": "جيد",
+        },
         format="json",
     )
     assert r2.status_code == 201
@@ -75,7 +96,17 @@ def test_review_only_after_completed_and_only_owner_and_no_duplicate():
     assert float(provider.rating_avg) == 4.0
 
     # منع التكرار
-    r3 = api.post(f"/api/reviews/requests/{sr.id}/review/", {"rating": 5}, format="json")
+    r3 = api.post(
+        f"/api/reviews/requests/{sr.id}/review/",
+        {
+            "response_speed": 5,
+            "cost_value": 5,
+            "quality": 5,
+            "credibility": 5,
+            "on_time": 5,
+        },
+        format="json",
+    )
     assert r3.status_code == 400
 
 
@@ -113,7 +144,14 @@ def test_provider_rating_summary_and_reviews_list():
     api.force_authenticate(user=client_user)
     api.post(
         f"/api/reviews/requests/{sr.id}/review/",
-        {"rating": 5, "comment": "ممتاز"},
+        {
+            "response_speed": 5,
+            "cost_value": 5,
+            "quality": 5,
+            "credibility": 5,
+            "on_time": 5,
+            "comment": "ممتاز",
+        },
         format="json",
     )
 
@@ -121,6 +159,12 @@ def test_provider_rating_summary_and_reviews_list():
     r_sum = api2.get(f"/api/reviews/providers/{provider.id}/rating/")
     assert r_sum.status_code == 200
     assert int(r_sum.data["rating_count"]) == 1
+    assert float(r_sum.data["rating_avg"]) == 5.0
+    assert float(r_sum.data["response_speed_avg"]) == 5.0
+    assert float(r_sum.data["cost_value_avg"]) == 5.0
+    assert float(r_sum.data["quality_avg"]) == 5.0
+    assert float(r_sum.data["credibility_avg"]) == 5.0
+    assert float(r_sum.data["on_time_avg"]) == 5.0
 
     r_list = api2.get(f"/api/reviews/providers/{provider.id}/reviews/")
     assert r_list.status_code == 200

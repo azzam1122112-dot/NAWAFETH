@@ -550,7 +550,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   void _navToServices() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesTab()));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: const Text('خدماتي', style: TextStyle(fontFamily: 'Cairo')),
+            backgroundColor: providerPrimary,
+            foregroundColor: Colors.white,
+          ),
+          body: const ServicesTab(embedded: true),
+        ),
+      ),
+    );
   }
 
   void _navToOrders() {

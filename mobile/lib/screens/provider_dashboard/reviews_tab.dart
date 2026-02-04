@@ -138,17 +138,9 @@ class _ReviewsTabState extends State<ReviewsTab> {
       return Directionality(textDirection: TextDirection.rtl, child: body);
     }
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('التقييمات'),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-        ),
-        body: body,
-      ),
-    );
+    // ReviewsTab is used as a tab/content widget; the parent screen should
+    // provide the page-level AppBar to avoid duplicated titles.
+    return Directionality(textDirection: TextDirection.rtl, child: body);
   }
 
 }
@@ -325,13 +317,13 @@ class _RatingSummaryCard extends StatelessWidget {
     final credibilityAvg = _asNullableDouble(safe['credibility_avg']);
     final onTimeAvg = _asNullableDouble(safe['on_time_avg']);
 
-    final hasBreakdown = [
-      responseSpeedAvg,
-      costValueAvg,
-      qualityAvg,
-      credibilityAvg,
-      onTimeAvg,
-    ].any((v) => v != null);
+    // Show breakdown only when it is fully backed by API data.
+    final hasBreakdown = count > 0 &&
+        responseSpeedAvg != null &&
+        costValueAvg != null &&
+        qualityAvg != null &&
+        credibilityAvg != null &&
+        onTimeAvg != null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -446,15 +438,13 @@ class _RatingSummaryCard extends StatelessWidget {
 
 class _BreakdownRow extends StatelessWidget {
   final String label;
-  final double? value;
+  final double value;
 
   const _BreakdownRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    final v = value;
-    final show = v != null;
-    final starsValue = (v ?? 0).clamp(0.0, 5.0).toDouble();
+    final starsValue = value.clamp(0.0, 5.0).toDouble();
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -472,7 +462,7 @@ class _BreakdownRow extends StatelessWidget {
           _Stars(value: starsValue, size: 14),
           const SizedBox(width: 6),
           Text(
-            show ? starsValue.toStringAsFixed(1) : '-',
+            starsValue.toStringAsFixed(1),
             style: TextStyle(
               fontFamily: 'Cairo',
               color: Colors.white.withAlpha(230),

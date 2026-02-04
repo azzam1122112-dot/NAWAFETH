@@ -6,12 +6,16 @@ from .models import Review
 
 
 class ReviewCreateSerializer(serializers.ModelSerializer):
-    rating = serializers.IntegerField(required=False)
-    response_speed = serializers.IntegerField(required=False, allow_null=True)
-    cost_value = serializers.IntegerField(required=False, allow_null=True)
-    quality = serializers.IntegerField(required=False, allow_null=True)
-    credibility = serializers.IntegerField(required=False, allow_null=True)
-    on_time = serializers.IntegerField(required=False, allow_null=True)
+    # NOTE: Rating is derived from the detailed criteria.
+    # We accept an optional client-provided rating for backwards compatibility,
+    # but we will compute/override it from criteria.
+    rating = serializers.IntegerField(required=False, allow_null=True)
+
+    response_speed = serializers.IntegerField(required=True)
+    cost_value = serializers.IntegerField(required=True)
+    quality = serializers.IntegerField(required=True)
+    credibility = serializers.IntegerField(required=True)
+    on_time = serializers.IntegerField(required=True)
 
     class Meta:
         model = Review
@@ -25,11 +29,6 @@ class ReviewCreateSerializer(serializers.ModelSerializer):
             "comment",
         )
 
-    def validate_rating(self, value):
-        if value < 1 or value > 5:
-            raise serializers.ValidationError("التقييم يجب أن يكون بين 1 و 5")
-        return value
-
     def _validate_criteria(self, attrs):
         keys = [
             "response_speed",
@@ -39,14 +38,10 @@ class ReviewCreateSerializer(serializers.ModelSerializer):
             "on_time",
         ]
         present = {k: attrs.get(k, None) for k in keys}
-        any_present = any(v is not None for v in present.values())
-        if not any_present:
-            return
 
-        # إذا بدأ يرسل تفصيل، نطلب كل المحاور
         missing = [k for k, v in present.items() if v is None]
         if missing:
-            raise serializers.ValidationError({"detail": "حقول التقييم التفصيلية ناقصة"})
+            raise serializers.ValidationError({"detail": "حقول التقييم التفصيلية مطلوبة"})
 
         for k, v in present.items():
             if v < 1 or v > 5:
@@ -78,24 +73,18 @@ class ReviewCreateSerializer(serializers.ModelSerializer):
         if hasattr(request_obj, "review"):
             raise serializers.ValidationError({"detail": "تم تقييم هذا الطلب مسبقًا"})
 
-        # تحقق من التفصيل (إن وُجد)
+        # التقييم يعتمد على المحاور فقط
         self._validate_criteria(attrs)
 
-        # احسب rating من التفصيل إذا لم يُرسل
-        if attrs.get("rating", None) is None:
-            keys = [
-                "response_speed",
-                "cost_value",
-                "quality",
-                "credibility",
-                "on_time",
-            ]
-            if all(attrs.get(k, None) is not None for k in keys):
-                avg = sum(int(attrs[k]) for k in keys) / len(keys)
-                attrs["rating"] = max(1, min(5, round(avg)))
-
-        if attrs.get("rating", None) is None:
-            raise serializers.ValidationError({"rating": "التقييم مطلوب"})
+        keys = [
+            "response_speed",
+            "cost_value",
+            "quality",
+            "credibility",
+            "on_time",
+        ]
+        avg = sum(int(attrs[k]) for k in keys) / len(keys)
+        attrs["rating"] = max(1, min(5, round(avg)))
 
         return attrs
 

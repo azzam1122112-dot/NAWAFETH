@@ -1,51 +1,57 @@
 import 'package:flutter/material.dart';
 
 class ServicesTab extends StatelessWidget {
-  const ServicesTab({super.key});
+  final bool embedded;
+
+  const ServicesTab({super.key, this.embedded = false});
 
   static const Color _mainColor = Colors.deepPurple;
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: _mainColor,
-          iconTheme: const IconThemeData(color: Colors.white),
-          title: const Text(
-            'خدماتي',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+    final content = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.home_repair_service, size: 44, color: Colors.grey.shade500),
+            const SizedBox(height: 10),
+            const Text(
+              'لا توجد خدمات مرتبطة حالياً',
+              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
             ),
-          ),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.home_repair_service, size: 44, color: Colors.grey.shade500),
-                const SizedBox(height: 10),
-                const Text(
-                  'لا توجد خدمات مرتبطة حالياً',
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'سيتم تفعيل إدارة الخدمات (إضافة/تعديل/حذف) بعد توفير API لها في الباكند.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade600, fontSize: 13),
-                ),
-              ],
+            const SizedBox(height: 6),
+            Text(
+              'سيتم تفعيل إدارة الخدمات (إضافة/تعديل/حذف) بعد توفير API لها في الباكند.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade600, fontSize: 13),
             ),
-          ),
+          ],
         ),
       ),
+    );
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: embedded
+          ? content
+          : Scaffold(
+              appBar: AppBar(
+                backgroundColor: _mainColor,
+                iconTheme: const IconThemeData(color: Colors.white),
+                title: const Text(
+                  'خدماتي',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              body: content,
+            ),
     );
   }
 }
