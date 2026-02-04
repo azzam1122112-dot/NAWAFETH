@@ -107,6 +107,8 @@ class _ReviewsTabState extends State<ReviewsTab> {
         padding: const EdgeInsets.all(16),
         children: [
           _RatingSummaryCard(rating: _rating),
+          const SizedBox(height: 12),
+          _CriteriaBreakdownSection(rating: _rating),
           const SizedBox(height: 14),
           _SectionHeader(
             title: 'المراجعات',
@@ -311,20 +313,6 @@ class _RatingSummaryCard extends StatelessWidget {
     final avg = _asDouble(safe['rating_avg']).clamp(0.0, 5.0).toDouble();
     final count = _asInt(safe['rating_count']);
 
-    final responseSpeedAvg = _asNullableDouble(safe['response_speed_avg']);
-    final costValueAvg = _asNullableDouble(safe['cost_value_avg']);
-    final qualityAvg = _asNullableDouble(safe['quality_avg']);
-    final credibilityAvg = _asNullableDouble(safe['credibility_avg']);
-    final onTimeAvg = _asNullableDouble(safe['on_time_avg']);
-
-    // Show breakdown only when it is fully backed by API data.
-    final hasBreakdown = count > 0 &&
-        responseSpeedAvg != null &&
-        costValueAvg != null &&
-        qualityAvg != null &&
-        credibilityAvg != null &&
-        onTimeAvg != null;
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -401,14 +389,6 @@ class _RatingSummaryCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (hasBreakdown) ...[
-                  const SizedBox(height: 10),
-                  _BreakdownRow(label: 'سرعة الاستجابة', value: responseSpeedAvg),
-                  _BreakdownRow(label: 'التكلفة مقابل الخدمة', value: costValueAvg),
-                  _BreakdownRow(label: 'جودة الخدمة', value: qualityAvg),
-                  _BreakdownRow(label: 'المصداقية', value: credibilityAvg),
-                  _BreakdownRow(label: 'وقت الإنجاز', value: onTimeAvg),
-                ],
               ],
             ),
           ),
@@ -429,6 +409,66 @@ class _RatingSummaryCard extends StatelessWidget {
     return double.tryParse(v.toString()) ?? 0;
   }
 
+}
+
+class _CriteriaBreakdownSection extends StatelessWidget {
+  final Map<String, dynamic>? rating;
+
+  const _CriteriaBreakdownSection({required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    final safe = rating ?? const <String, dynamic>{};
+    final count = _asInt(safe['rating_count']);
+
+    final responseSpeedAvg = _asNullableDouble(safe['response_speed_avg']);
+    final costValueAvg = _asNullableDouble(safe['cost_value_avg']);
+    final qualityAvg = _asNullableDouble(safe['quality_avg']);
+    final credibilityAvg = _asNullableDouble(safe['credibility_avg']);
+    final onTimeAvg = _asNullableDouble(safe['on_time_avg']);
+
+    // No dummy UI: show this section only when API provides averages.
+    final hasAny = [
+      responseSpeedAvg,
+      costValueAvg,
+      qualityAvg,
+      credibilityAvg,
+      onTimeAvg,
+    ].any((v) => v != null);
+    if (count <= 0 || !hasAny) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(title: 'التقييم'),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            children: [
+              _CriteriaRow(label: 'سرعة الاستجابة', value: responseSpeedAvg),
+              _CriteriaRow(label: 'التكلفة مقابل الخدمة', value: costValueAvg),
+              _CriteriaRow(label: 'جودة الخدمة', value: qualityAvg),
+              _CriteriaRow(label: 'المصداقية', value: credibilityAvg),
+              _CriteriaRow(label: 'وقت الإنجاز', value: onTimeAvg),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static int _asInt(Object? v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
   static double? _asNullableDouble(Object? v) {
     if (v == null) return null;
     if (v is num) return v.toDouble();
@@ -436,39 +476,45 @@ class _RatingSummaryCard extends StatelessWidget {
   }
 }
 
-class _BreakdownRow extends StatelessWidget {
+class _CriteriaRow extends StatelessWidget {
   final String label;
-  final double value;
+  final double? value;
 
-  const _BreakdownRow({required this.label, required this.value});
+  const _CriteriaRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    final starsValue = value.clamp(0.0, 5.0).toDouble();
+    final v = value;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           Expanded(
             child: Text(
               label,
+              textAlign: TextAlign.right,
               style: const TextStyle(
                 fontFamily: 'Cairo',
-                color: Colors.white,
-                fontSize: 12,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
               ),
             ),
           ),
-          _Stars(value: starsValue, size: 14),
-          const SizedBox(width: 6),
-          Text(
-            starsValue.toStringAsFixed(1),
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              color: Colors.white.withAlpha(230),
-              fontSize: 11,
-            ),
-          ),
+          const SizedBox(width: 12),
+          if (v == null)
+            Text(
+              '—',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          else
+            _Stars(value: v.clamp(0.0, 5.0).toDouble(), size: 18),
         ],
       ),
     );
