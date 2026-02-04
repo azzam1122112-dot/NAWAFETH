@@ -81,12 +81,24 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
       print('  Category ID: $_selectedCategoryId');
       print('  Subcategory ID: $_selectedSubcategoryId');
       
-      final list = await _providersApi.getProvidersFiltered(
-        q: _searchController.text.trim(),
-        city: _selectedCity,
-        categoryId: _selectedCategoryId,
-        subcategoryId: _selectedSubcategoryId,
-      );
+      // إذا لم يتم إدخال أي فلاتر، نستخدم getProviders() لعرض الجميع
+      final hasFilters = _searchController.text.trim().isNotEmpty ||
+                        _selectedCity != null ||
+                        _selectedCategoryId != null ||
+                        _selectedSubcategoryId != null;
+      
+      final List<ProviderProfile> list;
+      if (hasFilters) {
+        list = await _providersApi.getProvidersFiltered(
+          q: _searchController.text.trim(),
+          city: _selectedCity,
+          categoryId: _selectedCategoryId,
+          subcategoryId: _selectedSubcategoryId,
+        );
+      } else {
+        // تحميل جميع المزودين عند عدم وجود فلاتر
+        list = await _providersApi.getProviders();
+      }
       
       print('✅ Loaded ${list.length} providers');
       
