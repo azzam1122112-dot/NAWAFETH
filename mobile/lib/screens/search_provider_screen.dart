@@ -75,18 +75,28 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   Future<void> _loadProviders() async {
     setState(() => _loading = true);
     try {
+      print('🔄 Loading providers...');
+      print('  Search text: ${_searchController.text.trim()}');
+      print('  City: $_selectedCity');
+      print('  Category ID: $_selectedCategoryId');
+      print('  Subcategory ID: $_selectedSubcategoryId');
+      
       final list = await _providersApi.getProvidersFiltered(
         q: _searchController.text.trim(),
         city: _selectedCity,
         categoryId: _selectedCategoryId,
         subcategoryId: _selectedSubcategoryId,
       );
+      
+      print('✅ Loaded ${list.length} providers');
+      
       if (!mounted) return;
       setState(() {
         _providers = list;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      print('❌ Error loading providers: $e');
       if (!mounted) return;
       setState(() => _loading = false);
     }

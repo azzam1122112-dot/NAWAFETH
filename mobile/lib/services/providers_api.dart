@@ -50,13 +50,20 @@ class ProvidersApi {
       if (subcategoryId != null) params['subcategory_id'] = subcategoryId;
       if (categoryId != null) params['category_id'] = categoryId;
 
+      print('🔍 Searching providers with params: $params');
+
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/list/',
         queryParameters: params,
       );
+      
+      print('✅ Response status: ${res.statusCode}');
+      print('✅ Response data length: ${(res.data as List).length}');
+      
       final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
       return list;
-    } catch (_) {
+    } catch (e) {
+      print('❌ Error in getProvidersFiltered: $e');
       return [];
     }
   }
