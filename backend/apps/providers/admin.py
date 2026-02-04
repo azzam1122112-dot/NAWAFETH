@@ -1,11 +1,12 @@
 from django.contrib import admin
 
-from .models import Category, ProviderCategory, ProviderProfile, SubCategory
+from .models import Category, ProviderCategory, ProviderProfile, ProviderService, SubCategory
 
 
 admin.site.register(Category)
 admin.site.register(SubCategory)
 admin.site.register(ProviderCategory)
+admin.site.register(ProviderService)
 
 
 @admin.register(ProviderProfile)

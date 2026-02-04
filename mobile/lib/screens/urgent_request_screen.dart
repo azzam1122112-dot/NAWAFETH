@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:latlong2/latlong.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import 'my_profile_screen.dart';
-import 'providers_map_screen.dart';
+import '../services/providers_api.dart';
+import '../services/marketplace_api.dart';
+import '../models/category.dart';
+import '../utils/auth_guard.dart';
 
 class UrgentRequestScreen extends StatefulWidget {
   const UrgentRequestScreen({super.key});
@@ -15,34 +16,64 @@ class UrgentRequestScreen extends StatefulWidget {
 }
 
 class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
+  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  String? selectedMainCategory;
-  String? selectedSubCategory;
-  bool sendToAll = false;
-  bool searchNearest = true;
+  final TextEditingController _cityController = TextEditingController();
+
+  Category? _selectedCategory;
+  SubCategory? _selectedSubCategory;
+
+  bool _loadingCats = false;
+  bool _submitting = false;
   bool showSuccessCard = false;
 
-  static const LatLng _defaultMapCenter = LatLng(24.7136, 46.6753);
+  List<Category> _categories = [];
 
-  final List<String> mainCategories = [
-    "صيانة المركبات",
-    "خدمات المنازل",
-    "استشارات قانونية",
-  ];
+  Future<void> _submitRequest() async {
+    if (_submitting) return;
 
-  final Map<String, List<String>> subCategoriesMap = {
-    "صيانة المركبات": ["كهرباء", "ميكانيكا", "المساعدة على الطريق"],
-    "خدمات المنازل": ["سباكة", "نقل أثاث", "كهرباء"],
-    "استشارات قانونية": ["عامة", "صياغة عقود"],
-  };
+    final ok = await checkFullClient(context);
+    if (!ok) return;
 
-  List<String> get currentSubCategories =>
-      subCategoriesMap[selectedMainCategory] ?? [];
+    if (_selectedSubCategory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر التصنيف الفرعي')),
+      );
+      return;
+    }
 
-  void _submitRequest() {
+    final title = _titleController.text.trim();
+    final desc = _descriptionController.text.trim();
+    final city = _cityController.text.trim();
+    if (title.isEmpty || desc.isEmpty || city.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أكمل العنوان والوصف والمدينة')),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    final success = await MarketplaceApi().createRequest(
+      subcategoryId: _selectedSubCategory!.id,
+      title: title,
+      description: desc,
+      requestType: 'urgent',
+      city: city,
+    );
+
+    if (!mounted) return;
     setState(() {
-      showSuccessCard = true;
+      _submitting = false;
+      showSuccessCard = success;
     });
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال الطلب، حاول مرة أخرى')),
+      );
+    }
   }
 
   void _goToMyProfile() {
@@ -54,35 +85,26 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
 
   @override
   void dispose() {
+    _titleController.dispose();
     _descriptionController.dispose();
+    _cityController.dispose();
     super.dispose();
   }
 
-  Future<void> _openProvidersMap() async {
-    if (selectedMainCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر التصنيف الرئيسي أولاً')),
-      );
-      return;
-    }
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProvidersMapScreen(
-          category: selectedMainCategory!,
-          subCategory: selectedSubCategory,
-          requestDescription: _descriptionController.text.trim(),
-          attachments: [],
-        ),
-      ),
-    );
-
+  Future<void> _loadCategories() async {
+    setState(() => _loadingCats = true);
+    final cats = await ProvidersApi().getCategories();
     if (!mounted) return;
-
-    if (result != null && result is Map) {
-      _submitRequest();
-    }
+    setState(() {
+      _categories = cats;
+      _loadingCats = false;
+    });
   }
 
   @override
@@ -202,164 +224,37 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          _buildDropdown(
-            "التصنيف الرئيسي",
-            FontAwesomeIcons.layerGroup,
-            selectedMainCategory,
-            mainCategories,
-            (val) {
-              setState(() {
-                selectedMainCategory = val;
-                selectedSubCategory = null;
-              });
-            },
+          _buildCategoryDropdown(theme),
+          const SizedBox(height: 12),
+          _buildSubCategoryDropdown(theme),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _cityController,
+            maxLength: 60,
+            decoration: _inputDecoration(
+              "المدينة",
+              Icons.location_city,
+            ),
           ),
           const SizedBox(height: 12),
-          _buildDropdown(
-            "التصنيف الفرعي",
-            FontAwesomeIcons.sitemap,
-            selectedSubCategory,
-            currentSubCategories,
-            (val) => setState(() => selectedSubCategory = val),
+          TextFormField(
+            controller: _titleController,
+            maxLength: 50,
+            decoration: _inputDecoration(
+              "عنوان الطلب",
+              Icons.title,
+            ),
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 20,
-            runSpacing: 10,
-            children: [
-              _customCheckbox(
-                "إرسال للجميع",
-                sendToAll,
-                (val) {
-                  final newVal = val ?? false;
-                  setState(() {
-                    sendToAll = newVal;
-                    searchNearest = !newVal;
-                  });
-                },
-              ),
-              _customCheckbox(
-                "البحث عن الأقرب",
-                searchNearest,
-                (val) {
-                  final newVal = val ?? false;
-                  setState(() {
-                    searchNearest = newVal;
-                    sendToAll = !newVal;
-                  });
-                },
-              ),
-            ],
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _descriptionController,
+            maxLines: 4,
+            maxLength: 300,
+            decoration: _inputDecoration(
+              "وصف مختصر للخدمة",
+              FontAwesomeIcons.penToSquare,
+            ),
           ),
-
-          const SizedBox(height: 16),
-          if (sendToAll) ...[
-            TextFormField(
-              controller: _descriptionController,
-              maxLines: 4,
-              maxLength: 150,
-              decoration: _inputDecoration(
-                "وصف مختصر للخدمة",
-                FontAwesomeIcons.penToSquare,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _iconButton("مرفق", FontAwesomeIcons.paperclip, () {}),
-                _iconButton("صورة", FontAwesomeIcons.camera, () {}),
-                _iconButton("صوت", FontAwesomeIcons.microphone, () {}),
-              ],
-            ),
-          ] else if (searchNearest) ...[
-            GestureDetector(
-              onTap: _openProvidersMap,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  height: 190,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      FlutterMap(
-                        options: const MapOptions(
-                          initialCenter: _defaultMapCenter,
-                          initialZoom: 12,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.nawafeth.app',
-                          ),
-                          MarkerLayer(
-                            markers: const [
-                              Marker(
-                                point: _defaultMapCenter,
-                                width: 40,
-                                height: 40,
-                                child: Icon(
-                                  Icons.location_on,
-                                  color: Colors.red,
-                                  size: 34,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      Align(
-                        alignment: Alignment.topCenter,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          color: Colors.black.withValues(alpha: 0.35),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.map, color: Colors.white, size: 18),
-                              SizedBox(width: 8),
-                              Text(
-                                'اضغط لعرض الأقرب على الخريطة',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontFamily: 'Cairo',
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (selectedMainCategory == null)
-                        Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            color: Colors.black.withValues(alpha: 0.35),
-                            child: const Text(
-                              'اختر التصنيف الرئيسي لبدء البحث',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontFamily: 'Cairo',
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -367,7 +262,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               FilledButton.icon(
                 onPressed: _submitRequest,
                 icon: const Icon(FontAwesomeIcons.paperPlane, size: 14),
-                label: const Text("إرسال"),
+                label: Text(_submitting ? "جارٍ الإرسال..." : "إرسال"),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 28,
@@ -388,34 +283,33 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     );
   }
 
-  Widget _buildDropdown(
-    String label,
-    IconData icon,
-    String? selectedValue,
-    List<String> items,
-    Function(String?) onChanged,
-  ) {
-    return DropdownButtonFormField<String>(
-      decoration: _inputDecoration(label, icon),
-      initialValue: selectedValue,
+  Widget _buildCategoryDropdown(ThemeData theme) {
+    return DropdownButtonFormField<Category>(
+      decoration: _inputDecoration("التصنيف الرئيسي", FontAwesomeIcons.layerGroup),
+      value: _selectedCategory,
       isDense: true,
-      items:
-          items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-      onChanged: onChanged,
+      items: _categories
+          .map((c) => DropdownMenuItem<Category>(value: c, child: Text(c.name)))
+          .toList(),
+      onChanged: (val) {
+        setState(() {
+          _selectedCategory = val;
+          _selectedSubCategory = null;
+        });
+      },
     );
   }
 
-  Widget _customCheckbox(String text, bool value, Function(bool?) onChanged) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Checkbox(
-          value: value,
-          visualDensity: VisualDensity.compact,
-          onChanged: onChanged,
-        ),
-        Text(text, style: const TextStyle(fontSize: 13)),
-      ],
+  Widget _buildSubCategoryDropdown(ThemeData theme) {
+    final subs = _selectedCategory?.subcategories ?? const <SubCategory>[];
+    return DropdownButtonFormField<SubCategory>(
+      decoration: _inputDecoration("التصنيف الفرعي", FontAwesomeIcons.sitemap),
+      value: _selectedSubCategory,
+      isDense: true,
+      items: subs
+          .map((s) => DropdownMenuItem<SubCategory>(value: s, child: Text(s.name)))
+          .toList(),
+      onChanged: (val) => setState(() => _selectedSubCategory = val),
     );
   }
 

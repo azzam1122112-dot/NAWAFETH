@@ -13,10 +13,11 @@ import '../widgets/video_reels.dart';
 import '../widgets/video_full_screen.dart';
 import 'chat_detail_screen.dart';
 import 'provider_dashboard/reviews_tab.dart';
-import 'service_detail_screen.dart';
 import 'service_request_form_screen.dart';
+import 'provider_service_detail_screen.dart';
 import '../services/providers_api.dart'; // Added
 import '../models/provider.dart'; // Added
+import '../models/provider_service.dart';
 import '../utils/auth_guard.dart'; // Added
 
 class ProviderProfileScreen extends StatefulWidget {
@@ -102,32 +103,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     {"title": "المراجعات", "icon": Icons.reviews},
   ];
 
-  // بيانات وهمية للخدمات
-  final List<Map<String, dynamic>> services = const [
-    {
-      "title": "استشارة قانونية",
-      "image": "assets/images/879797.jpeg",
-      "likes": 21,
-      "files": 5,
-      "comments": 4,
-    },
-    {
-      "title": "مراجعة عقد",
-      "image": "assets/images/841015.jpeg",
-      "likes": 10,
-      "files": 3,
-      "comments": 2,
-    },
-    {
-      "title": "صياغة دعوى",
-      "image": "assets/images/32.jpeg",
-      "likes": 15,
-      "files": 2,
-      "comments": 6,
-    },
-  ];
-
-  late final List<Map<String, dynamic>> _servicesData;
+  // خدمات مقدم الخدمة (API)
+  List<ProviderService> _providerServices = const [];
+  bool _servicesLoading = true;
 
   // ✅ معرض خدماتي: أقسام + محتوى (صورة/فيديو) + وصف (بيانات وهمية)
   final List<Map<String, dynamic>> serviceGallerySections = const [
@@ -173,7 +151,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     },
   ];
 
-  String get providerName => _fullProfile?.displayName ?? widget.providerName ?? 'أحمد المحامي';
+  String get providerName => _fullProfile?.displayName ?? widget.providerName ?? '—';
 
   String get providerCategory => widget.providerCategory ?? 'محامي';
 
@@ -186,9 +164,15 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   String get providerImage => widget.providerImage ?? 'assets/images/8410.jpeg';
 
-  bool get providerVerified => _fullProfile?.isVerifiedBlue ?? widget.providerVerified ?? true;
+    bool get providerVerified =>
+      (_fullProfile?.isVerifiedBlue ?? false) ||
+      (_fullProfile?.isVerifiedGreen ?? false) ||
+      (widget.providerVerified ?? false);
 
-  String get providerPhone => widget.providerPhone ?? '0505511111';
+    String get providerPhone =>
+      _fullProfile?.phone?.trim().isNotEmpty == true
+        ? _fullProfile!.phone!.trim()
+        : (widget.providerPhone ?? '').trim();
 
   String get providerHandle => '@xxxxyy';
 
@@ -337,15 +321,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _servicesData = services
-        .map((e) => <String, dynamic>{
-              ...e,
-              'isLiked': false,
-            })
-        .toList();
-    
     if (widget.providerId != null) {
       _loadProviderData();
+      _loadProviderServices();
     }
   }
 
@@ -365,6 +343,30 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       }
     } catch (e) {
       debugPrint('Error loading provider: $e');
+    }
+  }
+
+  Future<void> _loadProviderServices() async {
+    try {
+      final id = int.tryParse(widget.providerId ?? '');
+      if (id == null) return;
+
+      if (mounted) {
+        setState(() => _servicesLoading = true);
+      }
+
+      final services = await ProvidersApi().getProviderServices(id);
+      if (!mounted) return;
+      setState(() {
+        _providerServices = services;
+        _servicesLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _providerServices = const [];
+        _servicesLoading = false;
+      });
     }
   }
 
@@ -1807,6 +1809,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final textColor = isDark ? Colors.white : Colors.black;
     final secondaryTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
+    final bio = (_fullProfile?.bio ?? '').trim();
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -1829,7 +1833,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            'بيانات وهمية: خبرة في تقديم الاستشارات القانونية وصياغة العقود ومراجعتها. ألتزم بالدقة والسرعة وجودة التواصل.',
+            bio.isEmpty ? 'لا توجد نبذة متاحة حالياً.' : bio,
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 13,
@@ -1843,56 +1847,141 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   }
 
   Widget _servicesTab() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _servicesData.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.84,
-      ),
-      itemBuilder: (context, index) {
-        final service = _servicesData[index];
-        return InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ServiceDetailScreen(
-                  title: service["title"],
-                  images: [
-                    service["image"],
-                    "assets/images/8410.jpeg",
-                    "assets/images/841015.jpeg",
-                  ],
-                  likes: service["likes"],
-                  filesCount: service["files"],
-                  initialCommentsCount: service["comments"],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+
+    Widget header() {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'الخدمات',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _servicesLoading ? null : _loadProviderServices,
+            icon: Icon(Icons.refresh, color: mainColor),
+            label: Text(
+              'تحديث',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+                color: mainColor,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_servicesLoading) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          children: [
+            header(),
+            const SizedBox(height: 18),
+            const Center(child: CircularProgressIndicator()),
+          ],
+        ),
+      );
+    }
+
+    if (_providerServices.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          children: [
+            header(),
+            const SizedBox(height: 14),
+            const Center(
+              child: Text(
+                'لا توجد خدمات معروضة حالياً',
+                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loadProviderServices,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        header(),
+        const SizedBox(height: 8),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _providerServices.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final s = _providerServices[index];
+            final subtitleBits = <String>[];
+            if (s.subcategory?.name != null && s.subcategory!.name.trim().isNotEmpty) {
+              subtitleBits.add(s.subcategory!.name);
+            }
+            subtitleBits.add(s.priceText());
+            if (s.description.trim().isNotEmpty) {
+              subtitleBits.add(s.description.trim());
+            }
+
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[850] : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[700]!
+                      : Colors.grey.shade200,
                 ),
+              ),
+              child: ListTile(
+                onTap: () {
+                  final id = (widget.providerId ?? '').trim();
+                  if (id.isEmpty) return;
+
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ProviderServiceDetailScreen(
+                        service: s,
+                        providerName: providerName,
+                        providerId: id,
+                      ),
+                    ),
+                  );
+                },
+                title: Text(
+                  s.title,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                  ),
+                ),
+                subtitle: Text(
+                  subtitleBits.join(' • '),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[300] : Colors.grey[700],
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_left),
               ),
             );
           },
-          borderRadius: BorderRadius.circular(12),
-          child: _serviceCard(
-            title: service["title"],
-            imagePath: service["image"],
-            likes: service["likes"],
-            files: service["files"],
-            comments: service["comments"],
-            isLiked: service['isLiked'] == true,
-            onToggleLike: () {
-              setState(() {
-                final liked = service['isLiked'] == true;
-                service['isLiked'] = !liked;
-                service['likes'] = (service['likes'] as int) + (!liked ? 1 : -1);
-                if ((service['likes'] as int) < 0) service['likes'] = 0;
-              });
-            },
-          ),
-        );
-      },
+        ),
+      ],
     );
   }
 

@@ -1,40 +1,418 @@
 import 'package:flutter/material.dart';
 
-class ServicesTab extends StatelessWidget {
+import '../../models/category.dart';
+import '../../models/provider_service.dart';
+import '../../services/providers_api.dart';
+
+class ServicesTab extends StatefulWidget {
   final bool embedded;
 
   const ServicesTab({super.key, this.embedded = false});
 
+  @override
+  State<ServicesTab> createState() => _ServicesTabState();
+}
+
+class _ServicesTabState extends State<ServicesTab> {
   static const Color _mainColor = Colors.deepPurple;
 
+  bool _loading = true;
+  List<ProviderService> _services = const [];
+  List<Category> _categories = const [];
+
   @override
-  Widget build(BuildContext context) {
-    final content = Padding(
-      padding: const EdgeInsets.all(16),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.home_repair_service, size: 44, color: Colors.grey.shade500),
-            const SizedBox(height: 10),
-            const Text(
-              'لا توجد خدمات مرتبطة حالياً',
-              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'سيتم تفعيل إدارة الخدمات (إضافة/تعديل/حذف) بعد توفير API لها في الباكند.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade600, fontSize: 13),
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final api = ProvidersApi();
+    final results = await Future.wait([
+      api.getCategories(),
+      api.getMyServices(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _categories = results[0] as List<Category>;
+      _services = results[1] as List<ProviderService>;
+      _loading = false;
+    });
+  }
+
+  String _serviceSubtitle(ProviderService s) {
+    final sub = s.subcategory?.name;
+    final price = s.priceText();
+    if (sub != null && sub.trim().isNotEmpty) return '$sub • $price';
+    return price;
+  }
+
+  Future<void> _confirmDelete(ProviderService s) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الخدمة', style: TextStyle(fontFamily: 'Cairo')),
+        content: Text('هل تريد حذف "${s.title}"؟', style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف', style: TextStyle(fontFamily: 'Cairo', color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final success = await ProvidersApi().deleteMyService(s.id);
+    if (!mounted) return;
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حذف الخدمة')),
+      );
+      return;
+    }
+    await _refresh();
+  }
+
+  Future<void> _openEditor({ProviderService? existing}) async {
+    if (_categories.isEmpty) {
+      await _refresh();
+    }
+
+    final titleCtrl = TextEditingController(text: existing?.title ?? '');
+    final descCtrl = TextEditingController(text: existing?.description ?? '');
+    final priceFromCtrl = TextEditingController(text: existing?.priceFrom?.toStringAsFixed(0) ?? '');
+    final priceToCtrl = TextEditingController(text: existing?.priceTo?.toStringAsFixed(0) ?? '');
+
+    int? selectedCategoryId = existing?.subcategory?.categoryId;
+    int? selectedSubId = existing?.subcategory?.id;
+    String priceUnit = existing?.priceUnit ?? 'fixed';
+    bool isActive = existing?.isActive ?? true;
+
+    if (selectedCategoryId == null && selectedSubId != null) {
+      for (final c in _categories) {
+        if (c.subcategories.any((s) => s.id == selectedSubId)) {
+          selectedCategoryId = c.id;
+          break;
+        }
+      }
+    }
+    selectedCategoryId ??= _categories.isNotEmpty ? _categories.first.id : null;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx2, setModalState) {
+            final cats = _categories;
+            final currentCat = (selectedCategoryId == null)
+                ? null
+                : cats.where((c) => c.id == selectedCategoryId).cast<Category?>().firstOrNull;
+            final subs = currentCat?.subcategories ?? const <SubCategory>[];
+            if (subs.isNotEmpty && selectedSubId == null) {
+              selectedSubId = subs.first.id;
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx2).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: Directionality(
+                textDirection: TextDirection.rtl,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        existing == null ? 'إضافة خدمة' : 'تعديل خدمة',
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'اسم الخدمة',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        value: selectedCategoryId,
+                        items: cats
+                            .map(
+                              (c) => DropdownMenuItem<int>(
+                                value: c.id,
+                                child: Text(c.name, style: const TextStyle(fontFamily: 'Cairo')),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          setModalState(() {
+                            selectedCategoryId = v;
+                            selectedSubId = null;
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'التصنيف الرئيسي',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        value: selectedSubId,
+                        items: subs
+                            .map(
+                              (s) => DropdownMenuItem<int>(
+                                value: s.id,
+                                child: Text(s.name, style: const TextStyle(fontFamily: 'Cairo')),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setModalState(() => selectedSubId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'التصنيف الفرعي',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: priceUnit,
+                        items: const [
+                          DropdownMenuItem(value: 'fixed', child: Text('سعر ثابت', style: TextStyle(fontFamily: 'Cairo'))),
+                          DropdownMenuItem(value: 'starting_from', child: Text('يبدأ من', style: TextStyle(fontFamily: 'Cairo'))),
+                          DropdownMenuItem(value: 'hour', child: Text('بالساعة', style: TextStyle(fontFamily: 'Cairo'))),
+                          DropdownMenuItem(value: 'day', child: Text('باليوم', style: TextStyle(fontFamily: 'Cairo'))),
+                          DropdownMenuItem(value: 'negotiable', child: Text('قابل للتفاوض', style: TextStyle(fontFamily: 'Cairo'))),
+                        ],
+                        onChanged: (v) => setModalState(() => priceUnit = v ?? 'fixed'),
+                        decoration: const InputDecoration(
+                          labelText: 'نوع التسعير',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: priceFromCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'من (ر.س)',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: priceToCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'إلى (ر.س)',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: descCtrl,
+                        minLines: 2,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'الوصف',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        value: isActive,
+                        onChanged: (v) => setModalState(() => isActive = v),
+                        title: const Text('عرض الخدمة للعملاء', style: TextStyle(fontFamily: 'Cairo')),
+                        activeColor: _mainColor,
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final title = titleCtrl.text.trim();
+                            final subId = selectedSubId;
+                            if (title.isEmpty || subId == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('أكمل اسم الخدمة والتصنيف')),
+                              );
+                              return;
+                            }
+
+                            final fromText = priceFromCtrl.text.trim();
+                            final toText = priceToCtrl.text.trim();
+                            final pFrom = fromText.isEmpty ? null : double.tryParse(fromText);
+                            final pTo = toText.isEmpty ? null : double.tryParse(toText);
+
+                            if (existing == null) {
+                              final created = await ProvidersApi().createMyService(
+                                title: title,
+                                subcategoryId: subId,
+                                description: descCtrl.text,
+                                priceFrom: pFrom,
+                                priceTo: pTo,
+                                priceUnit: priceUnit,
+                                isActive: isActive,
+                              );
+                              if (created == null) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('تعذر إضافة الخدمة')),
+                                );
+                                return;
+                              }
+                            } else {
+                              final patch = <String, dynamic>{
+                                'title': title,
+                                'description': descCtrl.text.trim(),
+                                'price_unit': priceUnit,
+                                'is_active': isActive,
+                                'subcategory_id': subId,
+                                'price_from': pFrom,
+                                'price_to': pTo,
+                              };
+                              final updated = await ProvidersApi().updateMyService(existing.id, patch);
+                              if (updated == null) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('تعذر حفظ التعديل')),
+                                );
+                                return;
+                              }
+                            }
+
+                            if (!mounted) return;
+                            Navigator.pop(ctx2);
+                            await _refresh();
+                          },
+                          icon: const Icon(Icons.save, color: Colors.white),
+                          label: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _mainColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_services.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 80),
+            Center(
+              child: Text(
+                'لا توجد خدمات مضافة بعد',
+                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(12),
+        itemCount: _services.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, index) {
+          final s = _services[index];
+          return Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
+            child: ListTile(
+              title: Text(s.title, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+              subtitle: Text(_serviceSubtitle(s), style: const TextStyle(fontFamily: 'Cairo')),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () => _openEditor(existing: s),
+                    icon: const Icon(Icons.edit, size: 20),
+                    tooltip: 'تعديل',
+                  ),
+                  IconButton(
+                    onPressed: () => _confirmDelete(s),
+                    icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                    tooltip: 'حذف',
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Stack(
+      children: [
+        _buildBody(),
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: FloatingActionButton.extended(
+            heroTag: 'add_service_fab',
+            backgroundColor: _mainColor,
+            foregroundColor: Colors.white,
+            onPressed: () => _openEditor(),
+            icon: const Icon(Icons.add),
+            label: const Text('إضافة', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ),
+      ],
     );
 
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: embedded
+      child: widget.embedded
           ? content
           : Scaffold(
               appBar: AppBar(
@@ -54,6 +432,10 @@ class ServicesTab extends StatelessWidget {
             ),
     );
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
 
 /*

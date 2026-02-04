@@ -4,7 +4,6 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:dio/dio.dart';
 import '../models/category.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
@@ -12,11 +11,17 @@ import '../services/marketplace_api.dart';
 class ServiceRequestFormScreen extends StatefulWidget {
   final String? providerName;
   final String? providerId;
+  final int? initialSubcategoryId;
+  final String? initialTitle;
+  final String? initialDetails;
 
   const ServiceRequestFormScreen({
     super.key,
     this.providerName,
     this.providerId,
+    this.initialSubcategoryId,
+    this.initialTitle,
+    this.initialDetails,
   });
 
   @override
@@ -50,6 +55,13 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
   @override
   void initState() {
     super.initState();
+
+    final t = (widget.initialTitle ?? '').trim();
+    if (t.isNotEmpty) _titleController.text = t;
+
+    final d = (widget.initialDetails ?? '').trim();
+    if (d.isNotEmpty) _detailsController.text = d;
+
     _fetchCategories();
   }
 
@@ -63,6 +75,18 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
         setState(() {
           _categories = categories;
         });
+
+        final initialSubId = widget.initialSubcategoryId;
+        if (initialSubId != null) {
+          for (final c in categories) {
+            final sub = c.subcategories.where((s) => s.id == initialSubId).toList();
+            if (sub.isNotEmpty) {
+              _selectedCategory = c;
+              _selectedSubCategory = sub.first;
+              break;
+            }
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -308,18 +332,24 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
       }
 
       // Note: deadline and attachments are now supported via updated MarketplaceApi.
-      
-      await MarketplaceApi().createRequest(
+
+      final providerId = int.tryParse((widget.providerId ?? '').trim());
+      final success = await MarketplaceApi().createRequest(
         subcategoryId: subcategoryId,
         title: _titleController.text,
         description: _detailsController.text,
         city: _cityController.text,
         requestType: 'competitive',
+        providerId: providerId,
         images: _images,
         videos: _videos,
         files: _files,
         audioPath: _audioPath,
       );
+
+      if (!success) {
+        throw Exception('تعذر إرسال الطلب');
+      }
 
       if (mounted) {
         showDialog(

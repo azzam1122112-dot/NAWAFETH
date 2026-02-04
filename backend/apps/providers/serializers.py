@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 
-from .models import Category, ProviderPortfolioItem, ProviderProfile, SubCategory
+from .models import Category, ProviderPortfolioItem, ProviderProfile, ProviderService, SubCategory
 
 
 class SubCategorySerializer(serializers.ModelSerializer):
@@ -65,6 +65,7 @@ class ProviderProfileMeSerializer(serializers.ModelSerializer):
 class ProviderPublicSerializer(serializers.ModelSerializer):
     followers_count = serializers.IntegerField(read_only=True)
     likes_count = serializers.IntegerField(read_only=True)
+    phone = serializers.CharField(source="user.phone", read_only=True)
 
     class Meta:
         model = ProviderProfile
@@ -73,7 +74,11 @@ class ProviderPublicSerializer(serializers.ModelSerializer):
             "display_name",
             "bio",
             "years_experience",
+            "phone",
+            "whatsapp",
             "city",
+            "lat",
+            "lng",
             "accepts_urgent",
             "is_verified_blue",
             "is_verified_green",
@@ -157,3 +162,70 @@ class MyProviderSubcategoriesSerializer(serializers.Serializer):
         if missing:
             raise serializers.ValidationError(f"تصنيفات فرعية غير صالحة: {missing}")
         return ids
+
+
+class SubCategoryWithCategorySerializer(serializers.ModelSerializer):
+    category_id = serializers.IntegerField(read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
+
+    class Meta:
+        model = SubCategory
+        fields = (
+            "id",
+            "name",
+            "category_id",
+            "category_name",
+        )
+
+
+class ProviderServiceSerializer(serializers.ModelSerializer):
+    provider_id = serializers.IntegerField(read_only=True)
+    subcategory_id = serializers.PrimaryKeyRelatedField(
+        source="subcategory",
+        queryset=SubCategory.objects.filter(is_active=True),
+        write_only=True,
+    )
+    subcategory = SubCategoryWithCategorySerializer(read_only=True)
+
+    class Meta:
+        model = ProviderService
+        fields = (
+            "id",
+            "provider_id",
+            "title",
+            "description",
+            "price_from",
+            "price_to",
+            "price_unit",
+            "is_active",
+            "subcategory",
+            "subcategory_id",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "provider_id",
+            "subcategory",
+            "created_at",
+            "updated_at",
+        )
+
+
+class ProviderServicePublicSerializer(serializers.ModelSerializer):
+    subcategory = SubCategoryWithCategorySerializer(read_only=True)
+
+    class Meta:
+        model = ProviderService
+        fields = (
+            "id",
+            "title",
+            "description",
+            "price_from",
+            "price_to",
+            "price_unit",
+            "subcategory",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields

@@ -19,11 +19,14 @@ from .models import (
 	ProviderPortfolioItem,
 	ProviderPortfolioLike,
 	ProviderProfile,
+	ProviderService,
 	SubCategory,
 )
 from .serializers import (
 	CategorySerializer,
 	MyProviderSubcategoriesSerializer,
+	ProviderServicePublicSerializer,
+	ProviderServiceSerializer,
 	ProviderPortfolioItemCreateSerializer,
 	ProviderPortfolioItemSerializer,
 	ProviderProfileSerializer,
@@ -85,6 +88,59 @@ class MyProviderSubcategoriesView(APIView):
 		return Response({"subcategory_ids": ids}, status=status.HTTP_200_OK)
 
 
+class MyProviderServicesListCreateView(generics.ListCreateAPIView):
+	"""Provider-owned services (list + create)."""
+
+	serializer_class = ProviderServiceSerializer
+	permission_classes = [IsAtLeastProvider]
+
+	def get_queryset(self):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			return ProviderService.objects.none()
+		return (
+			ProviderService.objects.filter(provider=pp)
+			.select_related("subcategory", "subcategory__category")
+			.order_by("-updated_at", "-id")
+		)
+
+	def perform_create(self, serializer):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			raise NotFound("provider_profile_not_found")
+		serializer.save(provider=pp)
+
+
+class MyProviderServiceDetailView(generics.RetrieveUpdateDestroyAPIView):
+	"""Provider-owned single service (retrieve/update/delete)."""
+
+	serializer_class = ProviderServiceSerializer
+	permission_classes = [IsAtLeastProvider]
+
+	def get_queryset(self):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			return ProviderService.objects.none()
+		return ProviderService.objects.filter(provider=pp).select_related(
+			"subcategory", "subcategory__category"
+		)
+
+
+class ProviderServicesPublicListView(generics.ListAPIView):
+	"""Public list of active services for a provider."""
+
+	serializer_class = ProviderServicePublicSerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		provider_id = self.kwargs.get("provider_id")
+		return (
+			ProviderService.objects.filter(provider_id=provider_id, is_active=True)
+			.select_related("subcategory", "subcategory__category")
+			.order_by("-updated_at", "-id")
+		)
+
+
 class CategoryListView(generics.ListAPIView):
 	queryset = Category.objects.filter(is_active=True)
 	serializer_class = CategorySerializer
@@ -108,35 +164,55 @@ class ProviderCreateView(generics.CreateAPIView):
 
 
 class ProviderListView(generics.ListAPIView):
-    """Public provider list/search (visitor allowed)."""
-    serializer_class = ProviderPublicSerializer
-    permission_classes = [permissions.AllowAny]
+	"""Public provider list/search (visitor allowed)."""
+	serializer_class = ProviderPublicSerializer
+	permission_classes = [permissions.AllowAny]
 
-    def get_queryset(self):
-        # Annotate with counts
-        qs = ProviderProfile.objects.annotate(
-            followers_count=Count("followers"),
-            likes_count=Count("likes")
-        ).order_by("-id")
-        
-        q = (self.request.query_params.get("q") or "").strip()
-        city = (self.request.query_params.get("city") or "").strip()
-        if q:
-            qs = qs.filter(display_name__icontains=q)
-        if city:
-            qs = qs.filter(city__icontains=city)
-        return qs
+	def get_queryset(self):
+		# Annotate with counts
+		qs = ProviderProfile.objects.annotate(
+			followers_count=Count("followers"),
+			likes_count=Count("likes"),
+		).order_by("-id")
+
+		q = (self.request.query_params.get("q") or "").strip()
+		city = (self.request.query_params.get("city") or "").strip()
+		category_id = (self.request.query_params.get("category_id") or "").strip()
+		subcategory_id = (self.request.query_params.get("subcategory_id") or "").strip()
+		if q:
+			qs = qs.filter(display_name__icontains=q)
+		if city:
+			qs = qs.filter(city__icontains=city)
+
+		# Optional service taxonomy filters via ProviderCategory
+		if subcategory_id:
+			try:
+				sid = int(subcategory_id)
+				qs = qs.filter(providercategory__subcategory_id=sid)
+			except ValueError:
+				pass
+		elif category_id:
+			try:
+				cid = int(category_id)
+				sub_ids = list(
+					SubCategory.objects.filter(category_id=cid, is_active=True).values_list("id", flat=True)
+				)
+				if sub_ids:
+					qs = qs.filter(providercategory__subcategory_id__in=sub_ids)
+			except ValueError:
+				pass
+		return qs
 
 
 class ProviderDetailView(generics.RetrieveAPIView):
-    serializer_class = ProviderPublicSerializer
-    permission_classes = [permissions.AllowAny]
-    
-    def get_queryset(self):
-        return ProviderProfile.objects.annotate(
-            followers_count=Count("followers"),
-            likes_count=Count("likes")
-        )
+	serializer_class = ProviderPublicSerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		return ProviderProfile.objects.annotate(
+			followers_count=Count("followers"),
+			likes_count=Count("likes"),
+		)
 
 
 class MyFollowingProvidersView(generics.ListAPIView):

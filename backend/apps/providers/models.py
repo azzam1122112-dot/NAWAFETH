@@ -122,6 +122,47 @@ class ProviderCategory(models.Model):
         ]
 
 
+class ProviderService(models.Model):
+    PRICE_UNIT_CHOICES = (
+        ("fixed", "سعر ثابت"),
+        ("starting_from", "يبدأ من"),
+        ("hour", "بالساعة"),
+        ("day", "باليوم"),
+        ("negotiable", "قابل للتفاوض"),
+    )
+
+    provider = models.ForeignKey(
+        ProviderProfile,
+        on_delete=models.CASCADE,
+        related_name="services",
+    )
+    subcategory = models.ForeignKey(
+        SubCategory,
+        on_delete=models.PROTECT,
+        related_name="provider_services",
+    )
+
+    title = models.CharField(max_length=150)
+    description = models.TextField(max_length=1000, blank=True, default="")
+
+    price_from = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    price_to = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    price_unit = models.CharField(max_length=20, choices=PRICE_UNIT_CHOICES, default="fixed")
+
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["provider", "is_active", "updated_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider_id} - {self.title}"
+
+
 class ProviderFollow(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

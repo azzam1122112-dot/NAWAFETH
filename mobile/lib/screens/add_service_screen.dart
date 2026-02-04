@@ -5,27 +5,19 @@ import '../widgets/bottom_nav.dart';
 import 'search_provider_screen.dart';
 import 'urgent_request_screen.dart';
 import 'request_quote_screen.dart';
-import 'login_screen.dart';
 import '../widgets/custom_drawer.dart';
+import '../utils/auth_guard.dart';
 
 class AddServiceScreen extends StatelessWidget {
   const AddServiceScreen({super.key});
 
-  void _navigateWithAuth(
-    BuildContext context,
-    Widget screen, {
-    bool requireLogin = false,
-  }) {
-    const bool isLoggedIn = false; // لاحقاً يتم ربطه بالنظام الحقيقي
-
-    if (requireLogin && !isLoggedIn) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => LoginScreen(redirectTo: screen)),
-      );
-    } else {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  Future<void> _navigate(BuildContext context, Widget screen, {bool requireFullClient = false}) async {
+    if (requireFullClient) {
+      final ok = await checkFullClient(context);
+      if (!ok) return;
     }
+    if (!context.mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
   @override
@@ -73,10 +65,7 @@ class AddServiceScreen extends StatelessWidget {
                     _buildServiceCard(
                       context,
                       onTap:
-                          () => _navigateWithAuth(
-                            context,
-                            const SearchProviderScreen(),
-                          ),
+                          () => _navigate(context, const SearchProviderScreen()),
                       title: "🔎 البحث عن مزود خدمة",
                       description:
                           "استعرض مزودي الخدمات حسب الموقع والتخصص وتقييماتهم.",
@@ -87,10 +76,10 @@ class AddServiceScreen extends StatelessWidget {
                     _buildServiceCard(
                       context,
                       onTap:
-                          () => _navigateWithAuth(
+                          () => _navigate(
                             context,
                             const UrgentRequestScreen(),
-                            requireLogin: true,
+                            requireFullClient: true,
                           ),
                       title: "⚡ طلب خدمة عاجلة",
                       description:
@@ -102,10 +91,10 @@ class AddServiceScreen extends StatelessWidget {
                     _buildServiceCard(
                       context,
                       onTap:
-                          () => _navigateWithAuth(
+                          () => _navigate(
                             context,
                             const RequestQuoteScreen(),
-                            requireLogin: true,
+                            requireFullClient: true,
                           ),
                       title: "📨 طلب عروض أسعار",
                       description:

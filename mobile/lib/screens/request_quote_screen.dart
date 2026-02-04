@@ -4,6 +4,10 @@ import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import '../constants/colors.dart';
 import 'my_profile_screen.dart';
+import '../services/providers_api.dart';
+import '../services/marketplace_api.dart';
+import '../models/category.dart';
+import '../utils/auth_guard.dart';
 
 class RequestQuoteScreen extends StatefulWidget {
   const RequestQuoteScreen({super.key});
@@ -15,30 +19,86 @@ class RequestQuoteScreen extends StatefulWidget {
 class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
   final _titleController = TextEditingController();
   final _detailsController = TextEditingController();
+  final _cityController = TextEditingController();
 
-  String? selectedMainCategory;
-  String? selectedSubCategory;
+  Category? _selectedCategory;
+  SubCategory? _selectedSubCategory;
   DateTime? selectedDate;
 
-  final List<String> mainCategories = [
-    "اتصالات وشبكات",
-    "تصميم وصناعة المحتوى",
-    "التسويق",
-    "التطوير البرمجي",
-    "الاستشارات الهندسية",
-    "الاستشارات القانونية",
-    "الاستشارات الصحية",
-    "الاستشارات المالية",
-  ];
+  List<Category> _categories = [];
+  bool _loadingCats = false;
+  bool _submitting = false;
 
-  final List<String> subCategories = [
-    "تطوير تطبيقات",
-    "تصميم واجهات",
-    "AutoCAD",
-    "Primavera",
-    "قواعد البيانات",
-    "Power BI",
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() => _loadingCats = true);
+    final cats = await ProvidersApi().getCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = cats;
+      _loadingCats = false;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final ok = await checkFullClient(context);
+    if (!ok) return;
+
+    if (_selectedSubCategory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر التصنيف الفرعي')),
+      );
+      return;
+    }
+
+    final title = _titleController.text.trim();
+    final details = _detailsController.text.trim();
+    final city = _cityController.text.trim();
+    if (title.isEmpty || details.isEmpty || city.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أكمل العنوان والتفاصيل والمدينة')),
+      );
+      return;
+    }
+
+    final description = selectedDate == null
+        ? details
+        : '$details\n\nآخر موعد لاستلام العروض: ${DateFormat.yMMMMd('ar_SA').format(selectedDate!)}';
+
+    setState(() => _submitting = true);
+    final success = await MarketplaceApi().createRequest(
+      subcategoryId: _selectedSubCategory!.id,
+      title: title,
+      description: description,
+      requestType: 'competitive',
+      city: city,
+    );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (success) {
+      _showSuccessDialog();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال الطلب، حاول مرة أخرى')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _detailsController.dispose();
+    _cityController.dispose();
+    super.dispose();
+  }
 
   void _showSuccessDialog() {
     showDialog(
@@ -128,22 +188,51 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildLabel("التصنيف الرئيسي:"),
-            _buildDropdown(
-              value: selectedMainCategory,
-              hint: "اختر تصنيف الخدمة",
-              items: mainCategories,
-              onChanged: (val) => setState(() => selectedMainCategory = val),
+            DropdownButtonFormField<Category>(
+              value: _selectedCategory,
+              decoration: _dropdownDecoration("اختر تصنيف الخدمة"),
+              borderRadius: BorderRadius.circular(12),
+              icon: const Icon(Icons.arrow_drop_down),
+              menuMaxHeight: 250,
+              dropdownColor: Colors.white,
+              style: const TextStyle(fontSize: 15, color: Colors.black),
+              isExpanded: true,
+              alignment: Alignment.centerRight,
+              items: _categories
+                  .map((c) => DropdownMenuItem<Category>(value: c, child: Text(c.name)))
+                  .toList(),
+              onChanged: (val) => setState(() {
+                _selectedCategory = val;
+                _selectedSubCategory = null;
+              }),
             ),
             const SizedBox(height: 20),
 
             _buildLabel("المجال الفرعي:"),
-            _buildDropdown(
-              value: selectedSubCategory,
-              hint: "اختر المجال الفرعي",
-              items: subCategories,
-              onChanged: (val) => setState(() => selectedSubCategory = val),
+            DropdownButtonFormField<SubCategory>(
+              value: _selectedSubCategory,
+              decoration: _dropdownDecoration("اختر المجال الفرعي"),
+              borderRadius: BorderRadius.circular(12),
+              icon: const Icon(Icons.arrow_drop_down),
+              menuMaxHeight: 250,
+              dropdownColor: Colors.white,
+              style: const TextStyle(fontSize: 15, color: Colors.black),
+              isExpanded: true,
+              alignment: Alignment.centerRight,
+              items: (_selectedCategory?.subcategories ?? const <SubCategory>[])
+                  .map((s) => DropdownMenuItem<SubCategory>(value: s, child: Text(s.name)))
+                  .toList(),
+              onChanged: (val) => setState(() => _selectedSubCategory = val),
             ),
             const SizedBox(height: 20),
+
+            _buildLabel("المدينة:"),
+            TextField(
+              controller: _cityController,
+              maxLength: 60,
+              decoration: _inputDecoration("مثال: الرياض"),
+            ),
+            const SizedBox(height: 16),
 
             _buildLabel("عنوان الطلب:"),
             TextField(
@@ -159,22 +248,6 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
               maxLength: 500,
               maxLines: 4,
               decoration: _inputDecoration("أدخل تفاصيل أكثر عن طلبك"),
-            ),
-            const SizedBox(height: 16),
-
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.attach_file),
-              label: const Text("إرفاق ملف"),
-              style: _buttonStyle(),
-            ),
-            const SizedBox(height: 10),
-
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.mic),
-              label: const Text("تسجيل رسالة صوتية"),
-              style: _buttonStyle(),
             ),
             const SizedBox(height: 24),
 
@@ -234,7 +307,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _showSuccessDialog,
+                    onPressed: _submit,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.deepPurple,
                       foregroundColor: Colors.white,
@@ -243,7 +316,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text("تقديم"),
+                    child: Text(_submitting ? "جارٍ الإرسال..." : "تقديم"),
                   ),
                 ),
               ],

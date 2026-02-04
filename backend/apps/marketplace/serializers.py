@@ -1,9 +1,15 @@
 from rest_framework import serializers
 
 from .models import Offer, ServiceRequest, ServiceRequestAttachment
+from apps.providers.models import ProviderProfile
 
 
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):
+    provider = serializers.PrimaryKeyRelatedField(
+        queryset=ProviderProfile.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     images = serializers.ListField(
         child=serializers.FileField(), required=False, write_only=True
     )
@@ -19,6 +25,7 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         model = ServiceRequest
         fields = (
             "id",
+            "provider",
             "subcategory",
             "title",
             "description",
@@ -34,6 +41,15 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         if value not in ("competitive", "urgent"):
             raise serializers.ValidationError("نوع الطلب غير صحيح")
         return value
+
+    def validate(self, attrs):
+        provider = attrs.get("provider")
+        request_type = attrs.get("request_type")
+        if provider is not None and request_type == "urgent":
+            raise serializers.ValidationError({
+                "provider": "لا يمكن تحديد مزود لطلب عاجل"
+            })
+        return attrs
 
     def create(self, validated_data):
         images = validated_data.pop("images", [])

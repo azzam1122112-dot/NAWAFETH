@@ -23,6 +23,7 @@ class MarketplaceApi {
     required String description,
     required String requestType,
     required String city,
+    int? providerId,
     List<File>? images,
     List<File>? videos,
     List<File>? files,
@@ -33,6 +34,7 @@ class MarketplaceApi {
 
     try {
       final formData = FormData.fromMap({
+        if (providerId != null) 'provider': providerId,
         'subcategory': subcategoryId,
         'title': title,
         'description': description,

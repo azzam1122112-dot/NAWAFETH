@@ -3,6 +3,9 @@ import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import 'provider_profile_screen.dart';
 import '../widgets/custom_drawer.dart';
+import '../services/providers_api.dart';
+import '../models/category.dart';
+import '../models/provider.dart';
 
 class SearchProviderScreen extends StatefulWidget {
   const SearchProviderScreen({super.key});
@@ -13,77 +16,61 @@ class SearchProviderScreen extends StatefulWidget {
 
 class _SearchProviderScreenState extends State<SearchProviderScreen> {
   final TextEditingController _searchController = TextEditingController();
-  String selectedCategory = 'الكل';
+  int? _selectedCategoryId;
+  int? _selectedSubcategoryId;
   String selectedSort = 'الكل';
 
-  final List<String> categories = [
-    'الكل',
-    'محاماة',
-    'صيانة منازل',
-    'تصميم داخلي',
-    'برمجة',
-    'تصوير',
-    'استشارات مالية',
-  ];
+  final ProvidersApi _providersApi = ProvidersApi();
+  List<Category> _categories = [];
+  List<ProviderProfile> _providers = [];
+  bool _loading = false;
+  bool _loadingCategories = false;
 
   final List<String> sortOptions = [
     'الكل',
     'أعلى تقييم',
-    'الأكثر طلبات مكتملة',
-    'الأكثر إضافة',
-    'الأقرب',
+    'الأكثر تقييماً',
   ];
 
-  final List<Map<String, dynamic>> providers = [
-    {
-      'name': 'خالد الحربي',
-      'job': 'محامي',
-      'rating': 4.8,
-      'verified': true,
-      'operations': 120,
-      'distance': 2.5, // بالكيلومتر
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/1.png',
-      'avatar': 'assets/images/1.png',
-      'addedRank': 2,
-    },
-    {
-      'name': 'سارة المهندسة',
-      'job': 'تصميم داخلي',
-      'rating': 4.3,
-      'verified': false,
-      'operations': 85,
-      'distance': 5.8,
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/gfo.png',
-      'avatar': 'assets/images/gfo.png',
-      'addedRank': 4,
-    },
-    {
-      'name': 'عبدالله الفني',
-      'job': 'صيانة منازل',
-      'rating': 4.9,
-      'verified': true,
-      'operations': 190,
-      'distance': 1.2,
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/1.png',
-      'avatar': 'assets/images/1.png',
-      'addedRank': 1,
-    },
-    {
-      'name': 'نوف المبرمجة',
-      'job': 'برمجة',
-      'rating': 4.7,
-      'verified': false,
-      'operations': 72,
-      'distance': 3.4,
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/gfo.png',
-      'avatar': 'assets/images/gfo.png',
-      'addedRank': 3,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadCategories();
+    await _loadProviders();
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() => _loadingCategories = true);
+    final cats = await _providersApi.getCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = cats;
+      _loadingCategories = false;
+    });
+  }
+
+  Future<void> _loadProviders() async {
+    setState(() => _loading = true);
+    try {
+      final list = await _providersApi.getProvidersFiltered(
+        q: _searchController.text.trim(),
+        categoryId: _selectedCategoryId,
+        subcategoryId: _selectedSubcategoryId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _providers = list;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -181,15 +168,18 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
 
     final results = <String>[];
 
-    for (final c in categories) {
-      if (c != 'الكل' && c.contains(q)) results.add(c);
+    for (final c in _categories) {
+      if (c.name.contains(q)) results.add(c.name);
+      for (final s in c.subcategories) {
+        if (s.name.contains(q)) results.add(s.name);
+      }
     }
-    for (final p in providers) {
-      final name = (p['name'] ?? '').toString();
-      final job = (p['job'] ?? '').toString();
-      if (name.contains(q) || job.contains(q)) {
-        final display = '$job ${p['handle'] ?? ''}'.trim();
-        if (!results.contains(display)) results.add(display);
+    for (final p in _providers) {
+      final name = (p.displayName ?? '').toString();
+      final city = (p.city ?? '').toString();
+      if (name.contains(q) || city.contains(q)) {
+        final display = [name, city].where((e) => e.trim().isNotEmpty).join(' • ');
+        if (display.isNotEmpty && !results.contains(display)) results.add(display);
       }
     }
 
@@ -201,53 +191,28 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
     final query = _searchController.text;
     final suggestions = _buildSuggestions(query);
 
-    final filteredProviders = providers.where((provider) {
+    final selectedCategory = _selectedCategoryId == null
+        ? null
+        : _categories.where((c) => c.id == _selectedCategoryId).cast<Category?>().firstOrNull;
+
+
+    final filteredProviders = _providers.where((p) {
       final text = query.trim();
-      final name = provider['name'].toString();
-      final job = provider['job'].toString();
-      final nameOrJobMatch = text.isEmpty || name.contains(text) || job.contains(text);
-      final categoryMatch = selectedCategory == 'الكل' || provider['job'] == selectedCategory;
-      return nameOrJobMatch && categoryMatch;
+      final name = (p.displayName ?? '').toString();
+      final city = (p.city ?? '').toString();
+      final match = text.isEmpty || name.contains(text) || city.contains(text);
+      return match;
     }).toList()
       ..sort((a, b) {
         switch (selectedSort) {
-          case 'الأقرب':
-            final distanceA = (a['distance'] as num?)?.toDouble() ?? double.infinity;
-            final distanceB = (b['distance'] as num?)?.toDouble() ?? double.infinity;
-            return distanceA.compareTo(distanceB);
           case 'أعلى تقييم':
-            final ratingA = (a['rating'] as num?)?.toDouble() ?? 0.0;
-            final ratingB = (b['rating'] as num?)?.toDouble() ?? 0.0;
-            return ratingB.compareTo(ratingA);
-          case 'الأكثر طلبات مكتملة':
-            final opsA = (a['operations'] as num?)?.toInt() ?? 0;
-            final opsB = (b['operations'] as num?)?.toInt() ?? 0;
-            return opsB.compareTo(opsA);
-          case 'الأكثر إضافة':
-            final rankA = (a['addedRank'] as num?)?.toInt() ?? 9999;
-            final rankB = (b['addedRank'] as num?)?.toInt() ?? 9999;
-            return rankA.compareTo(rankB);
+            return b.ratingAvg.compareTo(a.ratingAvg);
+          case 'الأكثر تقييماً':
+            return b.ratingCount.compareTo(a.ratingCount);
           default:
             return 0;
         }
       });
-
-    final List<Map<String, dynamic>> listItems = [];
-    if (filteredProviders.isNotEmpty) {
-      listItems.add({
-        'isAd': true,
-        'name': 'خدمة مروّجة',
-        'job': selectedCategory == 'الكل' ? 'إصلاح سيارات' : selectedCategory,
-        'rating': 5.0,
-        'verified': true,
-        'operations': 33,
-        'distance': 1.5,
-        'handle': '@xxxyyy',
-        'windowLogo': 'assets/images/1.png',
-        'avatar': 'assets/images/1.png',
-      });
-    }
-    listItems.addAll(filteredProviders);
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -273,6 +238,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                       child: TextField(
                         controller: _searchController,
                         onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => _loadProviders(),
                         decoration: const InputDecoration(
                           hintText: 'بحث',
                           prefixIcon: Icon(Icons.search),
@@ -326,6 +292,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                               TextPosition(offset: _searchController.text.length),
                             );
                             setState(() {});
+                            _loadProviders();
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
@@ -349,17 +316,22 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
               ],
 
               const SizedBox(height: 12),
+              _buildCategoryChips(selectedCategory),
+
+              const SizedBox(height: 12),
               Expanded(
                 child:
-                    listItems.isEmpty
-                        ? const Center(child: Text("لا توجد نتائج مطابقة"))
-                        : ListView.builder(
-                          itemCount: listItems.length,
-                          itemBuilder: (_, index) {
-                            final provider = listItems[index];
-                            return _buildProviderCard(provider);
-                          },
-                        ),
+                    _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : filteredProviders.isEmpty
+                            ? const Center(child: Text("لا توجد نتائج مطابقة"))
+                            : ListView.builder(
+                                itemCount: filteredProviders.length,
+                                itemBuilder: (_, index) {
+                                  final provider = filteredProviders[index];
+                                  return _buildProviderCard(provider);
+                                },
+                              ),
               ),
             ],
           ),
@@ -369,21 +341,30 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   }
 
   // 🧾 بطاقة مزود الخدمة
-  Widget _buildProviderCard(Map<String, dynamic> provider) {
-    final bool isAd = provider['isAd'] == true;
-    final String windowLogo = (provider['windowLogo'] ?? '').toString();
-    final String avatar = (provider['avatar'] ?? '').toString();
-    final double rating = (provider['rating'] as num?)?.toDouble() ?? 0.0;
-    final int operations = (provider['operations'] as num?)?.toInt() ?? 0;
-    final double? distance = (provider['distance'] as num?)?.toDouble();
-    final String job = (provider['job'] ?? '').toString();
-    final String handle = (provider['handle'] ?? '').toString();
+  Widget _buildProviderCard(ProviderProfile provider) {
+    final double rating = provider.ratingAvg;
+    final int ratingCount = provider.ratingCount;
+    final String titleLine = [provider.city, provider.yearsExperience > 0 ? '${provider.yearsExperience} سنوات خبرة' : null]
+        .whereType<String>()
+        .where((e) => e.trim().isNotEmpty)
+        .join(' • ');
 
     return InkWell(
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const ProviderProfileScreen()),
+          MaterialPageRoute(
+            builder: (_) => ProviderProfileScreen(
+              providerId: provider.id.toString(),
+              providerName: provider.displayName,
+              providerRating: provider.ratingAvg,
+              providerOperations: provider.ratingCount,
+              providerVerified: provider.isVerifiedBlue || provider.isVerifiedGreen,
+              providerPhone: provider.phone,
+              providerLat: provider.lat,
+              providerLng: provider.lng,
+            ),
+          ),
         );
       },
       borderRadius: BorderRadius.circular(12),
@@ -414,33 +395,19 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (windowLogo.isNotEmpty)
-                      Image.asset(
-                        windowLogo,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.storefront,
-                          color: Colors.deepPurple,
-                          size: 28,
-                        ),
-                      )
-                    else
-                      const Icon(
-                        Icons.storefront,
-                        color: Colors.deepPurple,
-                        size: 28,
-                      ),
+                    const Icon(
+                      Icons.storefront,
+                      color: Colors.deepPurple,
+                      size: 28,
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      isAd ? 'AD' : 'شعار نافذة\nمقدم الخدمة',
+                      'مزود خدمة',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color:
-                            isAd ? Colors.orange.shade800 : Colors.deepPurple,
+                        color: Colors.deepPurple,
                       ),
                     ),
                   ],
@@ -493,13 +460,13 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(
-                              Icons.receipt_long,
+                              Icons.reviews,
                               size: 16,
                               color: Colors.deepPurple,
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              '$operations',
+                              '$ratingCount',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
@@ -509,30 +476,11 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                           ],
                         ),
                       ),
-                      if (distance != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.location_on,
-                              size: 18,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${distance.toStringAsFixed(1)} كم',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '$job $handle',
+                    titleLine,
                     style: const TextStyle(
                       fontSize: 13,
                       color: Colors.deepPurple,
@@ -542,7 +490,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    provider['name'] ?? '',
+                    provider.displayName ?? '—',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Colors.black54,
@@ -559,13 +507,9 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                 CircleAvatar(
                   radius: 26,
                   backgroundColor: Colors.grey.shade200,
-                  backgroundImage:
-                      avatar.isNotEmpty ? AssetImage(avatar) : null,
-                  child: avatar.isEmpty
-                      ? const Icon(Icons.person, color: Colors.black45)
-                      : null,
+                  child: const Icon(Icons.person, color: Colors.black45),
                 ),
-                if (provider['verified'] == true)
+                if (provider.isVerifiedBlue || provider.isVerifiedGreen)
                   Positioned(
                     top: 0,
                     left: 0,
@@ -604,4 +548,93 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
       ),
     );
   }
+
+  Widget _buildCategoryChips(Category? selectedCategory) {
+    final chips = <Widget>[];
+
+    chips.add(
+      ChoiceChip(
+        label: const Text('الكل', style: TextStyle(fontFamily: 'Cairo')),
+        selected: _selectedCategoryId == null,
+        onSelected: (_) {
+          setState(() {
+            _selectedCategoryId = null;
+            _selectedSubcategoryId = null;
+          });
+          _loadProviders();
+        },
+      ),
+    );
+
+    for (final c in _categories) {
+      chips.add(
+        ChoiceChip(
+          label: Text(c.name, style: const TextStyle(fontFamily: 'Cairo')),
+          selected: _selectedCategoryId == c.id,
+          onSelected: (_) {
+            setState(() {
+              _selectedCategoryId = c.id;
+              _selectedSubcategoryId = null;
+            });
+            _loadProviders();
+          },
+        ),
+      );
+    }
+
+    final subChips = <Widget>[];
+    if (selectedCategory != null && selectedCategory.subcategories.isNotEmpty) {
+      subChips.add(
+        ChoiceChip(
+          label: const Text('الكل', style: TextStyle(fontFamily: 'Cairo')),
+          selected: _selectedSubcategoryId == null,
+          onSelected: (_) {
+            setState(() => _selectedSubcategoryId = null);
+            _loadProviders();
+          },
+        ),
+      );
+      for (final s in selectedCategory.subcategories) {
+        subChips.add(
+          ChoiceChip(
+            label: Text(s.name, style: const TextStyle(fontFamily: 'Cairo')),
+            selected: _selectedSubcategoryId == s.id,
+            onSelected: (_) {
+              setState(() => _selectedSubcategoryId = s.id);
+              _loadProviders();
+            },
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: chips
+                .map((w) => Padding(padding: const EdgeInsets.only(left: 8), child: w))
+                .toList(),
+          ),
+        ),
+        if (subChips.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: subChips
+                  .map((w) => Padding(padding: const EdgeInsets.only(left: 8), child: w))
+                  .toList(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
