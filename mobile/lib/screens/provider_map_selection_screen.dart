@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../utils/auth_guard.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
+import 'chat_detail_screen.dart';
+import 'provider_profile_screen.dart';
 
 class ProviderMapSelectionScreen extends StatefulWidget {
   final int subcategoryId;
@@ -31,12 +36,214 @@ class _ProviderMapSelectionScreenState
   String? _error;
   List<int> _selectedProviderIds = [];
   bool _submitting = false;
+  int? _busyProviderId;
 
   double? _asDouble(dynamic value) {
     if (value == null) return null;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value);
     return null;
+  }
+
+  String _asDisplayName(dynamic value) {
+    final s = value?.toString().trim();
+    if (s == null || s.isEmpty) return 'مزود خدمة';
+    return s;
+  }
+
+  String? _asNonEmptyString(dynamic value) {
+    final s = value?.toString().trim();
+    if (s == null || s.isEmpty) return null;
+    return s;
+  }
+
+  String _formatPhoneE164(String rawPhone) {
+    final phone = rawPhone.replaceAll(RegExp(r'\s+'), '');
+    if (phone.startsWith('+')) return phone;
+
+    if (phone.startsWith('05') && phone.length == 10) {
+      return '+966${phone.substring(1)}';
+    }
+    if (phone.startsWith('5') && phone.length == 9) {
+      return '+966$phone';
+    }
+
+    return phone;
+  }
+
+  String _buildWhatsAppMessage(String providerName) {
+    final buffer = StringBuffer();
+    buffer.writeln('@${providerName.replaceAll(' ', '')}');
+    buffer.writeln('السلام عليكم');
+    buffer.writeln('أنا عميل في منصة (نوافذ)');
+    buffer.writeln('أتواصل معك بخصوص طلب عاجل');
+    buffer.writeln('العنوان: ${widget.title}');
+    buffer.writeln('الوصف: ${widget.description}');
+    buffer.writeln('المدينة: ${widget.city}');
+    return buffer.toString().trim();
+  }
+
+  Future<void> _openPhoneCall(String rawPhone) async {
+    final e164 = _formatPhoneE164(rawPhone);
+    final uri = Uri(scheme: 'tel', path: e164);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تعذر فتح الاتصال')),
+    );
+  }
+
+  Future<void> _openWhatsApp({
+    required String providerName,
+    required String rawPhone,
+  }) async {
+    final e164 = _formatPhoneE164(rawPhone);
+    final waPhone = e164.replaceAll('+', '');
+    final encoded = Uri.encodeComponent(_buildWhatsAppMessage(providerName));
+    final appUri = Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded');
+    final webUri = Uri.parse('https://wa.me/$waPhone?text=$encoded');
+
+    if (await canLaunchUrl(appUri)) {
+      await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (await canLaunchUrl(webUri)) {
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تعذر فتح واتساب')),
+    );
+  }
+
+  Future<void> _openInAppChat(String providerName) async {
+    if (!await checkAuth(context)) return;
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatDetailScreen(
+          name: providerName,
+          isOnline: true,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openProviderProfile(Map<String, dynamic> provider) async {
+    final id = provider['id']?.toString();
+    if (id == null || id.isEmpty) return;
+
+    final name = _asDisplayName(provider['display_name']);
+    final imageUrl = _asNonEmptyString(provider['image_url']);
+    final phone = _asNonEmptyString(provider['phone']);
+    final lat = _asDouble(provider['lat']);
+    final lng = _asDouble(provider['lng']);
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProviderProfileScreen(
+          providerId: id,
+          providerName: name,
+          providerImage: imageUrl,
+          providerPhone: phone,
+          providerLat: lat,
+          providerLng: lng,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendRequestToProvider(int providerId) async {
+    if (_busyProviderId != null || _submitting) return;
+
+    setState(() => _busyProviderId = providerId);
+    try {
+      final marketplaceApi = MarketplaceApi();
+      final success = await marketplaceApi.createRequest(
+        subcategoryId: widget.subcategoryId,
+        title: widget.title,
+        description: widget.description,
+        requestType: 'urgent',
+        city: widget.city,
+        providerId: providerId,
+      );
+
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم إرسال الطلب للمزود بنجاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('فشل إرسال الطلب، حاول مرة أخرى'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('فشل إرسال الطلب: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busyProviderId = null);
+      }
+    }
+  }
+
+  Widget _actionChip({
+    required IconData icon,
+    required String label,
+    Color? color,
+    required VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: (color ?? Colors.grey.shade700).withOpacity(0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: (color ?? Colors.grey.shade700).withOpacity(0.25),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color ?? Colors.grey.shade700),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color ?? Colors.grey.shade700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -435,65 +642,169 @@ class _ProviderMapSelectionScreenState
                                         horizontal: 16),
                                     itemCount: _providers.length,
                                     itemBuilder: (context, index) {
-                                      final provider = _providers[index];
+                                      final provider =
+                                          _providers[index] as Map<String, dynamic>;
+                                      final providerId =
+                                          (provider['id'] as num?)?.toInt() ?? 0;
                                       final isSelected = _selectedProviderIds
-                                          .contains(provider['id']);
+                                          .contains(providerId);
+                                      final name =
+                                          _asDisplayName(provider['display_name']);
+                                      final city =
+                                          _asNonEmptyString(provider['city']) ?? widget.city;
+                                      final phone = _asNonEmptyString(provider['phone']);
+                                      final whatsapp =
+                                          _asNonEmptyString(provider['whatsapp']);
+                                      final imageUrl =
+                                          _asNonEmptyString(provider['image_url']);
+                                      final canCall = phone != null;
+                                      final canWhatsApp =
+                                          (whatsapp ?? phone)?.trim().isNotEmpty == true;
+                                      final isBusy = _busyProviderId == providerId;
+
+                                      final avatar = CircleAvatar(
+                                        radius: 22,
+                                        backgroundColor: isSelected
+                                            ? const Color(0xFFFF6B6B)
+                                            : Colors.blue,
+                                        backgroundImage: imageUrl != null
+                                            ? NetworkImage(imageUrl)
+                                            : null,
+                                        child: imageUrl == null
+                                            ? Text(
+                                                name.isNotEmpty
+                                                    ? name.characters.first
+                                                    : 'م',
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : null,
+                                      );
+
                                       return Card(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 8),
-                                        child: ListTile(
-                                          onTap: () =>
-                                              _toggleProvider(provider['id']),
-                                          leading: CircleAvatar(
-                                            backgroundColor: isSelected
-                                                ? const Color(0xFFFF6B6B)
-                                                : Colors.blue,
-                                            child: Icon(
-                                              isSelected
-                                                  ? Icons.check
-                                                  : Icons.person,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          title: Text(
-                                            provider['display_name'] ??
-                                                'مزود خدمة',
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          subtitle: Text(
-                                            provider['city'] ??
-                                                widget.city,
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          trailing: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: isSelected
-                                                  ? const Color(0xFFFF6B6B)
-                                                  : Colors.grey[300],
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              isSelected ? 'مختار' : 'اختر',
-                                              style: TextStyle(
-                                                fontFamily: 'Cairo',
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
-                                                color: isSelected
-                                                    ? Colors.white
-                                                    : Colors.black87,
+                                        margin: const EdgeInsets.only(bottom: 8),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12),
+                                          child: Column(
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  GestureDetector(
+                                                    onTap: () => _openProviderProfile(provider),
+                                                    child: avatar,
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: InkWell(
+                                                      onTap: () => _openProviderProfile(provider),
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            name,
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(
+                                                              fontFamily: 'Cairo',
+                                                              fontWeight: FontWeight.bold,
+                                                              fontSize: 14,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 2),
+                                                          Text(
+                                                            city,
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(
+                                                              fontFamily: 'Cairo',
+                                                              fontSize: 12,
+                                                              color: Colors.grey,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  InkWell(
+                                                    onTap: providerId > 0
+                                                        ? () => _toggleProvider(providerId)
+                                                        : null,
+                                                    borderRadius: BorderRadius.circular(20),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 6,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: isSelected
+                                                            ? const Color(0xFFFF6B6B)
+                                                            : Colors.grey[300],
+                                                        borderRadius:
+                                                            BorderRadius.circular(20),
+                                                      ),
+                                                      child: Text(
+                                                        isSelected ? 'مختار' : 'اختر',
+                                                        style: TextStyle(
+                                                          fontFamily: 'Cairo',
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: isSelected
+                                                              ? Colors.white
+                                                              : Colors.black87,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
+                                              const SizedBox(height: 10),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 8,
+                                                children: [
+                                                  _actionChip(
+                                                    icon: FontAwesomeIcons.whatsapp,
+                                                    label: 'واتساب',
+                                                    color: const Color(0xFF25D366),
+                                                    onTap: canWhatsApp
+                                                        ? () => _openWhatsApp(
+                                                              providerName: name,
+                                                              rawPhone: (whatsapp ?? phone!)!,
+                                                            )
+                                                        : null,
+                                                  ),
+                                                  _actionChip(
+                                                    icon: Icons.call,
+                                                    label: 'اتصال',
+                                                    color: Colors.blue,
+                                                    onTap: canCall
+                                                        ? () => _openPhoneCall(phone!)
+                                                        : null,
+                                                  ),
+                                                  _actionChip(
+                                                    icon: Icons.chat_bubble_outline,
+                                                    label: 'محادثة',
+                                                    color: Colors.deepPurple,
+                                                    onTap: () => _openInAppChat(name),
+                                                  ),
+                                                  _actionChip(
+                                                    icon: Icons.send_rounded,
+                                                    label: isBusy
+                                                        ? 'جارٍ الإرسال...'
+                                                        : 'طلب الخدمة',
+                                                    color: const Color(0xFFFF6B6B),
+                                                    onTap: (providerId > 0 && !isBusy)
+                                                        ? () => _sendRequestToProvider(providerId)
+                                                        : null,
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       );

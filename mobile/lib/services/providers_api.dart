@@ -89,12 +89,36 @@ class ProvidersApi {
         return null;
       }
 
+      String? _asNonEmptyString(dynamic value) {
+        final s = value?.toString().trim();
+        if (s == null || s.isEmpty) return null;
+        return s;
+      }
+
+      String? _normalizeMediaUrl(dynamic raw) {
+        final s = _asNonEmptyString(raw);
+        if (s == null) return null;
+        if (s.startsWith('http://') || s.startsWith('https://')) return s;
+        if (s.startsWith('/')) return '${ApiConfig.baseUrl}$s';
+        return s;
+      }
+
       final providers = <Map<String, dynamic>>[];
       for (final item in res.data as List) {
         final provider = item as Map<String, dynamic>;
         final lat = _asDouble(provider['lat']);
         final lng = _asDouble(provider['lng']);
         if (lat != null && lng != null) {
+          final imageRaw = provider['logo'] ??
+              provider['logo_url'] ??
+              provider['avatar'] ??
+              provider['avatar_url'] ??
+              provider['image'] ??
+              provider['image_url'] ??
+              provider['profile_image'] ??
+              provider['profile_image_url'];
+          final imageUrl = _normalizeMediaUrl(imageRaw);
+
           providers.add({
             'id': provider['id'],
             'display_name': provider['display_name'] ?? 'مزود خدمة',
@@ -102,6 +126,9 @@ class ProvidersApi {
             'lat': lat,
             'lng': lng,
             'accepts_urgent': provider['accepts_urgent'] ?? false,
+            'phone': _asNonEmptyString(provider['phone']),
+            'whatsapp': _asNonEmptyString(provider['whatsapp']),
+            'image_url': imageUrl,
           });
         }
       }
