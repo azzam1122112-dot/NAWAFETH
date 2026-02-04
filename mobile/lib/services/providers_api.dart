@@ -82,16 +82,25 @@ class ProvidersApi {
         },
       );
 
+      double? _asDouble(dynamic value) {
+        if (value == null) return null;
+        if (value is num) return value.toDouble();
+        if (value is String) return double.tryParse(value);
+        return null;
+      }
+
       final providers = <Map<String, dynamic>>[];
       for (final item in res.data as List) {
         final provider = item as Map<String, dynamic>;
-        if (provider['lat'] != null && provider['lng'] != null) {
+        final lat = _asDouble(provider['lat']);
+        final lng = _asDouble(provider['lng']);
+        if (lat != null && lng != null) {
           providers.add({
             'id': provider['id'],
             'display_name': provider['display_name'] ?? 'مزود خدمة',
             'city': provider['city'] ?? '',
-            'lat': provider['lat'],
-            'lng': provider['lng'],
+            'lat': lat,
+            'lng': lng,
             'accepts_urgent': provider['accepts_urgent'] ?? false,
           });
         }

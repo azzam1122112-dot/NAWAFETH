@@ -32,6 +32,13 @@ class _ProviderMapSelectionScreenState
   List<int> _selectedProviderIds = [];
   bool _submitting = false;
 
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -200,7 +207,7 @@ class _ProviderMapSelectionScreenState
         ),
         toolbarHeight: 80,
       ),
-      body: _loading
+        body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
@@ -257,14 +264,16 @@ class _ProviderMapSelectionScreenState
                         FlutterMap(
                           mapController: _mapController,
                           options: MapOptions(
-                            initialCenter: _providers.isNotEmpty &&
-                                    _providers[0]['lat'] != null &&
-                                    _providers[0]['lng'] != null
-                                ? LatLng(
-                                    _providers[0]['lat'],
-                                    _providers[0]['lng'],
-                                  )
-                                : defaultCenter,
+                            initialCenter: () {
+                              if (_providers.isNotEmpty) {
+                                final lat = _asDouble(_providers[0]['lat']);
+                                final lng = _asDouble(_providers[0]['lng']);
+                                if (lat != null && lng != null) {
+                                  return LatLng(lat, lng);
+                                }
+                              }
+                              return defaultCenter;
+                            }(),
                             initialZoom: 12.0,
                             minZoom: 5.0,
                             maxZoom: 18.0,
@@ -278,16 +287,20 @@ class _ProviderMapSelectionScreenState
                             ),
                             MarkerLayer(
                               markers: _providers
-                                  .where((p) =>
-                                      p['lat'] != null &&
-                                      p['lng'] != null)
+                                  .where((p) {
+                                    final lat = _asDouble(p['lat']);
+                                    final lng = _asDouble(p['lng']);
+                                    return lat != null && lng != null;
+                                  })
                                   .map((provider) {
                                 final isSelected = _selectedProviderIds
                                     .contains(provider['id']);
+                                final lat = _asDouble(provider['lat'])!;
+                                final lng = _asDouble(provider['lng'])!;
                                 return Marker(
                                   point: LatLng(
-                                    provider['lat'],
-                                    provider['lng'],
+                                    lat,
+                                    lng,
                                   ),
                                   width: 50,
                                   height: 50,
