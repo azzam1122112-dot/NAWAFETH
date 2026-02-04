@@ -72,6 +72,14 @@
           <span class="font-semibold text-gray-700 group-hover:text-amber-700">خدمات المزوّدين</span>
         </a>
 
+        <a href="{% url 'dashboard:categories_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-violet-50 hover:to-purple-50 transition-all group">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            📂
+          </div>
+          <span class="font-semibold text-gray-700 group-hover:text-violet-700">التصنيفات</span>
+        </a>
+
         <div class="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent my-4"></div>
 
         <a href="{% url 'admin:index' %}"

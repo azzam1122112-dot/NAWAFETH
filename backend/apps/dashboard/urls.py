@@ -13,7 +13,26 @@ urlpatterns = [
 
     path("services/", views.services_list, name="services_list"),
 
+    # Categories & Subcategories
+    path("categories/", views.categories_list, name="categories_list"),
+    path("categories/create/", views.category_create, name="category_create"),
+    path("categories/<int:category_id>/", views.category_detail, name="category_detail"),
+    path("categories/<int:category_id>/edit/", views.category_edit, name="category_edit"),
+    
+    path("subcategories/create/", views.subcategory_create, name="subcategory_create"),
+    path("subcategories/<int:subcategory_id>/edit/", views.subcategory_edit, name="subcategory_edit"),
+
     # Actions (POST)
+    path(
+        "categories/<int:category_id>/actions/toggle-active/",
+        views.category_toggle_active,
+        name="category_toggle_active",
+    ),
+    path(
+        "categories/<int:category_id>/subcategories/<int:subcategory_id>/actions/toggle-active/",
+        views.subcategory_toggle_active,
+        name="subcategory_toggle_active",
+    ),
     path(
         "providers/<int:provider_id>/services/<int:service_id>/actions/toggle-active/",
         views.provider_service_toggle_active,

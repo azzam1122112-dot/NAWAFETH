@@ -28,82 +28,141 @@ class AddServiceScreen extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
+        backgroundColor: isDark ? Colors.grey[900] : const Color(0xFFF8F9FD),
         drawer: const CustomDrawer(),
-        appBar: const CustomAppBar(title: "إضافة خدمة"),
+        appBar: const CustomAppBar(title: "طلب خدمة جديدة"),
         bottomNavigationBar: const CustomBottomNav(currentIndex: 2),
-        body: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+        body: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "مرحباً بك في منصة نوافذ!",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Cairo',
-                  color: isDark ? Colors.white : AppColors.deepPurple,
+              // Header Section مع تصميم احترافي
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isDark
+                        ? [
+                            Colors.deepPurple.shade800,
+                            Colors.deepPurple.shade700,
+                          ]
+                        : [
+                            const Color(0xFF6A35FF),
+                            const Color(0xFF8B5CF6),
+                          ],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.deepPurple.withOpacity(0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "اختر نوع الخدمة التي ترغب بطلبها:",
-                style: TextStyle(
-                  fontSize: 15,
-                  fontFamily: 'Cairo',
-                  color: isDark ? Colors.white70 : Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // قائمة البطاقات
-              Expanded(
-                child: ListView(
-                  physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildServiceCard(
-                      context,
-                      onTap:
-                          () => _navigate(context, const SearchProviderScreen()),
-                      title: "🔎 البحث عن مزود خدمة",
-                      description:
-                          "استعرض مزودي الخدمات حسب الموقع والتخصص وتقييماتهم.",
-                      buttonLabel: "ابدأ البحث",
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildServiceCard(
-                      context,
-                      onTap:
-                          () => _navigate(
-                            context,
-                            const UrgentRequestScreen(),
-                            requireFullClient: true,
+                    Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                      title: "⚡ طلب خدمة عاجلة",
-                      description:
-                          "أرسل طلبًا عاجلًا وسيتم إشعار مزودي الخدمة فورًا.",
-                      buttonLabel: "طلب عاجل",
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildServiceCard(
-                      context,
-                      onTap:
-                          () => _navigate(
-                            context,
-                            const RequestQuoteScreen(),
-                            requireFullClient: true,
+                          child: const Center(
+                            child: Text(
+                              '✨',
+                              style: TextStyle(fontSize: 24),
+                            ),
                           ),
-                      title: "📨 طلب عروض أسعار",
-                      description:
-                          "صف خدمتك وانتظر عروض متعددة من مزودي الخدمة.",
-                      buttonLabel: "طلب عرض",
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "مرحباً بك في نوافذ",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  fontFamily: 'Cairo',
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                "اختر طريقة طلب الخدمة المناسبة لك",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Cairo',
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 28),
+
+              // قائمة البطاقات المحسّنة
+              _buildEnhancedServiceCard(
+                context,
+                onTap: () => _navigate(context, const SearchProviderScreen()),
+                emoji: "🔍",
+                title: "البحث عن مزود خدمة",
+                description: "استعرض مزودي الخدمات حسب الموقع والتخصص وتقييماتهم",
+                buttonLabel: "ابدأ البحث",
+                gradientColors: isDark
+                    ? [Colors.blue.shade700, Colors.cyan.shade700]
+                    : [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
+              ),
+              const SizedBox(height: 16),
+
+              _buildEnhancedServiceCard(
+                context,
+                onTap: () => _navigate(
+                  context,
+                  const UrgentRequestScreen(),
+                  requireFullClient: true,
+                ),
+                emoji: "⚡",
+                title: "طلب خدمة عاجلة",
+                description: "أرسل طلبًا عاجلًا وسيتم إشعار مزودي الخدمة فورًا",
+                buttonLabel: "طلب عاجل",
+                gradientColors: isDark
+                    ? [Colors.orange.shade700, Colors.deepOrange.shade700]
+                    : [const Color(0xFFF59E0B), const Color(0xFFEF4444)],
+              ),
+              const SizedBox(height: 16),
+
+              _buildEnhancedServiceCard(
+                context,
+                onTap: () => _navigate(
+                  context,
+                  const RequestQuoteScreen(),
+                  requireFullClient: true,
+                ),
+                emoji: "💼",
+                title: "طلب عروض أسعار",
+                description: "صف خدمتك وانتظر عروض متعددة من مزودي الخدمة",
+                buttonLabel: "طلب عرض",
+                gradientColors: isDark
+                    ? [Colors.green.shade700, Colors.teal.shade700]
+                    : [const Color(0xFF10B981), const Color(0xFF14B8A6)],
+              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -112,95 +171,146 @@ class AddServiceScreen extends StatelessWidget {
   }
 
   // -----------------------------------------
-  // 🟣 بطاقة احترافية قابلة للنقر بالكامل
+  // 🟣 بطاقة احترافية محسّنة مع تدرجات لونية
   // -----------------------------------------
-  Widget _buildServiceCard(
+  Widget _buildEnhancedServiceCard(
     BuildContext context, {
+    required String emoji,
     required String title,
     required String description,
     required String buttonLabel,
     required VoidCallback onTap,
+    required List<Color> gradientColors,
   }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      splashColor: AppColors.deepPurple.withOpacity(0.08),
-      highlightColor: AppColors.deepPurple.withOpacity(0.05),
-
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isDark ? Colors.grey[850] : const Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDark ? Colors.grey[700]! : Colors.grey.shade200,
+          gradient: LinearGradient(
+            colors: gradientColors,
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
           ),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: isDark 
-                  ? Colors.black.withAlpha(30)
-                  : Colors.deepPurple.withAlpha(18),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: gradientColors[0].withOpacity(0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            // العنوان
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'Cairo',
-                color: isDark ? Colors.white : Colors.black87,
+            // Pattern decoration
+            Positioned(
+              top: -20,
+              left: -20,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-
-            // الوصف
-            Text(
-              description,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                fontFamily: 'Cairo',
-                color: isDark ? Colors.white70 : Colors.black54,
+            Positioned(
+              bottom: -30,
+              right: -30,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                ),
               ),
             ),
-            const SizedBox(height: 14),
-
-            // زر (للتأكيد البصري فقط — التفعيل على كامل البطاقة)
-            Container(
-              decoration: BoxDecoration(
-                color: isDark 
-                  ? Colors.deepPurple.shade700.withOpacity(0.9)
-                  : AppColors.deepPurple.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+            
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Center(
+                          child: Text(
+                            emoji,
+                            style: const TextStyle(fontSize: 28),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                fontFamily: 'Cairo',
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
                   Text(
-                    buttonLabel,
+                    description,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      height: 1.6,
                       fontFamily: 'Cairo',
+                      color: Colors.white70,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 14,
-                    color: Colors.white,
+                  const SizedBox(height: 18),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          buttonLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Cairo',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

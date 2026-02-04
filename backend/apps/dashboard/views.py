@@ -16,8 +16,8 @@ from django.views.decorators.http import require_POST
 
 from apps.marketplace.models import ServiceRequest
 from apps.marketplace.services.actions import allowed_actions, execute_action
-from apps.providers.models import ProviderProfile, ProviderService
-from .forms import AcceptAssignProviderForm
+from apps.providers.models import ProviderProfile, ProviderService, Category, SubCategory
+from .forms import AcceptAssignProviderForm, CategoryForm, SubCategoryForm
 
 # إن كانت عندك Enums استوردها (عدّل حسب مشروعك)
 try:
@@ -560,3 +560,201 @@ def request_send(request: HttpRequest, request_id: int) -> HttpResponse:
         logger.exception("dashboard request_send error")
         messages.error(request, "حدث خطأ غير متوقع")
     return redirect("dashboard:request_detail", request_id=sr.id)
+
+
+# =============================================================================
+# Categories & Subcategories Management
+# =============================================================================
+
+@staff_member_required
+def categories_list(request: HttpRequest) -> HttpResponse:
+    """عرض قائمة التصنيفات الرئيسية مع التصنيفات الفرعية"""
+    q = request.GET.get("q", "").strip()
+    active = request.GET.get("active", "").strip()
+
+    categories = Category.objects.all()
+
+    # البحث
+    if q:
+        categories = categories.filter(name__icontains=q)
+
+    # فلتر الحالة
+    if active:
+        is_active = _bool_param(active)
+        if is_active is not None:
+            categories = categories.filter(is_active=is_active)
+
+    # عدد التصنيفات الفرعية
+    categories = categories.annotate(subcategories_count=Count("subcategories"))
+
+    # الترتيب
+    categories = categories.order_by("-is_active", "name")
+
+    # Pagination
+    paginator = Paginator(categories, 25)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    return render(
+        request,
+        "dashboard/categories_list.html",
+        {
+            "page_obj": page_obj,
+            "q": q,
+            "active": active,
+        },
+    )
+
+
+@staff_member_required
+def category_detail(request: HttpRequest, category_id: int) -> HttpResponse:
+    """عرض تفاصيل تصنيف رئيسي مع جميع التصنيفات الفرعية"""
+    category = get_object_or_404(Category, id=category_id)
+    subcategories = category.subcategories.all().order_by("-is_active", "name")
+
+    return render(
+        request,
+        "dashboard/category_detail.html",
+        {
+            "category": category,
+            "subcategories": subcategories,
+        },
+    )
+
+
+@staff_member_required
+@require_POST
+def category_toggle_active(request: HttpRequest, category_id: int) -> HttpResponse:
+    """تفعيل/إيقاف تصنيف رئيسي"""
+    category = get_object_or_404(Category, id=category_id)
+    category.is_active = not category.is_active
+    category.save()
+    
+    status = "مفعّل" if category.is_active else "موقوف"
+    messages.success(request, f"تم تحديث حالة التصنيف إلى: {status}")
+    
+    return redirect("dashboard:category_detail", category_id=category.id)
+
+
+@staff_member_required
+@require_POST
+def subcategory_toggle_active(
+    request: HttpRequest, category_id: int, subcategory_id: int
+) -> HttpResponse:
+    """تفعيل/إيقاف تصنيف فرعي"""
+    category = get_object_or_404(Category, id=category_id)
+    subcategory = get_object_or_404(SubCategory, id=subcategory_id, category=category)
+    
+    subcategory.is_active = not subcategory.is_active
+    subcategory.save()
+    
+    status = "مفعّل" if subcategory.is_active else "موقوف"
+    messages.success(request, f"تم تحديث حالة التصنيف الفرعي إلى: {status}")
+    
+    return redirect("dashboard:category_detail", category_id=category.id)
+
+
+@staff_member_required
+def category_create(request: HttpRequest) -> HttpResponse:
+    """إضافة تصنيف رئيسي جديد"""
+    if request.method == "POST":
+        form = CategoryForm(request.POST)
+        if form.is_valid():
+            category = form.save()
+            messages.success(request, f"تم إضافة التصنيف '{category.name}' بنجاح")
+            return redirect("dashboard:category_detail", category_id=category.id)
+    else:
+        form = CategoryForm()
+    
+    return render(
+        request,
+        "dashboard/category_form.html",
+        {
+            "form": form,
+            "title": "إضافة تصنيف رئيسي",
+            "is_edit": False,
+        },
+    )
+
+
+@staff_member_required
+def category_edit(request: HttpRequest, category_id: int) -> HttpResponse:
+    """تعديل تصنيف رئيسي"""
+    category = get_object_or_404(Category, id=category_id)
+    
+    if request.method == "POST":
+        form = CategoryForm(request.POST, instance=category)
+        if form.is_valid():
+            category = form.save()
+            messages.success(request, f"تم تحديث التصنيف '{category.name}' بنجاح")
+            return redirect("dashboard:category_detail", category_id=category.id)
+    else:
+        form = CategoryForm(instance=category)
+    
+    return render(
+        request,
+        "dashboard/category_form.html",
+        {
+            "form": form,
+            "category": category,
+            "title": "تعديل التصنيف",
+            "is_edit": True,
+        },
+    )
+
+
+@staff_member_required
+def subcategory_create(request: HttpRequest) -> HttpResponse:
+    """إضافة تصنيف فرعي جديد"""
+    category_id = request.GET.get("category")
+    
+    if request.method == "POST":
+        form = SubCategoryForm(request.POST)
+        if form.is_valid():
+            subcategory = form.save()
+            messages.success(request, f"تم إضافة التصنيف الفرعي '{subcategory.name}' بنجاح")
+            return redirect("dashboard:category_detail", category_id=subcategory.category.id)
+    else:
+        initial = {}
+        if category_id:
+            try:
+                initial['category'] = int(category_id)
+            except ValueError:
+                pass
+        form = SubCategoryForm(initial=initial)
+    
+    return render(
+        request,
+        "dashboard/subcategory_form.html",
+        {
+            "form": form,
+            "title": "إضافة تصنيف فرعي",
+            "is_edit": False,
+        },
+    )
+
+
+@staff_member_required
+def subcategory_edit(request: HttpRequest, subcategory_id: int) -> HttpResponse:
+    """تعديل تصنيف فرعي"""
+    subcategory = get_object_or_404(SubCategory, id=subcategory_id)
+    
+    if request.method == "POST":
+        form = SubCategoryForm(request.POST, instance=subcategory)
+        if form.is_valid():
+            subcategory = form.save()
+            messages.success(request, f"تم تحديث التصنيف الفرعي '{subcategory.name}' بنجاح")
+            return redirect("dashboard:category_detail", category_id=subcategory.category.id)
+    else:
+        form = SubCategoryForm(instance=subcategory)
+    
+    return render(
+        request,
+        "dashboard/subcategory_form.html",
+        {
+            "form": form,
+            "subcategory": subcategory,
+            "title": "تعديل التصنيف الفرعي",
+            "is_edit": True,
+        },
+    )
