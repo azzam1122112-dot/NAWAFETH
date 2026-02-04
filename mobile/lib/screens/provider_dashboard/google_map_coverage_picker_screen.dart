@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 class GoogleMapCoveragePickerScreen extends StatefulWidget {
   final String? city;
@@ -27,28 +27,31 @@ class _GoogleMapCoveragePickerScreenState
   static const Color _mainColor = Colors.deepPurple;
   static const LatLng _defaultCenter = LatLng(24.7136, 46.6753); // Riyadh
 
-  GoogleMapController? _controller;
+  final MapController _mapController = MapController();
 
   LatLng _center = _defaultCenter;
   int _radiusKm = 10;
+  double _zoom = 12.8;
 
-  LatLngBounds? _cityBounds;
   bool _resolvingCity = false;
+  Timer? _throttle;
 
   @override
   void initState() {
     super.initState();
     _radiusKm = widget.initialRadiusKm;
     _center = widget.initialCenter ?? _defaultCenter;
-    _resolveCityIfNeeded();
+
+    if (widget.initialCenter == null) {
+      unawaited(_resolveCityIfNeeded());
+    }
   }
 
   @override
   void dispose() {
+    _throttle?.cancel();
     super.dispose();
   }
-
-  static const double _cityLockKm = 35;
 
   static const Map<String, LatLng> _knownSaudiCityCenters = {
     'المدينة المنورة': LatLng(24.5246542, 39.5691841),
@@ -104,23 +107,16 @@ class _GoogleMapCoveragePickerScreenState
   Future<void> _resolveCityIfNeeded() async {
     final city = (widget.city ?? '').trim();
     if (city.isEmpty) return;
-
-    if (widget.initialCenter != null) {
-      // If user already has a saved center, don't override.
-      _cityBounds = _boundsAroundKm(widget.initialCenter!, _cityLockKm);
-      return;
-    }
+    if (_resolvingCity) return;
 
     setState(() => _resolvingCity = true);
     try {
       final center = _lookupCityCenter(city) ?? await _geocodeCityBestEffort(city);
-      if (center == null) return;
-      _cityBounds = _boundsAroundKm(center, _cityLockKm);
-      _center = center;
-
       if (!mounted) return;
-      setState(() {});
-      await _animateTo(center);
+      if (center == null) return;
+
+      setState(() => _center = center);
+      _moveTo(center, zoom: 12.8);
     } catch (_) {
       // Best-effort.
     } finally {
@@ -128,58 +124,22 @@ class _GoogleMapCoveragePickerScreenState
     }
   }
 
-  LatLngBounds _boundsAroundKm(LatLng center, double km) {
-    final dLat = km / 111.0;
-    final latRad = center.latitude * (math.pi / 180.0);
-    final cosLat = math.cos(latRad).abs().clamp(0.2, 1.0);
-    final dLng = km / (111.0 * cosLat);
-    return LatLngBounds(
-      southwest: LatLng(center.latitude - dLat, center.longitude - dLng),
-      northeast: LatLng(center.latitude + dLat, center.longitude + dLng),
-    );
-  }
-
-  Future<void> _animateTo(LatLng target) async {
-    final c = _controller;
-    if (c == null) return;
-    await c.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: 12.8),
-      ),
-    );
+  void _moveTo(LatLng target, {double? zoom}) {
+    final z = zoom ?? _zoom;
+    _zoom = z;
+    _mapController.move(target, z);
   }
 
   void _setCenter(LatLng p) {
     setState(() => _center = p);
+    _throttle?.cancel();
+    _throttle = Timer(const Duration(milliseconds: 50), () {
+      _moveTo(_center);
+    });
   }
 
   void _setRadiusKm(int km) {
     setState(() => _radiusKm = km);
-  }
-
-  Set<Marker> get _markers {
-    return {
-      Marker(
-        markerId: const MarkerId('center'),
-        position: _center,
-        draggable: true,
-        onDragEnd: _setCenter,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-      )
-    };
-  }
-
-  Set<Circle> get _circles {
-    return {
-      Circle(
-        circleId: const CircleId('coverage'),
-        center: _center,
-        radius: _radiusKm * 1000.0,
-        fillColor: _mainColor.withAlpha(36),
-        strokeColor: _mainColor.withAlpha(230),
-        strokeWidth: 2,
-      )
-    };
   }
 
   void _confirm() {
@@ -285,7 +245,7 @@ class _GoogleMapCoveragePickerScreenState
   }
 
   Widget _map() {
-    final bounds = _cityBounds;
+    final radiusMeters = _radiusKm * 1000.0;
 
     return Expanded(
       child: Padding(
@@ -294,29 +254,66 @@ class _GoogleMapCoveragePickerScreenState
           borderRadius: BorderRadius.circular(18),
           child: Stack(
             children: [
-              GoogleMap(
-                initialCameraPosition:
-                    CameraPosition(target: _center, zoom: 12.8),
-                onMapCreated: (c) {
-                  _controller = c;
-                },
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                buildingsEnabled: true,
-                compassEnabled: false,
-                mapToolbarEnabled: false,
-                markers: _markers,
-                circles: _circles,
-                cameraTargetBounds:
-                    bounds != null ? CameraTargetBounds(bounds) : CameraTargetBounds.unbounded,
-                onTap: _setCenter,
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _center,
+                  initialZoom: _zoom,
+                  onTap: (tapPosition, point) => _setCenter(point),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.nawafeth.app',
+                  ),
+                  CircleLayer(
+                    circles: [
+                      CircleMarker(
+                        point: _center,
+                        radius: radiusMeters,
+                        useRadiusInMeter: true,
+                        color: _mainColor.withAlpha(36),
+                        borderColor: _mainColor.withAlpha(230),
+                        borderStrokeWidth: 2,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _center,
+                        width: 44,
+                        height: 44,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.location_on,
+                            color: _mainColor,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
               if (_resolvingCity)
                 Positioned(
                   top: 12,
                   right: 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(14),
@@ -328,9 +325,9 @@ class _GoogleMapCoveragePickerScreenState
                         )
                       ],
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
+                      children: [
                         SizedBox(
                           width: 16,
                           height: 16,
