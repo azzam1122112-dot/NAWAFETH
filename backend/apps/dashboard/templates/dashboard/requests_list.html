@@ -2,24 +2,27 @@
 {% block title %}الطلبات{% endblock %}
 
 {% block content %}
-  <div class="flex items-start justify-between gap-4 mb-6">
+  <div class="flex items-start justify-between gap-4 mb-8">
     <div>
-      <h1 class="text-2xl font-bold">الطلبات</h1>
-      <p class="text-gray-500 text-sm mt-1">استعراض الطلبات مع فلاتر وتشغيل يومي.</p>
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white text-2xl shadow-lg">📋</div>
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">الطلبات</h1>
+      </div>
+      <p class="text-gray-500 text-sm">استعراض الطلبات مع فلاتر وتشغيل يومي.</p>
     </div>
   </div>
 
-  <form method="get" class="bg-white border border-gray-200 rounded-2xl p-4 mb-6">
-    <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+  <form method="get" class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-8">
+    <div class="grid grid-cols-1 lg:grid-cols-6 gap-4">
       <div class="lg:col-span-2">
-        <label class="text-sm text-gray-600">بحث</label>
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>🔍</span> بحث</label>
         <input name="q" value="{{ q }}" placeholder="عنوان / وصف / جوال"
-               class="mt-1 w-full rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400">
+               class="mt-2 w-full rounded-lg border-gray-200 focus:border-purple-400 focus:ring-purple-400 px-4 py-2.5">
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">الحالة</label>
-        <select name="status" class="mt-1 w-full rounded-lg border-gray-200">
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>📊</span> الحالة</label>
+        <select name="status" class="mt-2 w-full rounded-lg border-gray-200 px-4 py-2.5">
           <option value="">الكل</option>
           {% for val, label in status_choices %}
             <option value="{{ val }}" {% if status_val == val %}selected{% endif %}>{{ label }}</option>
@@ -33,8 +36,8 @@
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">النوع</label>
-        <select name="type" class="mt-1 w-full rounded-lg border-gray-200">
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>🎯</span> النوع</label>
+        <select name="type" class="mt-2 w-full rounded-lg border-gray-200 px-4 py-2.5">
           <option value="">الكل</option>
           {% for val, label in type_choices %}
             <option value="{{ val }}" {% if type_val == val %}selected{% endif %}>{{ label }}</option>
@@ -48,115 +51,126 @@
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">المدينة</label>
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>📍</span> المدينة</label>
         <input name="city" value="{{ city }}" placeholder="مثال: الرياض"
-               class="mt-1 w-full rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400">
+               class="mt-2 w-full rounded-lg border-gray-200 focus:border-purple-400 focus:ring-purple-400 px-4 py-2.5">
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">من</label>
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>📅</span> من</label>
         <input type="date" name="from" value="{{ from }}"
-               class="mt-1 w-full rounded-lg border-gray-200">
+               class="mt-2 w-full rounded-lg border-gray-200 px-4 py-2.5">
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">إلى</label>
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>📅</span> إلى</label>
         <input type="date" name="to" value="{{ to }}"
-               class="mt-1 w-full rounded-lg border-gray-200">
+               class="mt-2 w-full rounded-lg border-gray-200 px-4 py-2.5">
       </div>
     </div>
 
-    <div class="mt-4 flex items-center gap-2">
-      <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" type="submit">
-        تطبيق الفلاتر
+    <div class="mt-5 flex items-center gap-3">
+      <button class="px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-xl transition-all font-semibold" type="submit">
+        🔍 تطبيق الفلاتر
       </button>
-      <a class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200" href="{% url 'dashboard:requests_list' %}">
-        تصفير
+      <a class="px-5 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 transition-all font-semibold" href="{% url 'dashboard:requests_list' %}">
+        ❌ تصفير
       </a>
     </div>
   </form>
 
-  <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-      <h2 class="font-bold">قائمة الطلبات</h2>
-      <div class="text-sm text-gray-500">
-        إجمالي هذه الصفحة: {{ page_obj.paginator.count }}
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+    <div class="px-6 py-5 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">📊</span>
+        <h2 class="font-bold text-lg text-gray-800">قائمة الطلبات</h2>
+      </div>
+      <div class="px-4 py-1.5 rounded-full bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 text-sm font-bold">
+        الإجمالي: {{ page_obj.paginator.count }}
       </div>
     </div>
 
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
+        <thead class="bg-gradient-to-r from-purple-50 to-indigo-50">
           <tr>
-            <th class="text-right px-5 py-3">#</th>
-            <th class="text-right px-5 py-3">العنوان</th>
-            <th class="text-right px-5 py-3">النوع</th>
-            <th class="text-right px-5 py-3">الحالة</th>
-            <th class="text-right px-5 py-3">المدينة</th>
-            <th class="text-right px-5 py-3">العميل</th>
-            <th class="text-right px-5 py-3">المزوّد</th>
-            <th class="text-right px-5 py-3">إجراءات</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">#</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">العنوان</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">النوع</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">الحالة</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">المدينة</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">العميل</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">المزوّد</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">إجراءات</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           {% for r in page_obj.object_list %}
-            <tr class="hover:bg-gray-50">
-              <td class="px-5 py-3 font-semibold">{{ r.id }}</td>
-              <td class="px-5 py-3">
-                <div class="font-medium">{{ r.title|default:"—" }}</div>
+            <tr class="hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50 transition-all">
+              <td class="px-6 py-4">
+                <span class="px-3 py-1 rounded-lg bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 font-bold text-xs">{{ r.id }}</span>
+              </td>
+              <td class="px-6 py-4">
+                <div class="font-semibold text-gray-800">{{ r.title|default:"—" }}</div>
                 <div class="text-xs text-gray-500 mt-1">
-                  {{ r.created_at|date:"Y-m-d H:i" }}
+                  🕒 {{ r.created_at|date:"Y-m-d H:i" }}
                 </div>
               </td>
-              <td class="px-5 py-3">{{ r.request_type }}</td>
-              <td class="px-5 py-3">
-                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">
+              <td class="px-6 py-4">
+                <span class="px-3 py-1 rounded-full bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 text-xs font-semibold">{{ r.request_type }}</span>
+              </td>
+              <td class="px-6 py-4">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 font-semibold">
                   {{ r.status }}
                 </span>
               </td>
-              <td class="px-5 py-3">{{ r.city|default:"—" }}</td>
-              <td class="px-5 py-3">{{ r.client.phone|default:"—" }}</td>
-              <td class="px-5 py-3">
+              <td class="px-6 py-4 text-gray-700">📍 {{ r.city|default:"—" }}</td>
+              <td class="px-6 py-4 text-gray-700">📞 {{ r.client.phone|default:"—" }}</td>
+              <td class="px-6 py-4">
                 {% if r.provider %}
-                  {{ r.provider.display_name|default:"—" }}
+                  <div class="font-medium text-gray-800">👤 {{ r.provider.display_name|default:"—" }}</div>
                 {% else %}
-                  —
+                  <span class="text-gray-400">—</span>
                 {% endif %}
               </td>
-              <td class="px-5 py-3">
+              <td class="px-6 py-4">
                 <a href="{% url 'dashboard:request_detail' r.id %}"
-                   class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm inline-block">
-                  تفاصيل
+                   class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-lg transition-all text-xs font-semibold inline-block">
+                  🔍 تفاصيل
                 </a>
               </td>
             </tr>
           {% empty %}
             <tr>
-              <td class="px-5 py-6 text-gray-500" colspan="8">لا توجد نتائج مطابقة.</td>
+              <td class="px-6 py-12 text-gray-400 text-center" colspan="8">
+                <div class="flex flex-col items-center gap-2">
+                  <span class="text-4xl">📋</span>
+                  <span>لا توجد نتائج مطابقة.</span>
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <!-- Pagination -->
-    <div class="px-5 py-4 border-t border-gray-200 flex items-center justify-between">
-      <div class="text-sm text-gray-500">
-        صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}
+    <div class="px-6 py-5 bg-gradient-to-r from-gray-50 to-white border-t border-gray-100 flex items-center justify-between">
+      <div class="text-sm text-gray-600 font-semibold">
+        📄 صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}
       </div>
 
       <div class="flex items-center gap-2">
         {% if page_obj.has_previous %}
-          <a class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm"
+          <a class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-lg transition-all text-sm font-semibold"
              href="?page={{ page_obj.previous_page_number }}&q={{ q }}&status={{ status_val }}&type={{ type_val }}&city={{ city }}&from={{ from }}&to={{ to }}">
-            السابق
+            ← السابق
           </a>
         {% endif %}
 
         {% if page_obj.has_next %}
-          <a class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm"
+          <a class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-lg transition-all text-sm font-semibold"
              href="?page={{ page_obj.next_page_number }}&q={{ q }}&status={{ status_val }}&type={{ type_val }}&city={{ city }}&from={{ from }}&to={{ to }}">
-            التالي
+            التالي →
           </a>
         {% endif %}
       </div>

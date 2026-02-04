@@ -2,30 +2,33 @@
 {% block title %}خدمات المزوّدين{% endblock %}
 
 {% block content %}
-  <div class="flex items-start justify-between gap-4 mb-6">
+  <div class="flex items-start justify-between gap-4 mb-8">
     <div>
-      <h1 class="text-2xl font-bold">خدمات المزوّدين</h1>
-      <p class="text-gray-500 text-sm mt-1">استعراض خدمات المزوّدين وتفعيل/إيقاف الخدمات عبر صفحة المزود.</p>
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white text-2xl shadow-lg">🛠️</div>
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">خدمات المزوّدين</h1>
+      </div>
+      <p class="text-gray-500 text-sm">استعراض خدمات المزوّدين وتفعيل/إيقاف الخدمات عبر صفحة المزود.</p>
     </div>
   </div>
 
-  <form method="get" class="bg-white border border-gray-200 rounded-2xl p-4 mb-6">
-    <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+  <form method="get" class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-8">
+    <div class="grid grid-cols-1 lg:grid-cols-6 gap-4">
       <div class="lg:col-span-2">
-        <label class="text-sm text-gray-600">بحث</label>
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>🔍</span> بحث</label>
         <input name="q" value="{{ q }}" placeholder="عنوان الخدمة / اسم المزوّد / الجوال"
-               class="mt-1 w-full rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400">
+               class="mt-2 w-full rounded-lg border-gray-200 focus:border-amber-400 focus:ring-amber-400 px-4 py-2.5">
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">المدينة</label>
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>📍</span> المدينة</label>
         <input name="city" value="{{ city }}" placeholder="مثال: الرياض"
-               class="mt-1 w-full rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400">
+               class="mt-2 w-full rounded-lg border-gray-200 focus:border-amber-400 focus:ring-amber-400 px-4 py-2.5">
       </div>
 
       <div>
-        <label class="text-sm text-gray-600">نشطة</label>
-        <select name="active" class="mt-1 w-full rounded-lg border-gray-200">
+        <label class="text-sm text-gray-700 font-semibold flex items-center gap-2"><span>✅</span> نشطة</label>
+        <select name="active" class="mt-2 w-full rounded-lg border-gray-200 px-4 py-2.5">
           <option value="" {% if active == "" %}selected{% endif %}>الكل</option>
           <option value="1" {% if active == "1" %}selected{% endif %}>نعم</option>
           <option value="0" {% if active == "0" %}selected{% endif %}>لا</option>
@@ -33,86 +36,100 @@
       </div>
 
       <div class="lg:col-span-1 flex items-end gap-2">
-        <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 w-full" type="submit">
-          تطبيق
+        <button class="px-5 py-2.5 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-xl transition-all w-full font-semibold" type="submit">
+          🔍 تطبيق
         </button>
       </div>
     </div>
 
-    <div class="mt-3">
-      <a class="text-sm text-indigo-600 hover:underline" href="{% url 'dashboard:services_list' %}">تصفير الفلاتر</a>
+    <div class="mt-4">
+      <a class="text-sm text-amber-600 hover:text-amber-700 font-semibold" href="{% url 'dashboard:services_list' %}">❌ تصفير الفلاتر</a>
     </div>
   </form>
 
-  <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-      <h2 class="font-bold">القائمة</h2>
-      <div class="text-sm text-gray-500">الإجمالي: {{ page_obj.paginator.count }}</div>
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+    <div class="px-6 py-5 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">📋</span>
+        <h2 class="font-bold text-lg text-gray-800">القائمة</h2>
+      </div>
+      <div class="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 text-sm font-bold">الإجمالي: {{ page_obj.paginator.count }}</div>
     </div>
 
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
+        <thead class="bg-gradient-to-r from-amber-50 to-orange-50">
           <tr>
-            <th class="text-right px-5 py-3">#</th>
-            <th class="text-right px-5 py-3">الخدمة</th>
-            <th class="text-right px-5 py-3">المزوّد</th>
-            <th class="text-right px-5 py-3">التصنيف</th>
-            <th class="text-right px-5 py-3">الحالة</th>
-            <th class="text-right px-5 py-3">آخر تحديث</th>
-            <th class="text-right px-5 py-3">إجراءات</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">#</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">الخدمة</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">المزوّد</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">التصنيف</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">الحالة</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">آخر تحديث</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">إجراءات</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           {% for s in page_obj.object_list %}
-            <tr class="hover:bg-gray-50">
-              <td class="px-5 py-3 font-semibold">{{ s.id }}</td>
-              <td class="px-5 py-3">
-                <div class="font-medium">{{ s.title }}</div>
+            <tr class="hover:bg-gradient-to-r hover:from-amber-50 hover:to-orange-50 transition-all">
+              <td class="px-6 py-4">
+                <span class="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 font-bold text-xs">{{ s.id }}</span>
+              </td>
+              <td class="px-6 py-4">
+                <div class="font-semibold text-gray-800">{{ s.title }}</div>
                 {% if s.description %}
                   <div class="text-xs text-gray-500 mt-1">{{ s.description|truncatechars:110 }}</div>
                 {% endif %}
               </td>
-              <td class="px-5 py-3">
-                <div class="font-medium">{{ s.provider.display_name }}</div>
+              <td class="px-6 py-4">
+                <div class="font-medium text-gray-800">{{ s.provider.display_name }}</div>
                 <div class="text-xs text-gray-500 mt-1">{{ s.provider.user.phone|default:"—" }} • {{ s.provider.city|default:"—" }}</div>
               </td>
-              <td class="px-5 py-3">{{ s.subcategory.category.name }} / {{ s.subcategory.name }}</td>
-              <td class="px-5 py-3">
+              <td class="px-6 py-4">
+                <div class="text-xs text-gray-500">{{ s.subcategory.category.name }}</div>
+                <div class="font-medium text-gray-700">{{ s.subcategory.name }}</div>
+              </td>
+              <td class="px-6 py-4">
                 {% if s.is_active %}
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">مفعلة</span>
+                  <span class="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-green-500 to-emerald-600 text-white text-xs font-bold">✓ مفعلة</span>
                 {% else %}
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">موقوفة</span>
+                  <span class="inline-flex items-center px-3 py-1 rounded-full bg-gray-200 text-gray-600 text-xs">موقوفة</span>
                 {% endif %}
               </td>
-              <td class="px-5 py-3">{{ s.updated_at|date:"Y-m-d H:i" }}</td>
-              <td class="px-5 py-3">
-                <a class="text-indigo-600 hover:underline" href="{% url 'dashboard:provider_detail' s.provider.id %}">فتح المزود</a>
-                <span class="text-gray-300 px-2">|</span>
-                <a class="text-indigo-600 hover:underline" href="{% url 'admin:providers_providerservice_change' s.id %}">admin</a>
+              <td class="px-6 py-4 text-gray-600 text-xs">{{ s.updated_at|date:"Y-m-d H:i" }}</td>
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-2">
+                  <a class="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-700 hover:shadow-md transition-all text-xs font-semibold" href="{% url 'dashboard:provider_detail' s.provider.id %}">👤 فتح المزود</a>
+                  <a class="text-amber-600 hover:text-amber-700 text-xs font-semibold" href="{% url 'admin:providers_providerservice_change' s.id %}">admin</a>
+                </div>
               </td>
             </tr>
           {% empty %}
             <tr>
-              <td class="px-5 py-6 text-gray-500" colspan="7">لا توجد نتائج.</td>
+              <td class="px-6 py-12 text-gray-400 text-center" colspan="7">
+                <div class="flex flex-col items-center gap-2">
+                  <span class="text-4xl">🛠️</span>
+                  <span>لا توجد نتائج.</span>
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <div class="px-5 py-4 border-t border-gray-200 flex items-center justify-between">
-      <div class="text-sm text-gray-500">
-        صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}
+    <div class="px-6 py-5 bg-gradient-to-r from-gray-50 to-white border-t border-gray-100 flex items-center justify-between">
+      <div class="text-sm text-gray-600 font-semibold">
+        📄 صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}
       </div>
       <div class="flex items-center gap-2">
         {% if page_obj.has_previous %}
-          <a class="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200"
-             href="?page={{ page_obj.previous_page_number }}&q={{ q }}&city={{ city }}&active={{ active }}">السابق</a>
+          <a class="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-lg transition-all font-semibold"
+             href="?page={{ page_obj.previous_page_number }}&q={{ q }}&city={{ city }}&active={{ active }}">← السابق</a>
         {% endif %}
         {% if page_obj.has_next %}
-          <a class="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200"
-             href="?page={{ page_obj.next_page_number }}&q={{ q }}&city={{ city }}&active={{ active }}">التالي</a>
+          <a class="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-lg transition-all font-semibold"
+             href="?page={{ page_obj.next_page_number }}&q={{ q }}&city={{ city }}&active={{ active }}">التالي →</a>
         {% endif %}
       </div>
     </div>

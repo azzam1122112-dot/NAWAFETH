@@ -2,105 +2,139 @@
 {% block title %}تفاصيل المزود{% endblock %}
 
 {% block content %}
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex items-start justify-between mb-8">
     <div>
-      <h1 class="text-2xl font-bold">{{ provider.display_name }}</h1>
-      <div class="text-sm text-gray-500 mt-1">#{{ provider.id }} • {{ provider.user.phone|default:"—" }}</div>
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-2xl shadow-lg">
+          👤
+        </div>
+        <div>
+          <h1 class="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">{{ provider.display_name }}</h1>
+          <div class="text-sm text-gray-500 mt-1">#{{ provider.id }} • {{ provider.user.phone|default:"—" }}</div>
+        </div>
+      </div>
     </div>
     <div class="flex items-center gap-2">
-      <a class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200" href="{% url 'dashboard:providers_list' %}">رجوع</a>
-      <a class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" href="{% url 'admin:providers_providerprofile_change' provider.id %}">فتح في admin</a>
+      <a class="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 font-semibold transition-all" href="{% url 'dashboard:providers_list' %}">← رجوع</a>
+      <a class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-xl transition-all font-semibold" href="{% url 'admin:providers_providerprofile_change' provider.id %}">⚙️ admin</a>
     </div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-    <div class="bg-white border border-gray-200 rounded-2xl p-5">
-      <div class="text-sm text-gray-500">المدينة</div>
-      <div class="text-lg font-bold mt-1">{{ provider.city|default:"—" }}</div>
-      <div class="text-sm text-gray-500 mt-3">يقبل عاجل</div>
-      <div class="mt-1">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <div class="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl p-6 text-white shadow-xl card-hover">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-white/80 text-sm font-semibold">الموقع والخدمة</div>
+        <div class="w-10 h-10 rounded-lg bg-white/20 backdrop-blur flex items-center justify-center text-xl">📍</div>
+      </div>
+      <div class="text-2xl font-bold mb-1">{{ provider.city|default:"—" }}</div>
+      <div class="text-white/70 text-xs mb-4">المدينة</div>
+      <div class="pt-3 border-t border-white/20">
         {% if provider.accepts_urgent %}
-          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-indigo-50 text-indigo-700">نعم</span>
+          <span class="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-bold">⚡ يقبل عاجل</span>
         {% else %}
-          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">لا</span>
+          <span class="inline-flex items-center px-3 py-1 rounded-full bg-white/20 text-white text-xs">لا يقبل عاجل</span>
         {% endif %}
       </div>
     </div>
 
-    <div class="bg-white border border-gray-200 rounded-2xl p-5">
-      <div class="text-sm text-gray-500">التوثيق</div>
-      <div class="mt-2">
+    <div class="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-xl card-hover">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-white/80 text-sm font-semibold">التوثيق والنوع</div>
+        <div class="w-10 h-10 rounded-lg bg-white/20 backdrop-blur flex items-center justify-center text-xl">✓</div>
+      </div>
+      <div class="mb-3">
         {% if provider.is_verified_blue or provider.is_verified_green %}
-          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">موثّق</span>
+          <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-gradient-to-r from-green-600 to-emerald-700 text-white text-sm font-bold">✓ موثّق</span>
         {% else %}
-          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">غير موثّق</span>
+          <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-white/20 text-white text-sm">غير موثّق</span>
         {% endif %}
       </div>
-      <div class="text-sm text-gray-500 mt-3">النوع</div>
-      <div class="font-semibold mt-1">{{ provider.provider_type }}</div>
+      <div class="text-white/70 text-xs mb-1">النوع</div>
+      <div class="text-xl font-bold">{{ provider.provider_type }}</div>
     </div>
 
-    <div class="bg-white border border-gray-200 rounded-2xl p-5">
-      <div class="text-sm text-gray-500">التقييم</div>
-      <div class="text-2xl font-bold mt-1">{{ provider.rating_avg }}</div>
-      <div class="text-sm text-gray-500 mt-1">عدد التقييمات: {{ provider.rating_count }}</div>
-      <div class="text-sm text-gray-500 mt-3">سنوات الخبرة</div>
-      <div class="font-semibold mt-1">{{ provider.years_experience }}</div>
+    <div class="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-6 text-white shadow-xl card-hover">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-white/80 text-sm font-semibold">الأداء والخبرة</div>
+        <div class="w-10 h-10 rounded-lg bg-white/20 backdrop-blur flex items-center justify-center text-xl">⭐</div>
+      </div>
+      <div class="flex items-baseline gap-2 mb-1">
+        <div class="text-3xl font-bold">{{ provider.rating_avg }}</div>
+        <div class="text-white/70 text-xs">من 5</div>
+      </div>
+      <div class="text-white/70 text-xs mb-4">{{ provider.rating_count }} تقييم</div>
+      <div class="pt-3 border-t border-white/20">
+        <div class="text-white/70 text-xs mb-1">سنوات الخبرة</div>
+        <div class="text-xl font-bold">{{ provider.years_experience }} سنة</div>
+      </div>
     </div>
   </div>
 
-  <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-      <h2 class="font-bold">خدمات المزود</h2>
-      <a class="text-sm text-indigo-600 hover:underline" href="{% url 'dashboard:services_list' %}?q={{ provider.display_name }}">استعراض كل الخدمات</a>
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden mb-8">
+    <div class="px-6 py-5 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white text-lg">🛠️</div>
+        <h2 class="font-bold text-lg text-gray-800">خدمات المزود</h2>
+      </div>
+      <a class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-lg transition-all text-sm font-semibold" href="{% url 'dashboard:services_list' %}?q={{ provider.display_name }}">استعراض كل الخدمات →</a>
     </div>
 
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
+        <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
           <tr>
-            <th class="text-right px-5 py-3">#</th>
-            <th class="text-right px-5 py-3">العنوان</th>
-            <th class="text-right px-5 py-3">التصنيف</th>
-            <th class="text-right px-5 py-3">الحالة</th>
-            <th class="text-right px-5 py-3">آخر تحديث</th>
-            <th class="text-right px-5 py-3">إجراءات</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">#</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">العنوان</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">التصنيف</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">الحالة</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">آخر تحديث</th>
+            <th class="text-right px-6 py-4 text-gray-600 font-bold">إجراءات</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           {% for s in services %}
-            <tr class="hover:bg-gray-50">
-              <td class="px-5 py-3 font-semibold">{{ s.id }}</td>
-              <td class="px-5 py-3">
-                <div class="font-medium">{{ s.title }}</div>
+            <tr class="hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50 transition-all">
+              <td class="px-6 py-4">
+                <span class="px-3 py-1 rounded-lg bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 font-bold text-xs">{{ s.id }}</span>
+              </td>
+              <td class="px-6 py-4">
+                <div class="font-semibold text-gray-800">{{ s.title }}</div>
                 {% if s.description %}
-                  <div class="text-xs text-gray-500 mt-1">{{ s.description|truncatechars:120 }}</div>
+                  <div class="text-xs text-gray-500 mt-1">{{ s.description|truncatechars:100 }}</div>
                 {% endif %}
               </td>
-              <td class="px-5 py-3">
-                <div>{{ s.subcategory.category.name }} / {{ s.subcategory.name }}</div>
+              <td class="px-6 py-4">
+                <div class="text-xs text-gray-500">{{ s.subcategory.category.name }}</div>
+                <div class="font-medium text-gray-700">{{ s.subcategory.name }}</div>
               </td>
-              <td class="px-5 py-3">
+              <td class="px-6 py-4">
                 {% if s.is_active %}
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">مفعلة</span>
+                  <span class="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-green-500 to-emerald-600 text-white text-xs font-bold">✓ مفعلة</span>
                 {% else %}
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">موقوفة</span>
+                  <span class="inline-flex items-center px-3 py-1 rounded-full bg-gray-200 text-gray-600 text-xs">موقوفة</span>
                 {% endif %}
               </td>
-              <td class="px-5 py-3">{{ s.updated_at|date:"Y-m-d H:i" }}</td>
-              <td class="px-5 py-3">
-                <form method="post" action="{% url 'dashboard:provider_service_toggle_active' provider.id s.id %}">
-                  {% csrf_token %}
-                  <button class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm" type="submit">
-                    {% if s.is_active %}إيقاف{% else %}تفعيل{% endif %}
-                  </button>
-                  <a class="text-indigo-600 hover:underline text-sm mr-3" href="{% url 'admin:providers_providerservice_change' s.id %}">فتح في admin</a>
-                </form>
+              <td class="px-6 py-4 text-gray-600 text-xs">{{ s.updated_at|date:"Y-m-d H:i" }}</td>
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-2">
+                  <form method="post" action="{% url 'dashboard:provider_service_toggle_active' provider.id s.id %}">
+                    {% csrf_token %}
+                    <button class="px-3 py-1.5 rounded-lg {% if s.is_active %}bg-rose-100 text-rose-700 hover:bg-rose-200{% else %}bg-emerald-100 text-emerald-700 hover:bg-emerald-200{% endif %} text-xs font-semibold transition-all" type="submit">
+                      {% if s.is_active %}⏸️ إيقاف{% else %}▶️ تفعيل{% endif %}
+                    </button>
+                  </form>
+                  <a class="text-purple-600 hover:text-purple-700 text-xs font-semibold" href="{% url 'admin:providers_providerservice_change' s.id %}">admin</a>
+                </div>
               </td>
             </tr>
           {% empty %}
             <tr>
-              <td class="px-5 py-6 text-gray-500" colspan="6">لا توجد خدمات لهذا المزود.</td>
+              <td class="px-6 py-12 text-gray-400 text-center" colspan="6">
+                <div class="flex flex-col items-center gap-2">
+                  <span class="text-4xl">🛠️</span>
+                  <span>لا توجد خدمات لهذا المزود.</span>
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -108,8 +142,13 @@
     </div>
   </div>
 
-  <div class="bg-white border border-gray-200 rounded-2xl p-5 mt-6">
-    <h2 class="font-bold mb-2">نبذة</h2>
-    <div class="text-gray-700 text-sm leading-7">{{ provider.bio|default:"—" }}</div>
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+    <div class="flex items-center gap-2 mb-4">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white">📝</div>
+      <h2 class="font-bold text-lg text-gray-800">نبذة عن المزود</h2>
+    </div>
+    <div class="text-gray-700 leading-7 bg-gray-50 rounded-xl p-4 border border-gray-100">
+      {{ provider.bio|default:"—" }}
+    </div>
   </div>
 {% endblock %}

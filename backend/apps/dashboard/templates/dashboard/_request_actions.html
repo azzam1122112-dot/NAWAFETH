@@ -1,12 +1,15 @@
-<div class="bg-gray-50 border border-gray-200 rounded-2xl p-4">
-  <div class="text-sm text-gray-600 mb-3">إجراءات الطلب</div>
+<div class="bg-gradient-to-br from-gray-50 to-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+  <div class="flex items-center gap-2 mb-4">
+    <span class="text-lg">⚡</span>
+    <div class="text-sm text-gray-700 font-bold">إجراءات الطلب</div>
+  </div>
 
-  <div class="flex flex-wrap gap-2">
+  <div class="flex flex-wrap gap-3">
     {% if actions.can_send %}
       <form method="post" action="{% url 'dashboard:request_send' obj.id %}">
         {% csrf_token %}
-        <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" type="submit">
-          إرسال
+        <button class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-xl transition-all font-semibold" type="submit">
+          📤 إرسال
         </button>
       </form>
     {% endif %}
@@ -16,15 +19,15 @@
         <button
           type="button"
           id="openAcceptModal"
-          class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+          class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:shadow-xl transition-all font-semibold"
         >
-          قبول + اختيار مزود
+          ✓ قبول + اختيار مزود
         </button>
       {% else %}
         <form method="post" action="{% url 'dashboard:request_accept' obj.id %}">
           {% csrf_token %}
-          <button class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700" type="submit">
-            قبول
+          <button class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:shadow-xl transition-all font-semibold" type="submit">
+            ✓ قبول
           </button>
         </form>
       {% endif %}
@@ -33,8 +36,8 @@
     {% if actions.can_start %}
       <form method="post" action="{% url 'dashboard:request_start' obj.id %}">
         {% csrf_token %}
-        <button class="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700" type="submit">
-          بدء التنفيذ
+        <button class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:shadow-xl transition-all font-semibold" type="submit">
+          ▶️ بدء التنفيذ
         </button>
       </form>
     {% endif %}
@@ -42,8 +45,8 @@
     {% if actions.can_complete %}
       <form method="post" action="{% url 'dashboard:request_complete' obj.id %}">
         {% csrf_token %}
-        <button class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700" type="submit">
-          إكمال الطلب
+        <button class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:shadow-xl transition-all font-semibold" type="submit">
+          ✓ إكمال الطلب
         </button>
       </form>
     {% endif %}
@@ -51,34 +54,37 @@
     {% if actions.can_cancel %}
       <form method="post" action="{% url 'dashboard:request_cancel' obj.id %}">
         {% csrf_token %}
-        <button class="px-4 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700" type="submit">
-          إلغاء الطلب
+        <button class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white hover:shadow-xl transition-all font-semibold" type="submit">
+          ❌ إلغاء الطلب
         </button>
       </form>
     {% endif %}
   </div>
 
-  <div class="text-xs text-gray-500 mt-3">
-    تظهر الأزرار حسب حالة الطلب وصلاحيات المستخدم.
+  <div class="text-xs text-gray-500 mt-4 bg-gray-50 rounded-lg p-3 border border-gray-100">
+    💡 تظهر الأزرار حسب حالة الطلب وصلاحيات المستخدم.
   </div>
 </div>
 
 {% if actions.can_accept and request.user.is_staff %}
   <div id="acceptModal" class="fixed inset-0 hidden z-50">
-    <div class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
 
-    <div class="relative mx-auto mt-24 w-[95%] max-w-lg rounded-2xl bg-white p-5 shadow-xl">
-      <div class="flex items-center justify-between mb-4">
-        <div class="text-lg font-semibold">قبول الطلب وإسناده لمزود</div>
-        <button type="button" id="closeAcceptModal" class="text-gray-500 hover:text-gray-700">✕</button>
+    <div class="relative mx-auto mt-24 w-[95%] max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-gray-100">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white">✓</div>
+          <div class="text-lg font-bold text-gray-800">قبول الطلب وإسناده لمزود</div>
+        </div>
+        <button type="button" id="closeAcceptModal" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all">✕</button>
       </div>
 
-      <form method="post" action="{% url 'dashboard:request_accept' obj.id %}" class="space-y-4">
+      <form method="post" action="{% url 'dashboard:request_accept' obj.id %}" class="space-y-5">
         {% csrf_token %}
 
         <div>
-          <label class="block text-sm text-gray-600 mb-1">اختر المزود</label>
-          <select name="provider" class="w-full rounded-xl border border-gray-200 px-3 py-2">
+          <label class="block text-sm text-gray-700 font-semibold mb-2">👤 اختر المزود</label>
+          <select name="provider" class="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-emerald-400 focus:ring-emerald-400">
             {% for p in providers %}
               <option value="{{ p.id }}">{{ p.user.phone|default:"—" }}</option>
             {% empty %}
@@ -87,12 +93,12 @@
           </select>
         </div>
 
-        <div class="flex gap-2 justify-end">
-          <button type="button" id="cancelAcceptModal" class="px-4 py-2 rounded-xl border border-gray-200">
+        <div class="flex gap-3 justify-end pt-2">
+          <button type="button" id="cancelAcceptModal" class="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 transition-all font-semibold">
             إلغاء
           </button>
-          <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white">
-            تأكيد القبول
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:shadow-xl transition-all font-semibold">
+            ✓ تأكيد القبول
           </button>
         </div>
       </form>
