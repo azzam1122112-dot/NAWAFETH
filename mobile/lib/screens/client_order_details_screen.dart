@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 
 import '../models/client_order.dart';
 import '../models/offer.dart';
 import '../services/marketplace_api.dart';
+import '../services/reviews_api.dart';
 
 class ClientOrderDetailsScreen extends StatefulWidget {
   final ClientOrder order;
@@ -41,7 +41,8 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   late double _ratingCredibility;
   late double _ratingOnTime;
   final TextEditingController _ratingCommentController = TextEditingController();
-  List<ClientOrderAttachment> _ratingAttachments = const [];
+  bool _isSubmittingReview = false;
+  bool _didSubmitReview = false;
 
   List<Offer> _offers = [];
   bool _isLoadingOffers = false;
@@ -58,9 +59,92 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
     _ratingCredibility = widget.order.ratingCredibility ?? 0;
     _ratingOnTime = widget.order.ratingOnTime ?? 0;
     _ratingCommentController.text = widget.order.ratingComment ?? '';
-    _ratingAttachments = widget.order.ratingAttachments;
 
     _fetchOffers();
+  }
+
+  bool _isValidCriterion(double value) => value >= 1 && value <= 5;
+
+  String? _extractErrorMessage(dynamic data) {
+    if (data is Map) {
+      for (final entry in data.entries) {
+        final v = entry.value;
+        if (v is List && v.isNotEmpty) {
+          return v.first.toString();
+        }
+        if (v is String && v.trim().isNotEmpty) {
+          return v;
+        }
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data;
+    return null;
+  }
+
+  Future<void> _submitReview() async {
+    if (_isSubmittingReview) return;
+
+    if (widget.order.status != 'مكتمل') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكن إرسال التقييم إلا بعد اكتمال الطلب', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+
+    final requestId = int.tryParse(widget.order.id);
+    if (requestId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكن إرسال التقييم: رقم الطلب غير صالح', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+
+    final values = <double>[
+      _ratingResponseSpeed,
+      _ratingCostValue,
+      _ratingQuality,
+      _ratingCredibility,
+      _ratingOnTime,
+    ];
+    if (!values.every(_isValidCriterion)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فضلاً اختر تقييمًا لكل خيار (من 1 إلى 5)', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+
+    setState(() => _isSubmittingReview = true);
+    try {
+      await ReviewsApi().createReview(
+        requestId: requestId,
+        responseSpeed: _ratingResponseSpeed.round(),
+        costValue: _ratingCostValue.round(),
+        quality: _ratingQuality.round(),
+        credibility: _ratingCredibility.round(),
+        onTime: _ratingOnTime.round(),
+        comment: _ratingCommentController.text,
+      );
+
+      _didSubmitReview = true;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إرسال التقييم بنجاح', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      _save();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = _extractErrorMessage(e.response?.data) ?? 'تعذر إرسال التقييم';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Cairo'))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال التقييم', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmittingReview = false);
+    }
   }
 
   Future<void> _fetchOffers() async {
@@ -160,6 +244,8 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   void _save() {
     final bool shouldReopen = widget.order.status == 'ملغي' && _reopenCanceledOrder;
 
+    final bool canUpdateRating = widget.order.status == 'مكتمل' && _didSubmitReview;
+
     final updated = widget.order.copyWith(
       status: shouldReopen ? 'جديد' : widget.order.status,
       title: _titleController.text.trim().isEmpty
@@ -168,13 +254,12 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       details: _detailsController.text.trim().isEmpty
           ? widget.order.details
           : _detailsController.text.trim(),
-      ratingResponseSpeed: widget.order.status == 'مكتمل' ? _ratingResponseSpeed : widget.order.ratingResponseSpeed,
-      ratingCostValue: widget.order.status == 'مكتمل' ? _ratingCostValue : widget.order.ratingCostValue,
-      ratingQuality: widget.order.status == 'مكتمل' ? _ratingQuality : widget.order.ratingQuality,
-      ratingCredibility: widget.order.status == 'مكتمل' ? _ratingCredibility : widget.order.ratingCredibility,
-      ratingOnTime: widget.order.status == 'مكتمل' ? _ratingOnTime : widget.order.ratingOnTime,
-      ratingComment: widget.order.status == 'مكتمل' ? _ratingCommentController.text.trim() : widget.order.ratingComment,
-      ratingAttachments: widget.order.status == 'مكتمل' ? _ratingAttachments : widget.order.ratingAttachments,
+      ratingResponseSpeed: canUpdateRating ? _ratingResponseSpeed : widget.order.ratingResponseSpeed,
+      ratingCostValue: canUpdateRating ? _ratingCostValue : widget.order.ratingCostValue,
+      ratingQuality: canUpdateRating ? _ratingQuality : widget.order.ratingQuality,
+      ratingCredibility: canUpdateRating ? _ratingCredibility : widget.order.ratingCredibility,
+      ratingOnTime: canUpdateRating ? _ratingOnTime : widget.order.ratingOnTime,
+      ratingComment: canUpdateRating ? _ratingCommentController.text.trim() : widget.order.ratingComment,
     );
 
     Navigator.pop(context, updated);
@@ -188,105 +273,6 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
     if (value == null) return '-';
     final formatted = value.toStringAsFixed(0);
     return '$formatted (SR)';
-  }
-
-  Future<void> _pickRatingAttachment() async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    Future<void> addAttachment(String name) async {
-      final ext = name.contains('.') ? name.split('.').last.toUpperCase() : 'FILE';
-      setState(() {
-        _ratingAttachments = [
-          ..._ratingAttachments,
-          ClientOrderAttachment(name: name, type: ext),
-        ];
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'تم إضافة مرفق (وهمي): $name',
-            style: const TextStyle(fontFamily: 'Cairo'),
-          ),
-        ),
-      );
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.photo_library),
-                  title: const Text('المعرض', style: TextStyle(fontFamily: 'Cairo')),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final picker = ImagePicker();
-                    final picked = await picker.pickImage(source: ImageSource.gallery);
-                    if (picked != null) {
-                      await addAttachment(picked.name);
-                    } else if (mounted) {
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'لم يتم اختيار ملف',
-                            style: TextStyle(fontFamily: 'Cairo', color: isDark ? Colors.white : Colors.black),
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.camera_alt),
-                  title: const Text('التقاط صورة', style: TextStyle(fontFamily: 'Cairo')),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final picker = ImagePicker();
-                    final picked = await picker.pickImage(source: ImageSource.camera);
-                    if (picked != null) {
-                      await addAttachment(picked.name);
-                    } else if (mounted) {
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        const SnackBar(
-                          content: Text('لم يتم التقاط صورة', style: TextStyle(fontFamily: 'Cairo')),
-                        ),
-                      );
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.upload_file),
-                  title: const Text('اختيار ملف', style: TextStyle(fontFamily: 'Cairo')),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final result = await FilePicker.platform.pickFiles();
-                    final file = result?.files.single;
-                    if (file != null) {
-                      await addAttachment(file.name);
-                    } else if (mounted) {
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        const SnackBar(
-                          content: Text('لم يتم اختيار ملف', style: TextStyle(fontFamily: 'Cairo')),
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget _ratingRow({
@@ -458,9 +444,9 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                   vertical: 7,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.15),
+                                  color: statusColor.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: statusColor.withOpacity(0.35)),
+                                  border: Border.all(color: statusColor.withValues(alpha: 0.35)),
                                 ),
                                 child: Text(
                                   widget.order.status,
@@ -517,7 +503,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                            padding: const EdgeInsets.all(12),
                            decoration: BoxDecoration(
                               color: cardColor,
-                              border: Border.all(color: Colors.green.withOpacity(0.5)),
+                            border: Border.all(color: Colors.green.withValues(alpha: 0.5)),
                               borderRadius: BorderRadius.circular(12),
                            ),
                            child: Column(
@@ -551,7 +537,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                              ],
                            ),
                         );
-                      }).toList(),
+                      }),
                       const SizedBox(height: 14),
                     ],
 
@@ -652,50 +638,31 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                 ),
                                 style: const TextStyle(fontFamily: 'Cairo'),
                               ),
-                              const SizedBox(height: 10),
-                              InkWell(
-                                onTap: _pickRatingAttachment,
-                                child: Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: _mainColor.withOpacity(0.3)),
-                                    borderRadius: BorderRadius.circular(12),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _isSubmittingReview ? null : _submitReview,
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    backgroundColor: _mainColor,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.upload, color: _mainColor),
-                                      const SizedBox(width: 10),
-                                      const Expanded(
-                                        child: Text(
-                                          'إضافة مرفق حول الخدمة المقدمة',
-                                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if (_ratingAttachments.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                ..._ratingAttachments.map(
-                                  (a) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.attach_file, size: 18, color: Colors.grey),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            a.name,
-                                            style: const TextStyle(fontFamily: 'Cairo'),
+                                  child: _isSubmittingReview
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : const Text(
+                                          'إرسال التقييم',
+                                          style: TextStyle(
+                                            fontFamily: 'Cairo',
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ),
                                 ),
-                              ],
+                              ),
                             ],
                           ],
                         ),

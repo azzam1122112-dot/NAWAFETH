@@ -10,7 +10,7 @@ import '../../services/account_api.dart';
 import '../../services/api_config.dart';
 import '../../services/providers_api.dart';
 import '../../services/reviews_api.dart';
-import '../../services/role_controller.dart';
+import '../../services/account_switcher.dart';
 import '../../utils/user_scoped_prefs.dart';
 
 import '../../widgets/bottom_nav.dart';
@@ -105,16 +105,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       double ratingAvg = 0.0;
       int ratingCount = 0;
       if (providerId != null) {
-        final rating = await ReviewsApi().getProviderRatingSummary(providerId);
-        final avg = rating?['avg_rating'] ??
-            rating?['average'] ??
-            rating?['avg'] ??
-            rating?['rating'] ??
-            0;
-        final count = rating?['reviews_count'] ??
-            rating?['count'] ??
-            rating?['total'] ??
-            0;
+        try {
+          final rating = await ReviewsApi().getProviderRatingSummary(providerId);
+          final avg = rating['rating_avg'] ?? 0;
+          final count = rating['rating_count'] ?? 0;
 
         double asDouble(dynamic v) {
           if (v is double) return v;
@@ -129,11 +123,14 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           return int.tryParse((v ?? '').toString()) ?? 0;
         }
 
-        ratingAvg = asDouble(avg);
-        ratingCount = asIntSafe(count);
-        if (ratingCount <= 0) {
-          ratingAvg = 0.0;
-          ratingCount = 0;
+          ratingAvg = asDouble(avg);
+          ratingCount = asIntSafe(count);
+          if (ratingCount <= 0) {
+            ratingAvg = 0.0;
+            ratingCount = 0;
+          }
+        } catch (_) {
+          // ignore: keep defaults
         }
       }
 
@@ -230,29 +227,13 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                   ),
                 ),
                 actions: [
+                      IconButton(
+                        icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
+                        onPressed: () async => AccountSwitcher.show(context),
+                      ),
                   IconButton(
                     icon: const Icon(Icons.qr_code, color: Colors.white),
                     onPressed: _showQrDialog,
-                  ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: Colors.white),
-                    onSelected: (v) async {
-                      if (v == 'client_mode') {
-                        await _switchToClientMode();
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                         value: 'client_mode',
-                         child: Row(
-                           children: [
-                             Icon(Icons.person_outline, size: 20, color: Colors.black87),
-                             SizedBox(width: 8),
-                             Text('العودة لحساب العميل', style: TextStyle(fontFamily: 'Cairo')),
-                           ],
-                         ),
-                      )
-                    ],
                   ),
                 ],
                 flexibleSpace: FlexibleSpaceBar(
@@ -541,10 +522,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           ),
           child: Column(
             children: [
-              _listTile('تعديل البيانات الأساسية', Icons.person_outline, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()));
-              }),
-              Divider(height: 1, color: Colors.grey[100]),
               _listTile('إدارة الباقات والاشتراك', Icons.card_membership, () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen()));
               }),
@@ -573,33 +550,17 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   void _navToServices() {
-    // Navigate to a screen that shows ServicesTab 
-    // For simplicity I'll push a scaffolding containing the tab
-    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
-      appBar: AppBar(title: const Text('خدماتي', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: providerPrimary, foregroundColor: Colors.white,),
-      body: const ServicesTab(),
-    )));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesTab()));
   }
 
   void _navToOrders() {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderOrdersScreen()));
   }
 
-  Future<void> _switchToClientMode() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('جاري التبديل إلى حساب العميل...')),
-    );
-    await RoleController.instance.setProviderMode(false);
-    if (!mounted) return;
-    Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
-  }
-
   void _navToReviews() {
      Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
       appBar: AppBar(title: const Text('التقييمات', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: providerPrimary, foregroundColor: Colors.white,),
-      body: const ReviewsTab(),
+      body: const ReviewsTab(embedded: true),
     )));
   }
 }

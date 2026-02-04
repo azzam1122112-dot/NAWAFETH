@@ -28,6 +28,33 @@ class Review(models.Model):
 	rating = models.PositiveSmallIntegerField(
 		validators=[MinValueValidator(1), MaxValueValidator(5)]
 	)
+
+	# تفصيل التقييم (اختياري حالياً لضمان التوافق)
+	response_speed = models.PositiveSmallIntegerField(
+		null=True,
+		blank=True,
+		validators=[MinValueValidator(1), MaxValueValidator(5)],
+	)
+	cost_value = models.PositiveSmallIntegerField(
+		null=True,
+		blank=True,
+		validators=[MinValueValidator(1), MaxValueValidator(5)],
+	)
+	quality = models.PositiveSmallIntegerField(
+		null=True,
+		blank=True,
+		validators=[MinValueValidator(1), MaxValueValidator(5)],
+	)
+	credibility = models.PositiveSmallIntegerField(
+		null=True,
+		blank=True,
+		validators=[MinValueValidator(1), MaxValueValidator(5)],
+	)
+	on_time = models.PositiveSmallIntegerField(
+		null=True,
+		blank=True,
+		validators=[MinValueValidator(1), MaxValueValidator(5)],
+	)
 	comment = models.CharField(max_length=500, blank=True)
 
 	created_at = models.DateTimeField(default=timezone.now)

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../constants/colors.dart';
 import '../constants/app_texts.dart';
-import '../screens/provider_dashboard/provider_home_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/login_settings_screen.dart';
@@ -15,7 +13,7 @@ import '../services/session_storage.dart';
 import '../utils/local_user_state.dart';
 import '../services/account_api.dart';
 import '../services/app_snackbar.dart';
-import '../utils/auth_guard.dart';
+import '../services/account_switcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _SessionInfo {
@@ -253,17 +251,12 @@ class _CustomDrawerState extends State<CustomDrawer> {
                     if (!canShowProvider) return const SizedBox.shrink();
 
                     return _buildDrawerItem(
-                      icon: FontAwesomeIcons.qrcode,
-                      label: AppTexts.getText(context, "qr"),
+                      icon: Icons.swap_horiz_rounded,
+                      label: AppTexts.getText(context, "switch_account"),
                       onTap: () {
                         Navigator.pop(context); // إغلاق الـ Drawer
                         Future.delayed(const Duration(milliseconds: 100), () async {
-                          if (!await checkFullClient(context)) return;
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ProviderHomeScreen(),
-                            ),
-                          );
+                          await AccountSwitcher.show(context);
                         });
                       },
                       isDark: isDark,

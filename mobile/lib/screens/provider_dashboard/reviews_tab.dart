@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/account_api.dart';
 import '../../services/reviews_api.dart';
@@ -65,10 +66,15 @@ class _ReviewsTabState extends State<ReviewsTab> {
 
   Future<int> _resolveProviderId() async {
     final me = await AccountApi().me();
-    final id = me['id'];
-    if (id is int) return id;
-    if (id is String) return int.parse(id);
-    throw StateError('Cannot resolve provider id from /accounts/me/.');
+    final providerProfileId = me['provider_profile_id'];
+    if (providerProfileId is int) return providerProfileId;
+    if (providerProfileId is String) return int.parse(providerProfileId);
+
+    final fallbackId = me['id'];
+    if (fallbackId is int) return fallbackId;
+    if (fallbackId is String) return int.parse(fallbackId);
+
+    throw StateError('Cannot resolve provider_profile_id from /accounts/me/.');
   }
 
   @override
@@ -100,17 +106,30 @@ class _ReviewsTabState extends State<ReviewsTab> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _buildSummaryCard(context),
-          const SizedBox(height: 12),
-          Text('المراجعات', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
+          _RatingSummaryCard(rating: _rating),
+          const SizedBox(height: 14),
+          _SectionHeader(
+            title: 'المراجعات',
+          ),
+          const SizedBox(height: 10),
           if (_reviews.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('لا توجد مراجعات حتى الآن')),
+              child: Center(
+                child: Text(
+                  'لا توجد مراجعات حتى الآن',
+                  style: TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
             )
           else
-            ..._reviews.map((r) => _ReviewCard(review: r, providerId: _providerId)),
+            ..._reviews.map(
+              (r) => _ReviewCard(
+                review: r,
+                providerId: _providerId,
+                onOpenChat: widget.onOpenChat,
+              ),
+            ),
         ],
       ),
     );
@@ -132,58 +151,38 @@ class _ReviewsTabState extends State<ReviewsTab> {
     );
   }
 
-  Widget _buildSummaryCard(BuildContext context) {
-    final rating = _rating ?? const <String, dynamic>{};
-
-    final avg = rating['avg_rating'] ?? rating['average'] ?? rating['avg'] ?? rating['rating'] ?? 0;
-    final count = rating['reviews_count'] ?? rating['count'] ?? rating['total'] ?? 0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('ملخص التقييم', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 6),
-                  Text('متوسط التقييم: ${_fmtNum(avg)}'),
-                  Text('عدد المراجعات: ${_fmtNum(count)}'),
-                ],
-              ),
-            ),
-            const Icon(Icons.star, size: 28, color: Colors.amber),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _fmtNum(Object? value) {
-    if (value == null) return '0';
-    if (value is num) return value.toString();
-    return value.toString();
-  }
 }
 
 class _ReviewCard extends StatelessWidget {
   final dynamic review;
   final int? providerId;
+  final Future<void> Function(String customerName)? onOpenChat;
 
-  const _ReviewCard({required this.review, required this.providerId});
+  const _ReviewCard({
+    required this.review,
+    required this.providerId,
+    required this.onOpenChat,
+  });
 
   @override
   Widget build(BuildContext context) {
     final map = (review is Map<String, dynamic>) ? (review as Map<String, dynamic>) : <String, dynamic>{};
 
-    final author = map['client_name'] ?? map['author_name'] ?? map['client'] ?? map['author'] ?? 'عميل';
+    final authorPhone = (map['client_phone'] ?? '').toString().trim();
+    final authorName = (map['client_name'] ?? '').toString().trim();
+    final authorLabel = authorName.isNotEmpty
+        ? authorName
+        : (authorPhone.isNotEmpty ? authorPhone : 'عميل');
+
     final rating = map['rating'] ?? map['stars'];
     final comment = map['comment'] ?? map['text'] ?? map['review'] ?? '';
     final createdAt = map['created_at'] ?? map['createdAt'];
 
+    final ratingValue = _asDouble(rating).clamp(0.0, 5.0).toDouble();
+
     return Card(
+      elevation: 1.2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -193,36 +192,83 @@ class _ReviewCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    author.toString(),
-                    style: Theme.of(context).textTheme.titleSmall,
+                    authorLabel,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
-                if (rating != null) _Stars(rating: rating),
+                _ReviewOptions(
+                  comment: comment.toString(),
+                  clientPhone: authorPhone,
+                ),
               ],
             ),
-            if (createdAt != null) ...[
-              const SizedBox(height: 4),
-              Text(createdAt.toString(), style: Theme.of(context).textTheme.bodySmall),
-            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _Stars(value: ratingValue, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  ratingValue.toStringAsFixed(1),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (createdAt != null)
+                  Text(
+                    createdAt.toString(),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+              ],
+            ),
             if (comment.toString().trim().isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text(comment.toString()),
+              Text(
+                comment.toString(),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ],
+            if (onOpenChat != null) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => onOpenChat?.call(authorLabel),
+                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                  label: const Text('محادثة', style: TextStyle(fontFamily: 'Cairo')),
+                ),
+              ),
             ],
           ],
         ),
       ),
     );
   }
+
+  static double _asDouble(Object? v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
 }
 
 class _Stars extends StatelessWidget {
-  final Object rating;
+  final double value;
+  final double size;
 
-  const _Stars({required this.rating});
+  const _Stars({required this.value, this.size = 16});
 
   @override
   Widget build(BuildContext context) {
-    final value = _asDouble(rating).clamp(0, 5);
     final full = value.floor();
     final half = (value - full) >= 0.5 ? 1 : 0;
     final empty = 5 - full - half;
@@ -230,255 +276,298 @@ class _Stars extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        for (int i = 0; i < full; i++) const Icon(Icons.star, size: 16, color: Colors.amber),
-        if (half == 1) const Icon(Icons.star_half, size: 16, color: Colors.amber),
-        for (int i = 0; i < empty; i++) const Icon(Icons.star_border, size: 16, color: Colors.amber),
+        for (int i = 0; i < full; i++) Icon(Icons.star, size: size, color: Colors.amber),
+        if (half == 1) Icon(Icons.star_half, size: size, color: Colors.amber),
+        for (int i = 0; i < empty; i++) Icon(Icons.star_border, size: size, color: Colors.amber),
       ],
     );
   }
+}
 
-  double _asDouble(Object v) {
-    if (v is num) return v.toDouble();
-    return double.tryParse(v.toString()) ?? 0;
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
-/*
-import 'package:flutter/material.dart';
 
-import '../../services/account_api.dart';
-import '../../services/reviews_api.dart';
-            )
-          else
-            ..._reviews.map((r) {
-              final rating = (r['rating'] ?? 0);
-              final ratingD = (rating is num)
-                  ? rating.toDouble()
-                  : double.tryParse(rating.toString()) ?? 0.0;
+class _RatingSummaryCard extends StatelessWidget {
+  final Map<String, dynamic>? rating;
 
-              final comment = (r['comment'] ?? '').toString().trim();
-              final customerName = (r['client_name'] ?? '').toString().trim();
-              final customerPhone = (r['client_phone'] ?? '').toString().trim();
-              final customerLabel = customerName.isNotEmpty
-                  ? customerName
-                  : (customerPhone.isNotEmpty ? customerPhone : 'عميل');
+  const _RatingSummaryCard({required this.rating});
 
-              final createdAt = (r['created_at'] ?? '').toString().trim();
+  @override
+  Widget build(BuildContext context) {
+    final safe = rating ?? const <String, dynamic>{};
+    final avg = _asDouble(safe['rating_avg']).clamp(0.0, 5.0).toDouble();
+    final count = _asInt(safe['rating_count']);
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
-                  ],
+    final responseSpeedAvg = _asNullableDouble(safe['response_speed_avg']);
+    final costValueAvg = _asNullableDouble(safe['cost_value_avg']);
+    final qualityAvg = _asNullableDouble(safe['quality_avg']);
+    final credibilityAvg = _asNullableDouble(safe['credibility_avg']);
+    final onTimeAvg = _asNullableDouble(safe['on_time_avg']);
+
+    final hasBreakdown = [
+      responseSpeedAvg,
+      costValueAvg,
+      qualityAvg,
+      credibilityAvg,
+      onTimeAvg,
+    ].any((v) => v != null);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF5E35B1), Color(0xFF4527A0)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 92,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'عدد\nالمقيمين',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    height: 1.1,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 8),
+                Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'التقييم',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            customerLabel,
-                            style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        if (widget.onOpenChat != null)
-                          IconButton(
-                            tooltip: 'محادثة',
-                            onPressed: () => widget.onOpenChat?.call(customerLabel),
-                            icon: const Icon(
-                              Icons.chat_bubble_outline,
-                              size: 18,
-                              color: _mainColor,
-                            ),
-                          ),
-                        _buildStars(ratingD, size: 18),
-                      ],
-                    ),
-                    if (createdAt.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        createdAt,
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
+                    _Stars(value: avg, size: 20),
+                    const SizedBox(width: 10),
                     Text(
-                      comment.isEmpty ? '—' : comment,
-                      style: const TextStyle(fontFamily: 'Cairo'),
+                      avg.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                      ),
                     ),
                   ],
                 ),
-              );
-            }),
+                if (hasBreakdown) ...[
+                  const SizedBox(height: 10),
+                  _BreakdownRow(label: 'سرعة الاستجابة', value: responseSpeedAvg),
+                  _BreakdownRow(label: 'التكلفة مقابل الخدمة', value: costValueAvg),
+                  _BreakdownRow(label: 'جودة الخدمة', value: qualityAvg),
+                  _BreakdownRow(label: 'المصداقية', value: credibilityAvg),
+                  _BreakdownRow(label: 'وقت الإنجاز', value: onTimeAvg),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
+  static int _asInt(Object? v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  static double _asDouble(Object? v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+
+  static double? _asNullableDouble(Object? v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+}
+
+class _BreakdownRow extends StatelessWidget {
+  final String label;
+  final double? value;
+
+  const _BreakdownRow({required this.label, required this.value});
+
   @override
   Widget build(BuildContext context) {
-    final body = _buildBody();
-
-    if (widget.embedded) {
-      return Directionality(textDirection: TextDirection.rtl, child: body);
-    }
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: _mainColor,
-          iconTheme: const IconThemeData(color: Colors.white),
-          title: const Text(
-            'التقييمات',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+    final v = value;
+    final show = v != null;
+    final starsValue = (v ?? 0).clamp(0.0, 5.0).toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                color: Colors.white,
+                fontSize: 12,
+              ),
             ),
           ),
-          actions: [
-            IconButton(
-              tooltip: 'تحديث',
-              onPressed: _load,
-              icon: const Icon(Icons.refresh, color: Colors.white),
+          _Stars(value: starsValue, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            show ? starsValue.toStringAsFixed(1) : '-',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: Colors.white.withAlpha(230),
+              fontSize: 11,
             ),
-          ],
-        ),
-        body: body,
+          ),
+        ],
       ),
     );
   }
 }
-                  hintText: "اكتب ردك هنا...",
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () {
-                    String reply = _replyControllers[name]?.text ?? '';
-                    if (reply.isNotEmpty) {
-                      setState(() {
-                        // ✅ حفظ الرد
-                        if (_replies[name] == null) {
-                          _replies[name] = [];
-                        }
-                        _replies[name]!.add({
-                          'text': reply,
-                          'date': 'الآن',
-                        });
-                        
-                        // إخفاء حقل الرد وتنظيفه
-                        _isReplying[name] = false;
-                        _replyControllers[name]?.clear();
-                      });
-                      
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.white),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'تم إرسال الرد بنجاح',
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          backgroundColor: Colors.green,
-                          duration: Duration(seconds: 3),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text(
-                    "إرسال",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
+
+enum _ReviewAction { copyText, copyPhone, report }
+
+class _ReviewOptions extends StatelessWidget {
+  final String comment;
+  final String clientPhone;
+
+  const _ReviewOptions({required this.comment, required this.clientPhone});
 
   @override
   Widget build(BuildContext context) {
-    if (widget.embedded) {
-      return _buildBody(context);
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
-        elevation: 0,
-        centerTitle: true,
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'المراجعات',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
+    return PopupMenuButton<_ReviewAction>(
+      tooltip: 'خيارات التقييم',
+      position: PopupMenuPosition.under,
+      onSelected: (action) async {
+        switch (action) {
+          case _ReviewAction.copyText:
+            if (comment.trim().isEmpty) return;
+            await Clipboard.setData(ClipboardData(text: comment));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم نسخ نص المراجعة')),
+            );
+            return;
+          case _ReviewAction.copyPhone:
+            if (clientPhone.trim().isEmpty) return;
+            await Clipboard.setData(ClipboardData(text: clientPhone));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم نسخ رقم العميل')),
+            );
+            return;
+          case _ReviewAction.report:
+            if (!context.mounted) return;
+            await showDialog<void>(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('الإبلاغ', style: TextStyle(fontFamily: 'Cairo')),
+                content: const Text(
+                  'إذا كانت هذه المراجعة مخالفة، تواصل مع الدعم لاتخاذ الإجراء اللازم.',
+                  style: TextStyle(fontFamily: 'Cairo'),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                "$totalReviews",
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
-            ),
-          ],
+            );
+            return;
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: _ReviewAction.copyText,
+          enabled: comment.trim().isNotEmpty,
+          child: const Text('نسخ نص المراجعة', style: TextStyle(fontFamily: 'Cairo')),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        PopupMenuItem(
+          value: _ReviewAction.copyPhone,
+          enabled: clientPhone.trim().isNotEmpty,
+          child: const Text('نسخ رقم العميل', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+        const PopupMenuItem(
+          value: _ReviewAction.report,
+          child: Text('إبلاغ', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'خيارات التقييم',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(width: 2),
+          Icon(Icons.more_vert, size: 18, color: Colors.grey.shade700),
+        ],
       ),
-      body: _buildBody(context),
     );
   }
 }
-
-*/

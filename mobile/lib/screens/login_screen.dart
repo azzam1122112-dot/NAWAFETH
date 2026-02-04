@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../constants/colors.dart';
 import '../widgets/custom_drawer.dart';
 
@@ -105,23 +106,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
 
-  /// Normalizes Saudi numbers to E.164: +9665XXXXXXXX
-  /// Accepts inputs like: 05XXXXXXXX, +9665XXXXXXXX, 9665XXXXXXXX.
-  String? _normalizeSaudiToE164(String input) {
+  /// Normalizes Saudi numbers to local format: 05XXXXXXXX (10 digits)
+  /// Accepts inputs like: 05XXXXXXXX or 5XXXXXXXX.
+  String? _normalizeSaudiToLocal05(String input) {
     final raw = input.trim();
     final digits = _keepDigits(raw);
 
     // Local: 05XXXXXXXX (10 digits)
     if (RegExp(r'^05\d{8}$').hasMatch(digits)) {
-      return '+966${digits.substring(1)}';
+      return digits;
     }
 
-    // International without plus: 9665XXXXXXXX (12 digits)
-    if (RegExp(r'^9665\d{8}$').hasMatch(digits)) {
-      return '+$digits';
+    // Local without leading 0: 5XXXXXXXX (9 digits)
+    if (RegExp(r'^5\d{8}$').hasMatch(digits)) {
+      return '0$digits';
     }
 
-    // International with plus: +9665XXXXXXXX (we stripped '+', so same as above)
     return null;
   }
 
@@ -133,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _onLoginPressed(BuildContext context) async {
     final input = _phoneCtrl.text.trim();
-    final phoneE164 = _normalizeSaudiToE164(input);
+    final phoneLocal = _normalizeSaudiToLocal05(input);
     if (input.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('أدخل رقم الجوال أولاً')),
@@ -141,10 +141,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (phoneE164 == null) {
+    if (phoneLocal == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('رقم الجوال غير صحيح. مثال: 05xxxxxxxx أو +9665xxxxxxxx'),
+          content: Text('رقم الجوال غير صحيح. مثال: 05xxxxxxxx'),
         ),
       );
       return;
@@ -158,12 +158,9 @@ class _LoginScreenState extends State<LoginScreen> {
     // إرسال OTP من السيرفر يحاول، لكن فشله لا يمنع الانتقال.
     try {
       final api = AuthApi();
-      // Store a readable local format when possible.
-      final digits = _keepDigits(input);
-      final local = RegExp(r'^05\d{8}$').hasMatch(digits) ? digits : digits;
-      await const SessionStorage().savePhone(local);
+      await const SessionStorage().savePhone(phoneLocal);
       try {
-        await api.sendOtp(phone: phoneE164);
+        await api.sendOtp(phone: phoneLocal);
       } catch (_) {
         // ignore
       }
@@ -171,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // ✅ If enabled, try to verify and navigate immediately (no OTP screen).
       // If it fails (network/server), we fall back to OTP screen.
       final didNavigate = await _autoVerifyAndNavigateIfEnabled(
-        phone: phoneE164,
+        phone: phoneLocal,
         devCode: null,
       );
       if (didNavigate) return;
@@ -196,7 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => TwoFAScreen(
-          phone: phoneE164,
+          phone: phoneLocal,
           redirectTo: widget.redirectTo,
           initialDevCode: null,
         ),
@@ -264,9 +261,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  maxLength: 10,
                   decoration: InputDecoration(
                     labelText: "رقم الجوال",
+                    hintText: '05xxxxxxxx',
                     prefixIcon: const Icon(Icons.phone_android),
+                    counterText: '',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),

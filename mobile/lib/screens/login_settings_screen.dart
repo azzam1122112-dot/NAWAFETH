@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:dio/dio.dart';
 
@@ -42,6 +43,19 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
 
   bool _saving = false;
 
+  String _keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
+
+  /// Normalizes to local Saudi format: 05XXXXXXXX (10 digits).
+  /// Returns null if the value is not a valid local Saudi mobile.
+  String? _normalizeSaudiToLocal05(String input) {
+    final digits = _keepDigits(input.trim());
+    if (RegExp(r'^05\d{8}$').hasMatch(digits)) return digits;
+    if (RegExp(r'^5\d{8}$').hasMatch(digits)) return '0$digits';
+    if (RegExp(r'^9665\d{8}$').hasMatch(digits)) return '0${digits.substring(3)}';
+    if (RegExp(r'^009665\d{8}$').hasMatch(digits)) return '0${digits.substring(5)}';
+    return null;
+  }
+
   // متحكمات
   final TextEditingController securityCodeCtrl = TextEditingController();
   final TextEditingController confirmSecurityCodeCtrl = TextEditingController();
@@ -73,7 +87,7 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       fullName = (full == null || full.isEmpty) ? '' : full;
       username = (u == null || u.isEmpty) ? '' : u;
       email = (e == null || e.isEmpty) ? '' : e;
-      phone = (p == null || p.isEmpty) ? '' : p;
+      phone = (p == null || p.isEmpty) ? '' : (_normalizeSaudiToLocal05(p) ?? p);
     });
   }
 
@@ -97,7 +111,20 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       final e = email.trim();
 
       if (u.isNotEmpty) patch['username'] = u;
-      if (p.isNotEmpty) patch['phone'] = p;
+      if (p.isNotEmpty) {
+        final normalized = _normalizeSaudiToLocal05(p);
+        if (normalized == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('رقم الجوال غير صحيح. مثال: 05xxxxxxxx'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        patch['phone'] = normalized;
+      }
       if (e.isNotEmpty) patch['email'] = e;
 
       if (patch.isEmpty) {
@@ -133,7 +160,7 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       setState(() {
         username = updatedUsername;
         email = updatedEmail;
-        phone = updatedPhone;
+        phone = _normalizeSaudiToLocal05(updatedPhone) ?? updatedPhone;
         final parts = [
           if (firstName != null) firstName,
           if (lastName != null) lastName,
@@ -271,6 +298,13 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
               label: 'رقم الجوال',
               value: phone,
               onChanged: (val) => setState(() => phone = val),
+              keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ],
+              maxLength: 10,
+              hint: '05xxxxxxxx',
             ),
           ]),
 
@@ -424,10 +458,12 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
                           return;
                         }
 
+                        final messenger = ScaffoldMessenger.of(context);
+                        final navigator = Navigator.of(dialogContext);
                         await const SessionStorage().saveSecurityCode(code);
                         if (!mounted) return;
-                        Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        navigator.pop();
+                        messenger.showSnackBar(
                           const SnackBar(
                             content: Text('تم حفظ رمز الآمان'),
                             backgroundColor: Colors.green,
@@ -516,10 +552,12 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
                           return;
                         }
 
+                        final messenger = ScaffoldMessenger.of(context);
+                        final navigator = Navigator.of(dialogContext);
                         await const SessionStorage().saveFaceIdCode(code);
                         if (!mounted) return;
-                        Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        navigator.pop();
+                        messenger.showSnackBar(
                           const SnackBar(
                             content: Text('تم حفظ إعداد معرف الوجه'),
                             backgroundColor: Colors.green,
@@ -549,7 +587,7 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
   Widget _buildSection(String title, List<Widget> children) {
     return Card(
       elevation: 0,
-      color: Colors.deepPurple.withOpacity(0.05),
+      color: Colors.deepPurple.withValues(alpha: 0.05),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -580,6 +618,10 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
     required String value,
     required ValueChanged<String> onChanged,
     bool isPassword = false,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
+    String? hint,
   }) {
     final controller = TextEditingController(text: value);
     return Container(
@@ -587,10 +629,15 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       child: TextField(
         controller: controller,
         obscureText: isPassword,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        maxLength: maxLength,
         onChanged: onChanged,
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: Colors.deepPurple),
           labelText: label,
+          hintText: hint,
+          counterText: '',
           filled: true,
           fillColor: Colors.white,
           enabledBorder: OutlineInputBorder(

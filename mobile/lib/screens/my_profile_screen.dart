@@ -14,6 +14,7 @@ import '../widgets/custom_drawer.dart';
 import '../services/account_api.dart';
 import '../services/session_storage.dart';
 import '../services/role_controller.dart';
+import '../services/account_switcher.dart';
 import '../constants/colors.dart';
 
 class MyProfileScreen extends StatefulWidget {
@@ -44,6 +45,19 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     super.initState();
     _loadIdentityFromStorage();
     _refreshRoleAndUserType();
+  }
+
+  String _keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
+
+  /// Display Saudi phone numbers in local format: 05XXXXXXXX (10 digits).
+  /// Falls back to the original value if it can't be normalized.
+  String _asLocalSaudiPhone(String raw) {
+    final digits = _keepDigits(raw.trim());
+    if (RegExp(r'^05\d{8}$').hasMatch(digits)) return digits;
+    if (RegExp(r'^5\d{8}$').hasMatch(digits)) return '0$digits';
+    if (RegExp(r'^9665\d{8}$').hasMatch(digits)) return '0${digits.substring(3)}';
+    if (RegExp(r'^009665\d{8}$').hasMatch(digits)) return '0${digits.substring(5)}';
+    return raw.trim();
   }
 
   Future<void> _refreshRoleAndUserType() async {
@@ -506,7 +520,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                color: Colors.grey[300],
              ),
              Text(
-               _phone!,
+               _asLocalSaudiPhone(_phone!),
                style: TextStyle(
                  fontFamily: 'Cairo',
                  color: Colors.grey[600],
@@ -520,54 +534,60 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   }
 
   Widget _buildQuickStats() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _statItem(
-          value: _followingCount?.toString() ?? '0',
-          label: 'أتابع',
-          icon: Icons.person_add_alt_1_rounded,
-          onTap: () {
-            // Navigate to Following
-             final isProviderAccount = RoleController.instance.notifier.value.isProvider;
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InteractiveScreen(
-                    mode: isProviderAccount ? InteractiveMode.provider : InteractiveMode.client,
-                    initialTabIndex: 0,
-                  ),
-                ),
-              );
-          },
-        ),
+    final isProviderAccount = RoleController.instance.notifier.value.isProvider;
+
+    final items = <Widget>[
+      _statItem(
+        value: _followingCount?.toString() ?? '0',
+        label: 'أتابع',
+        icon: Icons.person_add_alt_1_rounded,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InteractiveScreen(
+                mode: isProviderAccount ? InteractiveMode.provider : InteractiveMode.client,
+                initialTabIndex: 0,
+              ),
+            ),
+          );
+        },
+      ),
+      Container(width: 1, height: 40, color: Colors.grey[300]),
+      _statItem(
+        value: _likesCount?.toString() ?? '0',
+        label: 'مفضلتي',
+        icon: Icons.thumb_up_alt_rounded,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InteractiveScreen(
+                mode: isProviderAccount ? InteractiveMode.provider : InteractiveMode.client,
+                initialTabIndex: 1,
+              ),
+            ),
+          );
+        },
+      ),
+    ];
+
+    // Show points only for providers. Clients should not see this item.
+    if (isProviderAccount) {
+      items.addAll([
         Container(width: 1, height: 40, color: Colors.grey[300]),
         _statItem(
-          value: _likesCount?.toString() ?? '0',
-          label: 'مفضلتي',
-          icon: Icons.thumb_up_alt_rounded,
-          onTap: () {
-             // Navigate to Favorites
-             final isProviderAccount = RoleController.instance.notifier.value.isProvider;
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InteractiveScreen(
-                    mode: isProviderAccount ? InteractiveMode.provider : InteractiveMode.client,
-                    initialTabIndex: 1,
-                  ),
-                ),
-              );
-          },
-        ),
-        Container(width: 1, height: 40, color: Colors.grey[300]),
-        _statItem(
-          value: '0', 
+          value: '0',
           label: 'نقاطي',
           icon: Icons.star_rounded,
           onTap: () {},
         ),
-      ],
+      ]);
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: items,
     );
   }
 
@@ -780,7 +800,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                      color: Colors.white.withValues(alpha: 0.2),
                      borderRadius: BorderRadius.circular(12),
                    ),
-                   child: const Icon(Icons.dashboard_customize_outlined, color: Colors.white),
+                   child: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
                  ),
                  const SizedBox(width: 12),
                  const Expanded(
@@ -788,7 +808,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
                        Text(
-                         'نافذة مزود الخدمة',
+                         'التبديل بين الحسابات',
                          style: TextStyle(
                            fontFamily: 'Cairo',
                            fontSize: 16,
@@ -797,7 +817,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                          ),
                        ),
                        Text(
-                         'إدارة خدماتك وعملائك في مكان واحد',
+                         'اختر عميل أو مقدم خدمة بسهولة',
                          style: TextStyle(
                            fontFamily: 'Cairo',
                            fontSize: 12,
@@ -812,40 +832,8 @@ class _MyProfileScreenState extends State<MyProfileScreen>
              const SizedBox(height: 20),
              SizedBox(
                width: double.infinity,
-               child: ElevatedButton(
-                 onPressed: () async {
-                    await _syncRoleFromBackend();
-                    final prefs = await SharedPreferences.getInstance();
-                    final canSwitchToProvider = (prefs.getBool('isProviderRegistered') ?? false) == true;
-                    
-                    if (!canSwitchToProvider) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('حسابك عميل فقط حالياً. سجّل كمقدم خدمة أولاً.')),
-                      );
-                      return;
-                    }
-
-                    await RoleController.instance.setProviderMode(true);
-
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('جاري الانتقال إلى لوحة مقدم الخدمة...'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-
-                    setState(() { _isLoading = true; });
-                    await _checkUserType();
-
-                    if (!context.mounted) return;
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/provider_dashboard',
-                      (route) => false,
-                    );
-                 },
+               child: ElevatedButton.icon(
+                 onPressed: () async => AccountSwitcher.show(context),
                  style: ElevatedButton.styleFrom(
                    backgroundColor: Colors.white,
                    foregroundColor: const Color(0xFF2C3E50),
@@ -853,8 +841,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                    padding: const EdgeInsets.symmetric(vertical: 14),
                  ),
-                 child: const Text(
-                   'الدخول إلى لوحة مقدم الخدمة',
+                 icon: const Icon(Icons.swap_horiz_rounded),
+                 label: const Text(
+                   'تبديل الحساب',
                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                  ),
                ),

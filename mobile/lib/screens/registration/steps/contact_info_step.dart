@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -159,9 +160,19 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       String asString(dynamic v) => (v ?? '').toString();
       List asList(dynamic v) => v is List ? v : const [];
 
+      String keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
+      String normalizeLocal05(String input) {
+        final digits = keepDigits(input.trim());
+        if (RegExp(r'^05\d{8}$').hasMatch(digits)) return digits;
+        if (RegExp(r'^5\d{8}$').hasMatch(digits)) return '0$digits';
+        if (RegExp(r'^9665\d{8}$').hasMatch(digits)) return '0${digits.substring(3)}';
+        if (RegExp(r'^009665\d{8}$').hasMatch(digits)) return '0${digits.substring(5)}';
+        return input;
+      }
+
       // Only fill if empty to avoid overriding user input.
       if (phoneController.text.trim().isEmpty) {
-        phoneController.text = asString(data['phone']);
+        phoneController.text = normalizeLocal05(asString(data['phone']));
       }
       if (whatsappController.text.trim().isEmpty) {
         whatsappController.text = asString(data['whatsapp']);
@@ -188,10 +199,20 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     _draftTimer?.cancel();
     _draftTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
+        String keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
+        String normalizeLocal05(String input) {
+          final digits = keepDigits(input.trim());
+          if (RegExp(r'^05\d{8}$').hasMatch(digits)) return digits;
+          if (RegExp(r'^5\d{8}$').hasMatch(digits)) return '0$digits';
+          if (RegExp(r'^9665\d{8}$').hasMatch(digits)) return '0${digits.substring(3)}';
+          if (RegExp(r'^009665\d{8}$').hasMatch(digits)) return '0${digits.substring(5)}';
+          return input.trim();
+        }
+
         final prefs = await SharedPreferences.getInstance();
         final userId = await UserScopedPrefs.readUserId();
         final data = <String, dynamic>{
-          'phone': phoneController.text.trim(),
+          'phone': normalizeLocal05(phoneController.text),
           'whatsapp': whatsappController.text.trim(),
           'city': cityController.text.trim(),
           'website': websiteController.text.trim(),
@@ -250,10 +271,20 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
 
     setState(() => _loadingFromBackend = true);
     try {
+      String keepDigits(String input) => input.replaceAll(RegExp(r'[^0-9]'), '');
+      String normalizeLocal05(String input) {
+        final digits = keepDigits(input.trim());
+        if (RegExp(r'^05\d{8}$').hasMatch(digits)) return digits;
+        if (RegExp(r'^5\d{8}$').hasMatch(digits)) return '0$digits';
+        if (RegExp(r'^9665\d{8}$').hasMatch(digits)) return '0${digits.substring(3)}';
+        if (RegExp(r'^009665\d{8}$').hasMatch(digits)) return '0${digits.substring(5)}';
+        return input.trim();
+      }
+
       final me = await AccountApi().me();
       final phone = (me['phone'] ?? '').toString().trim();
       if (_ownsPhone && phoneController.text.trim().isEmpty && phone.isNotEmpty) {
-        phoneController.text = phone;
+        phoneController.text = normalizeLocal05(phone);
       }
 
       // WhatsApp is stored on the provider profile.
@@ -601,9 +632,14 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
           icon: Icons.phone_android,
           child: _styledField(
             controller: phoneController,
-            hint: "+9665xxxxxxxx",
+            hint: "05xxxxxxxx",
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
+            maxLength: 10,
             // أثناء التسجيل: اسمح للمستخدم بتعديل رقم الجوال دائماً.
             // الحفظ يتم عند الإرسال من صفحة التسجيل عبر AccountApi.updateMe.
             readOnly: false,
@@ -694,7 +730,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
           title: "رقم الهاتف",
           child: _styledField(
             controller: phoneController,
-            hint: "+9665xxxxxxxx",
+            hint: "05xxxxxxxx",
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
             readOnly: true,
@@ -859,18 +895,23 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     IconData? icon,
     String? hint,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
     bool readOnly = false,
     VoidCallback? onTap,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      maxLength: maxLength,
       readOnly: readOnly,
       onTap: onTap,
       style: const TextStyle(fontFamily: "Cairo", fontSize: 13.5),
       decoration: InputDecoration(
         prefixIcon: icon != null ? Icon(icon, color: Colors.deepPurple) : null,
         hintText: hint,
+        counterText: '',
         hintStyle: const TextStyle(
           color: Colors.grey,
           fontFamily: "Cairo",

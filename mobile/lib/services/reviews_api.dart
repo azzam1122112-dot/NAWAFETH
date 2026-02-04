@@ -11,28 +11,73 @@ class ReviewsApi {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }
 
-  Future<Map<String, dynamic>?> getProviderRatingSummary(int providerId) async {
-    try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/reviews/providers/$providerId/rating/');
-      if (res.data is Map<String, dynamic>) {
-        return res.data as Map<String, dynamic>;
-      }
-      return Map<String, dynamic>.from(res.data as Map);
-    } catch (_) {
-      return null;
+  Future<Map<String, dynamic>> getProviderRatingSummary(int providerId) async {
+    final res = await _dio.get('${ApiConfig.apiPrefix}/reviews/providers/$providerId/rating/');
+    if (res.data is Map<String, dynamic>) {
+      return res.data as Map<String, dynamic>;
     }
+    if (res.data is Map) {
+      return Map<String, dynamic>.from(res.data as Map);
+    }
+    throw StateError('Unexpected rating summary response');
   }
 
   Future<List<Map<String, dynamic>>> getProviderReviews(int providerId) async {
-    try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/reviews/providers/$providerId/reviews/');
-      final data = res.data;
-      if (data is List) {
-        return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      }
-      return const <Map<String, dynamic>>[];
-    } catch (_) {
-      return const <Map<String, dynamic>>[];
+    final res = await _dio.get('${ApiConfig.apiPrefix}/reviews/providers/$providerId/reviews/');
+    final data = res.data;
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     }
+    throw StateError('Unexpected provider reviews response');
+  }
+
+  Future<int> createReview({
+    required int requestId,
+    int? rating,
+    required int responseSpeed,
+    required int costValue,
+    required int quality,
+    required int credibility,
+    required int onTime,
+    String? comment,
+  }) async {
+    final payload = <String, dynamic>{
+      'response_speed': responseSpeed,
+      'cost_value': costValue,
+      'quality': quality,
+      'credibility': credibility,
+      'on_time': onTime,
+    };
+
+    final trimmedComment = (comment ?? '').trim();
+    if (trimmedComment.isNotEmpty) {
+      payload['comment'] = trimmedComment;
+    }
+    if (rating != null) {
+      payload['rating'] = rating;
+    }
+
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/reviews/requests/$requestId/review/',
+      data: payload,
+    );
+
+    final data = res.data;
+    Map<String, dynamic> json;
+    if (data is Map<String, dynamic>) {
+      json = data;
+    } else if (data is Map) {
+      json = Map<String, dynamic>.from(data);
+    } else {
+      throw StateError('Unexpected create review response');
+    }
+
+    final reviewId = json['review_id'];
+    if (reviewId is int) return reviewId;
+    if (reviewId is String) {
+      final parsed = int.tryParse(reviewId);
+      if (parsed != null) return parsed;
+    }
+    throw StateError('Missing review_id in create review response');
   }
 }
