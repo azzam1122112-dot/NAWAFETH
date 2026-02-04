@@ -762,7 +762,9 @@ class _RegisterServiceProviderPageState
                     await prefs.setBool('isProviderRegistered', true);
                     await RoleController.instance.setProviderMode(true);
                     
-                    setState(() => _showSuccessOverlay = false);
+                    if (!context.mounted) return;
+                    // الرجوع للصفحة الرئيسية
+                    Navigator.of(context).popUntil((route) => route.isFirst);
                   },
                   child: const Text(
                     "إغلاق الآن (سأكمل لاحقًا)",

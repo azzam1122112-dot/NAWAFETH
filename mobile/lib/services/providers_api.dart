@@ -67,6 +67,42 @@ class ProvidersApi {
       return [];
     }
   }
+
+  /// جلب مزودي خدمة بناءً على التصنيف الفرعي والذين لديهم إحداثيات
+  /// مخصص لشاشة الخريطة لاختيار المزودين للطلبات العاجلة
+  Future<List<Map<String, dynamic>>> getProvidersForMap({
+    required int subcategoryId,
+  }) async {
+    try {
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/list/',
+        queryParameters: {
+          'subcategory_id': subcategoryId,
+          'has_location': true,
+        },
+      );
+
+      final providers = <Map<String, dynamic>>[];
+      for (final item in res.data as List) {
+        final provider = item as Map<String, dynamic>;
+        if (provider['lat'] != null && provider['lng'] != null) {
+          providers.add({
+            'id': provider['id'],
+            'display_name': provider['display_name'] ?? 'مزود خدمة',
+            'city': provider['city'] ?? '',
+            'lat': provider['lat'],
+            'lng': provider['lng'],
+            'accepts_urgent': provider['accepts_urgent'] ?? false,
+          });
+        }
+      }
+
+      return providers;
+    } catch (e) {
+      print('❌ Error in getProvidersForMap: $e');
+      return [];
+    }
+  }
   
   Future<ProviderProfile?> getProviderDetail(int id) async {
     try {
