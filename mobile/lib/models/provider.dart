@@ -42,11 +42,24 @@ class ProviderProfile {
       return double.tryParse(v.toString());
     }
 
+    double _parseDouble(dynamic v, {double fallback = 0.0}) {
+      if (v == null) return fallback;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString()) ?? fallback;
+    }
+
+    int _parseInt(dynamic v, {int fallback = 0}) {
+      if (v == null) return fallback;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString()) ?? fallback;
+    }
+
     return ProviderProfile(
-      id: json['id'],
+      id: _parseInt(json['id']),
       displayName: json['display_name'],
       bio: json['bio'],
-      yearsExperience: json['years_experience'] ?? 0,
+      yearsExperience: _parseInt(json['years_experience']),
       city: json['city'],
       phone: json['phone']?.toString(),
       whatsapp: json['whatsapp']?.toString(),
@@ -55,10 +68,10 @@ class ProviderProfile {
       acceptsUrgent: json['accepts_urgent'] ?? false,
       isVerifiedBlue: json['is_verified_blue'] ?? false,
       isVerifiedGreen: json['is_verified_green'] ?? false,
-      ratingAvg: (json['rating_avg'] ?? 0.0).toDouble(),
-      ratingCount: json['rating_count'] ?? 0,
-      followersCount: json['followers_count'] ?? 0,
-      likesCount: json['likes_count'] ?? 0,
+      ratingAvg: _parseDouble(json['rating_avg']),
+      ratingCount: _parseInt(json['rating_count']),
+      followersCount: _parseInt(json['followers_count']),
+      likesCount: _parseInt(json['likes_count']),
     );
   }
 
