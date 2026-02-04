@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import 'my_profile_screen.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
 import '../models/category.dart';
+import 'provider_map_selection_screen.dart';
 import '../utils/auth_guard.dart';
 
 class UrgentRequestScreen extends StatefulWidget {
@@ -131,9 +134,59 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: "طلب خدمة عاجلة"),
+      backgroundColor: isDark ? Colors.grey[900] : const Color(0xFFF8F9FD),
+      appBar: AppBar(
+        backgroundColor: isDark ? Colors.grey[850] : Colors.white,
+        elevation: 2,
+        shadowColor: Colors.black12,
+        centerTitle: true,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.flash_on_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "طلب خدمة عاجلة",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+                Text(
+                  "استجابة فورية من المزودين",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'Cairo',
+                    color: Colors.grey,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
       bottomNavigationBar: const CustomBottomNav(currentIndex: 2),
       body: Stack(
         children: [
@@ -164,16 +217,24 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 50,
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 50,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        "تم إرسال الطلب بنجاح",
+                        "تم إرسال الطلب بنجاح! ✨",
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Cairo',
                         ),
@@ -182,22 +243,35 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                       const Text(
                         "ستصلك الردود في قسم نافذتي > الطلبات العاجلة أو عبر الإشعارات المباشرة.",
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, fontFamily: 'Cairo'),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Cairo',
+                          height: 1.6,
+                        ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
                       ElevatedButton.icon(
                         onPressed: _goToMyProfile,
-                        icon: const Icon(Icons.arrow_forward),
-                        label: const Text("اذهب إلى نافذتي"),
+                        icon: const Icon(Icons.arrow_forward_rounded),
+                        label: const Text(
+                          "اذهب إلى نافذتي",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Cairo',
+                          ),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.primaryColor,
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
+                            horizontal: 32,
+                            vertical: 14,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                           ),
+                          elevation: 2,
                         ),
                       ),
                     ],
@@ -216,32 +290,104 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Info Card
+        // Header Card مع التدرج
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: isDark ? Colors.grey[800] : Colors.orange[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.orange.withOpacity(0.3),
-              width: 1,
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
             ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                color: Colors.orange[700],
-                size: 24,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF6B6B).withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  "سيتم إرسال طلبك لجميع مزودي الخدمة المتاحين في المدينة المحددة",
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'Cairo',
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.flash_on_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
                   ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "خدمة عاجلة سريعة",
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            fontFamily: 'Cairo',
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          "احصل على عروض فورية من مزودي الخدمة القريبين منك",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Cairo',
+                            color: Colors.white,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        "سيتم إرسال طلبك لجميع المزودين المتاحين في المدينة",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Cairo',
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -249,60 +395,99 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
         ),
         const SizedBox(height: 24),
         
-        // Category Selection
-        _buildLabel("نوع الخدمة"),
-        const SizedBox(height: 8),
-        _buildCategoryDropdown(theme, isDark),
-        const SizedBox(height: 16),
-        
-        if (_selectedCategory != null &&
-            _selectedCategory!.subcategories.isNotEmpty) ...[
-          _buildSubCategoryDropdown(theme, isDark),
-          const SizedBox(height: 24),
-        ],
-        
-        // Request Details
-        _buildLabel("عنوان الطلب"),
-        const SizedBox(height: 8),
-        _buildTextField(
-          _titleController,
-          "مثال: إصلاح تسرب مياه",
-          Icons.title,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 16),
-        
-        _buildLabel("وصف الطلب"),
-        const SizedBox(height: 8),
-        _buildTextField(
-          _descriptionController,
-          "اكتب تفاصيل الخدمة المطلوبة...",
-          Icons.description,
-          isDark: isDark,
-          maxLines: 4,
+        // Form Card
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[850] : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Category Selection
+              _buildSectionHeader("نوع الخدمة", Icons.category_rounded, isDark),
+              const SizedBox(height: 12),
+              _buildCategoryDropdown(theme, isDark),
+              const SizedBox(height: 16),
+              
+              if (_selectedCategory != null &&
+                  _selectedCategory!.subcategories.isNotEmpty) ...[
+                _buildSubCategoryDropdown(theme, isDark),
+                const SizedBox(height: 24),
+              ],
+              
+              // Request Details
+              _buildSectionHeader("تفاصيل الطلب", Icons.description_rounded, isDark),
+              const SizedBox(height: 12),
+              _buildTextField(
+                _titleController,
+                "مثال: إصلاح تسرب مياه عاجل",
+                Icons.title_rounded,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                _descriptionController,
+                "اكتب وصفاً تفصيلياً للخدمة المطلوبة...",
+                Icons.edit_note_rounded,
+                isDark: isDark,
+                maxLines: 4,
+              ),
+              const SizedBox(height: 24),
+              
+              // City Selection
+              _buildSectionHeader("المدينة", Icons.location_city_rounded, isDark),
+              const SizedBox(height: 12),
+              _buildCityDropdown(isDark),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         
-        // City Selection
-        _buildLabel("المدينة"),
-        const SizedBox(height: 8),
-        _buildCityDropdown(isDark),
-        const SizedBox(height: 32),
-        
-        // Submit Button
+        // Action Buttons
         _buildSubmitButton(isDark),
+        const SizedBox(height: 12),
+        _buildMapButton(isDark),
       ],
     );
   }
   
-  Widget _buildLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        fontFamily: 'Cairo',
-      ),
+  Widget _buildSectionHeader(String title, IconData icon, bool isDark) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            icon,
+            color: Colors.white,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Cairo',
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ],
     );
   }
   
@@ -375,35 +560,138 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
   }
   
   Widget _buildSubmitButton(bool isDark) {
-    return ElevatedButton.icon(
-      onPressed: _submitting ? null : _submitRequest,
-      icon: _submitting
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 2,
+    return Container(
+      decoration: BoxDecoration(
+        gradient: _submitting
+            ? null
+            : const LinearGradient(
+                colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
               ),
-            )
-          : const Icon(Icons.send),
-      label: Text(
-        _submitting ? "جاري الإرسال..." : "إرسال الطلب",
-        style: const TextStyle(
+        color: _submitting ? Colors.grey[400] : null,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: !_submitting
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFFF6B6B).withOpacity(0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : [],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: _submitting ? null : _submitRequest,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        icon: _submitting
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : const Icon(Icons.send_rounded, size: 22),
+        label: Text(
+          _submitting ? "جاري الإرسال..." : "إرسال للجميع في المدينة",
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Cairo',
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildMapButton(bool isDark) {
+    return OutlinedButton.icon(
+      onPressed: _openMapSelection,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: isDark ? Colors.white : const Color(0xFFFF6B6B),
+        side: BorderSide(
+          color: isDark
+              ? Colors.white.withOpacity(0.3)
+              : const Color(0xFFFF6B6B).withOpacity(0.5),
+          width: 2,
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      icon: const Icon(Icons.map_rounded, size: 22),
+      label: const Text(
+        "🧭 اختر المزودين من الخريطة",
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.bold,
           fontFamily: 'Cairo',
         ),
       ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.orange[700],
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+    );
+  }
+  
+  Future<void> _openMapSelection() async {
+    // التحقق من البيانات المطلوبة
+    if (_selectedSubCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اختر التصنيف الفرعي أولاً'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    final title = _titleController.text.trim();
+    final desc = _descriptionController.text.trim();
+    if (title.isEmpty || desc.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('أكمل عنوان الطلب والوصف أولاً'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    if (_selectedCity == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اختر المدينة أولاً'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    // فتح صفحة الخريطة
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProviderMapSelectionScreen(
+          subcategoryId: _selectedSubCategory!.id,
+          title: title,
+          description: desc,
+          city: _selectedCity!,
         ),
       ),
     );
+    
+    if (result == true && mounted) {
+      setState(() {
+        showSuccessCard = true;
+      });
+    }
   }
 
   Widget _buildCategoryDropdown(ThemeData theme, bool isDark) {
