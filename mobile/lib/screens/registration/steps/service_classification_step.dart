@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../services/providers_api.dart';
+import '../../../models/category.dart';
 
 class ServiceClassificationStep extends StatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onBack;
   final Function(double)? onValidationChanged;
   final ValueChanged<bool>? onUrgentChanged;
+  final Function(int?, List<int>)? onCategoriesChanged;
 
   const ServiceClassificationStep({
     super.key,
@@ -12,6 +15,7 @@ class ServiceClassificationStep extends StatefulWidget {
     required this.onBack,
     this.onValidationChanged,
     this.onUrgentChanged,
+    this.onCategoriesChanged,
   });
 
   @override
@@ -20,48 +24,15 @@ class ServiceClassificationStep extends StatefulWidget {
 }
 
 class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
-  String? selectedMainCategory;
-  List<String> selectedSubCategories = [];
+  int? selectedMainCategoryId;
+  List<int> selectedSubCategoryIds = [];
   List<String> selectedUrgentServices = [];
   bool urgentRequests = false;
   bool showSuccessMessage = false;
-
-  final List<String> mainCategories = [
-    "اتصالات وشبكات",
-    "التسويق",
-    "التطوير البرمجي",
-    "الاستشارات القانونية",
-    "الصيانة والمنازل",
-  ];
-
-  final Map<String, List<String>> subCategoryMap = {
-    "اتصالات وشبكات": [
-      "تركيب شبكات",
-      "صيانة الراوتر",
-      "ألياف ضوئية",
-      "ربط بين الفروع",
-      "مراقبة الشبكات",
-    ],
-    "التسويق": [
-      "إدارة الحملات الإعلانية",
-      "إدارة منصات التواصل",
-      "كتابة المحتوى",
-      "تصميم مواد تسويقية",
-    ],
-    "التطوير البرمجي": [
-      "مواقع ويب",
-      "تطبيقات جوال",
-      "أنظمة مخصصة",
-      "واجهات برمجة (APIs)",
-    ],
-    "الاستشارات القانونية": [
-      "استشارات تجارية",
-      "استشارات عمالية",
-      "مراجعة العقود",
-      "صياغة لوائح",
-    ],
-    "الصيانة والمنازل": ["سباكة", "كهرباء", "نجارة", "أعمال تبريد وتكييف"],
-  };
+  
+  List<Category> categories = [];
+  bool loadingCategories = true;
+  String? loadError;
 
   final TextEditingController mainSuggestionController =
       TextEditingController();
@@ -70,10 +41,35 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
   @override
   void initState() {
     super.initState();
+    _loadCategories();
     // تأجيل الاستدعاء الأول حتى بعد اكتمال البناء
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _validateForm();
     });
+  }
+  
+  Future<void> _loadCategories() async {
+    setState(() {
+      loadingCategories = true;
+      loadError = null;
+    });
+    
+    try {
+      final loadedCategories = await ProvidersApi().getCategories();
+      if (mounted) {
+        setState(() {
+          categories = loadedCategories;
+          loadingCategories = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          loadError = 'فشل تحميل التصنيفات: $e';
+          loadingCategories = false;
+        });
+      }
+    }
   }
 
   void _validateForm() {
@@ -81,23 +77,36 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
     double completionPercent = 0.0;
     
     // التصنيف الرئيسي (50% من الصفحة)
-    if (selectedMainCategory != null) {
+    if (selectedMainCategoryId != null) {
       completionPercent += 0.5;
     }
     
     // التخصصات الفرعية (50% من الصفحة)
-    if (selectedSubCategories.isNotEmpty) {
+    if (selectedSubCategoryIds.isNotEmpty) {
       completionPercent += 0.5;
     }
     
     widget.onValidationChanged?.call(completionPercent);
+    widget.onCategoriesChanged?.call(selectedMainCategoryId, selectedSubCategoryIds);
+  }
+  
+  List<String> _getSubcategoryNames() {
+    if (selectedMainCategoryId == null) return [];
+    final selectedCategory = categories.firstWhere(
+      (c) => c.id == selectedMainCategoryId,
+      orElse: () => categories.isNotEmpty ? categories.first : Category(id: 0, name: '', subcategories: []),
+    );
+    return selectedCategory.subcategories
+        .where((sub) => selectedSubCategoryIds.contains(sub.id))
+        .map((sub) => sub.name)
+        .toList();
   }
 
   bool get _canProceed {
     // Required for step completion:
     // - Main category
     // - At least one sub category
-    return selectedMainCategory != null && selectedSubCategories.isNotEmpty;
+    return selectedMainCategoryId != null && selectedSubCategoryIds.isNotEmpty;
   }
 
   void _onNextPressed() {
@@ -128,9 +137,9 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
   // ==========================
   Future<void> _openMainCategorySheet() async {
     final theme = Theme.of(context);
-    String? tempSelected = selectedMainCategory;
+    int? tempSelected = selectedMainCategoryId;
 
-    final selected = await showModalBottomSheet<String>(
+    final selected = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -191,53 +200,87 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                     ),
                     const Divider(height: 24),
                     Expanded(
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 8,
-                        ),
-                        itemCount: mainCategories.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 4),
-                        itemBuilder: (context, index) {
-                          final item = mainCategories[index];
-                          final selected = tempSelected == item;
-                          return ListTile(
-                            leading: Icon(
-                              Icons.circle,
-                              size: 10,
-                              color:
-                                  selected
-                                      ? theme.colorScheme.primary
-                                      : Colors.grey.shade400,
-                            ),
-                            title: Text(
-                              item,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontWeight:
-                                    selected
-                                        ? FontWeight.bold
-                                        : FontWeight.w500,
-                              ),
-                            ),
-                            trailing:
-                                selected
-                                    ? Icon(
-                                      Icons.check_circle,
-                                      color: theme.colorScheme.primary,
-                                    )
-                                    : const Icon(
-                                      Icons.chevron_left,
-                                      color: Colors.grey,
-                                    ),
-                            onTap: () {
-                              setSheetState(() {
-                                tempSelected = item;
-                              });
-                            },
-                          );
-                        },
-                      ),
+                      child: loadingCategories
+                          ? const Center(child: CircularProgressIndicator())
+                          : loadError != null
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Colors.red,
+                                        size: 48,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        loadError!,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      ElevatedButton.icon(
+                                        onPressed: () {
+                                          Navigator.pop(context);
+                                          _loadCategories();
+                                        },
+                                        icon: const Icon(Icons.refresh),
+                                        label: const Text(
+                                          'إعادة المحاولة',
+                                          style: TextStyle(fontFamily: 'Cairo'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 8,
+                                  ),
+                                  itemCount: categories.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 4),
+                                  itemBuilder: (context, index) {
+                                    final category = categories[index];
+                                    final selected = tempSelected == category.id;
+                                    return ListTile(
+                                      leading: Icon(
+                                        Icons.circle,
+                                        size: 10,
+                                        color: selected
+                                            ? theme.colorScheme.primary
+                                            : Colors.grey.shade400,
+                                      ),
+                                      title: Text(
+                                        category.name,
+                                        style: TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontWeight: selected
+                                              ? FontWeight.bold
+                                              : FontWeight.w500,
+                                        ),
+                                      ),
+                                      trailing: selected
+                                          ? Icon(
+                                              Icons.check_circle,
+                                              color: theme.colorScheme.primary,
+                                            )
+                                          : const Icon(
+                                              Icons.chevron_left,
+                                              color: Colors.grey,
+                                            ),
+                                      onTap: () {
+                                        setSheetState(() {
+                                          tempSelected = category.id;
+                                        });
+                                      },
+                                    );
+                                  },
+                                ),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -284,10 +327,10 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
       },
     );
 
-    if (selected != null && selected.isNotEmpty) {
+    if (selected != null) {
       setState(() {
-        selectedMainCategory = selected;
-        selectedSubCategories.clear();
+        selectedMainCategoryId = selected;
+        selectedSubCategoryIds.clear();
         selectedUrgentServices.clear();
         _validateForm();
       });
@@ -298,13 +341,17 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
   //   شيت اختيار التخصصات الفرعية
   // ==========================
   Future<void> _openSubCategoryBottomSheet() async {
-    if (selectedMainCategory == null) return;
+    if (selectedMainCategoryId == null) return;
 
     final theme = Theme.of(context);
-    final items = subCategoryMap[selectedMainCategory!] ?? [];
-    List<String> tempSelected = List.from(selectedSubCategories);
+    final selectedCategory = categories.firstWhere(
+      (c) => c.id == selectedMainCategoryId,
+      orElse: () => categories.first,
+    );
+    final items = selectedCategory.subcategories;
+    List<int> tempSelected = List.from(selectedSubCategoryIds);
 
-    final selected = await showModalBottomSheet<List<String>>(
+    final selected = await showModalBottomSheet<List<int>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -354,7 +401,7 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
-                        selectedMainCategory ?? "",
+                        selectedCategory.name,
                         style: const TextStyle(
                           fontSize: 13,
                           color: Colors.black54,
@@ -372,21 +419,21 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 4),
                         itemBuilder: (context, index) {
-                          final e = items[index];
-                          final selected = tempSelected.contains(e);
+                          final subcat = items[index];
+                          final selected = tempSelected.contains(subcat.id);
                           return CheckboxListTile(
                             value: selected,
                             title: Text(
-                              e,
+                              subcat.name,
                               style: const TextStyle(fontFamily: 'Cairo'),
                             ),
                             activeColor: theme.colorScheme.primary,
                             onChanged: (val) {
                               setSheetState(() {
                                 if (val == true) {
-                                  tempSelected.add(e);
+                                  tempSelected.add(subcat.id);
                                 } else {
-                                  tempSelected.remove(e);
+                                  tempSelected.remove(subcat.id);
                                 }
                               });
                             },
@@ -441,7 +488,7 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
 
     if (selected != null) {
       setState(() {
-        selectedSubCategories = selected;
+        selectedSubCategoryIds = selected;
         _validateForm();
       });
     }
@@ -452,10 +499,19 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
   // ==========================
   Future<void> _openUrgentServicesBottomSheet() async {
     final theme = Theme.of(context);
-    final items = selectedSubCategories;
     List<String> tempSelected = List.from(selectedUrgentServices);
 
-    if (items.isEmpty) return;
+    if (selectedSubCategoryIds.isEmpty) return;
+    
+    // Get selected subcategory names for display
+    final selectedCategory = categories.firstWhere(
+      (c) => c.id == selectedMainCategoryId,
+      orElse: () => categories.first,
+    );
+    final items = selectedCategory.subcategories
+        .where((sub) => selectedSubCategoryIds.contains(sub.id))
+        .map((sub) => sub.name)
+        .toList();
 
     final selected = await showModalBottomSheet<List<String>>(
       context: context,
@@ -717,12 +773,19 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            selectedMainCategory ?? "اختر تصنيفًا رئيسيًا",
+                            selectedMainCategoryId != null
+                                ? categories
+                                    .firstWhere(
+                                      (c) => c.id == selectedMainCategoryId,
+                                      orElse: () => categories.first,
+                                    )
+                                    .name
+                                : "اختر تصنيفًا رئيسيًا",
                             style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 14,
                               color:
-                                  selectedMainCategory == null
+                                  selectedMainCategoryId == null
                                       ? Colors.grey
                                       : Colors.black87,
                             ),
@@ -736,7 +799,7 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                 ),
                 const SizedBox(height: 16),
 
-                if (selectedMainCategory != null) ...[
+                if (selectedMainCategoryId != null) ...[
                   _buildLabel("التخصصات الفرعية"),
                   GestureDetector(
                     onTap: _openSubCategoryBottomSheet,
@@ -758,14 +821,14 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              selectedSubCategories.isEmpty
+                              selectedSubCategoryIds.isEmpty
                                   ? 'اضغط لاختيار التخصصات'
-                                  : selectedSubCategories.join("، "),
+                                  : _getSubcategoryNames().join("، "),
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 14,
                                 color:
-                                    selectedSubCategories.isEmpty
+                                    selectedSubCategoryIds.isEmpty
                                         ? Colors.grey
                                         : Colors.black87,
                               ),
@@ -779,31 +842,37 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (selectedSubCategories.isNotEmpty)
+                  if (selectedSubCategoryIds.isNotEmpty)
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
-                      children:
-                          selectedSubCategories
-                              .map(
-                                (e) => Chip(
-                                  label: Text(
-                                    e,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontFamily: 'Cairo',
-                                    ),
+                      children: _getSubcategoryNames()
+                          .asMap()
+                          .entries
+                          .map(
+                            (entry) {
+                              final index = entry.key;
+                              final name = entry.value;
+                              final subcatId = selectedSubCategoryIds[index];
+                              return Chip(
+                                label: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'Cairo',
                                   ),
-                                  deleteIcon: const Icon(Icons.close, size: 16),
-                                  onDeleted: () {
-                                    setState(() {
-                                      selectedSubCategories.remove(e);
-                                      _validateForm();
-                                    });
-                                  },
                                 ),
-                              )
-                              .toList(),
+                                deleteIcon: const Icon(Icons.close, size: 16),
+                                onDeleted: () {
+                                  setState(() {
+                                    selectedSubCategoryIds.remove(subcatId);
+                                    _validateForm();
+                                  });
+                                },
+                              );
+                            },
+                          )
+                          .toList(),
                     ),
                   const SizedBox(height: 16),
                 ],
@@ -837,7 +906,7 @@ class _ServiceClassificationStepState extends State<ServiceClassificationStep> {
                   },
                 ),
 
-                if (urgentRequests && selectedSubCategories.isNotEmpty) ...[
+                if (urgentRequests && selectedSubCategoryIds.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   _buildLabel("الخدمات العاجلة"),
                   GestureDetector(

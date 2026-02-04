@@ -104,6 +104,31 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     "TikTok",
     "Behance",
   ];
+  
+  final List<String> _saudiCities = [
+    'الرياض',
+    'جدة',
+    'مكة المكرمة',
+    'المدينة المنورة',
+    'الدمام',
+    'الخبر',
+    'الظهران',
+    'الطائف',
+    'تبوك',
+    'بريدة',
+    'خميس مشيط',
+    'الأحساء',
+    'حفر الباطن',
+    'حائل',
+    'نجران',
+    'جازان',
+    'ينبع',
+    'الجبيل',
+    'الخرج',
+    'أبها',
+  ];
+
+  String? _selectedCity;
 
   @override
   void initState() {
@@ -179,6 +204,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       }
       if (cityController.text.trim().isEmpty) {
         cityController.text = asString(data['city']);
+        _selectedCity = asString(data['city']).isNotEmpty ? asString(data['city']) : null;
       }
       if (websiteController.text.trim().isEmpty) {
         websiteController.text = asString(data['website']);
@@ -267,7 +293,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     // In the provider registration wizard, controllers are passed from outside.
     // In that case, do not override user input.
     if (!mounted) return;
-    if (!_ownsPhone && !_ownsWhatsapp) return;
+    if (!_ownsPhone && !_ownsWhatsapp && !_ownsCity) return;
 
     setState(() => _loadingFromBackend = true);
     try {
@@ -285,6 +311,13 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       final phone = (me['phone'] ?? '').toString().trim();
       if (_ownsPhone && phoneController.text.trim().isEmpty && phone.isNotEmpty) {
         phoneController.text = normalizeLocal05(phone);
+      }
+      
+      // Load city from user account
+      final city = (me['city'] ?? '').toString().trim();
+      if (_ownsCity && cityController.text.trim().isEmpty && city.isNotEmpty) {
+        cityController.text = city;
+        _selectedCity = city;
       }
 
       // WhatsApp is stored on the provider profile.
@@ -620,12 +653,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         _sectionCard(
           title: "المدينة",
           icon: Icons.location_city,
-          child: _styledField(
-            controller: cityController,
-            hint: "مثال: الرياض",
-            icon: Icons.location_city,
-            keyboardType: TextInputType.text,
-          ),
+          child: _buildCityDropdown(),
         ),
         _sectionCard(
           title: "رقم الهاتف الأساسي",
@@ -889,6 +917,86 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   }
 
   // ---------------- INPUT FIELD ----------------
+
+  Widget _buildCityDropdown() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[800] : const Color(0xFFF7F5FA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark
+              ? Colors.grey[700]!
+              : const Color(0xFF6366F1).withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: DropdownButtonFormField<String>(
+        value: _selectedCity,
+        hint: Row(
+          children: [
+            Icon(
+              Icons.location_city_rounded,
+              color: const Color(0xFF6366F1).withOpacity(0.7),
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'اختر مدينتك',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[500],
+                fontSize: 13,
+                fontFamily: 'Cairo',
+              ),
+            ),
+          ],
+        ),
+        icon: Icon(
+          Icons.keyboard_arrow_down_rounded,
+          color: isDark ? Colors.grey[400] : Colors.grey[600],
+        ),
+        decoration: const InputDecoration(
+          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: InputBorder.none,
+        ),
+        dropdownColor: isDark ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        items: _saudiCities.map((city) {
+          return DropdownMenuItem<String>(
+            value: city,
+            alignment: AlignmentDirectional.centerEnd,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  city,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontFamily: 'Cairo',
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.location_on_rounded,
+                  color: const Color(0xFF6366F1).withOpacity(0.6),
+                  size: 18,
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+        onChanged: (value) {
+          setState(() {
+            _selectedCity = value;
+            cityController.text = value ?? '';
+          });
+        },
+      ),
+    );
+  }
 
   Widget _styledField({
     required TextEditingController controller,

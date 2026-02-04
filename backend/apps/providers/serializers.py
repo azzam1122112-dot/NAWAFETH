@@ -20,10 +20,36 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProviderProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProviderProfile
-        fields = "__all__"
-        read_only_fields = ("user", "is_verified_blue", "is_verified_green")
+	subcategory_ids = serializers.ListField(
+		child=serializers.IntegerField(),
+		write_only=True,
+		required=False,
+		allow_empty=True,
+	)
+
+	class Meta:
+		model = ProviderProfile
+		fields = "__all__"
+		read_only_fields = ("user", "is_verified_blue", "is_verified_green")
+
+	def create(self, validated_data):
+		subcategory_ids = validated_data.pop("subcategory_ids", [])
+		profile = super().create(validated_data)
+
+		# Create ProviderCategory entries
+		if subcategory_ids:
+			from .models import ProviderCategory, SubCategory
+
+			for sub_id in subcategory_ids:
+				try:
+					subcategory = SubCategory.objects.get(id=sub_id, is_active=True)
+					ProviderCategory.objects.get_or_create(
+						provider=profile, subcategory=subcategory
+					)
+				except SubCategory.DoesNotExist:
+					pass  # Skip invalid subcategory IDs
+
+		return profile
 
 
 class ProviderProfileMeSerializer(serializers.ModelSerializer):

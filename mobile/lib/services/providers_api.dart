@@ -237,6 +237,7 @@ class ProvidersApi {
     required String city,
     bool acceptsUrgent = false,
     int? yearsExperience,
+    List<int>? subcategoryIds,
   }) async {
     final payload = <String, dynamic>{
       'provider_type': providerType,
@@ -248,6 +249,10 @@ class ProvidersApi {
 
     if (yearsExperience != null) {
       payload['years_experience'] = yearsExperience;
+    }
+    
+    if (subcategoryIds != null && subcategoryIds.isNotEmpty) {
+      payload['subcategory_ids'] = subcategoryIds;
     }
 
     final res = await _dio.post(

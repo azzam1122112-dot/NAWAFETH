@@ -53,6 +53,8 @@ class _RegisterServiceProviderPageState
 
   String _accountTypeAr = 'فرد';
   bool _acceptsUrgent = false;
+  int? _selectedCategoryId;
+  List<int> _selectedSubcategoryIds = [];
   
   // تتبع نسبة إكمال كل صفحة (من 0.0 إلى 1.0)
   Map<int, double> _stepCompletion = {
@@ -321,6 +323,7 @@ class _RegisterServiceProviderPageState
         bio: bio,
         city: city,
         acceptsUrgent: _acceptsUrgent,
+        subcategoryIds: _selectedSubcategoryIds.isNotEmpty ? _selectedSubcategoryIds : null,
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -561,6 +564,10 @@ class _RegisterServiceProviderPageState
         onBack: _goToPreviousStep,
         onValidationChanged: (percent) => _updateStepCompletion(1, percent),
         onUrgentChanged: (v) => _acceptsUrgent = v,
+        onCategoriesChanged: (categoryId, subcategoryIds) {
+          _selectedCategoryId = categoryId;
+          _selectedSubcategoryIds = subcategoryIds;
+        },
       ),
       ContactInfoStep(
         onNext: _submitProviderRegistration,
