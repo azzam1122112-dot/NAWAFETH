@@ -1,0 +1,115 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block title %}تفاصيل المزود{% endblock %}
+
+{% block content %}
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">{{ provider.display_name }}</h1>
+      <div class="text-sm text-gray-500 mt-1">#{{ provider.id }} • {{ provider.user.phone|default:"—" }}</div>
+    </div>
+    <div class="flex items-center gap-2">
+      <a class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200" href="{% url 'dashboard:providers_list' %}">رجوع</a>
+      <a class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" href="{% url 'admin:providers_providerprofile_change' provider.id %}">فتح في admin</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border border-gray-200 rounded-2xl p-5">
+      <div class="text-sm text-gray-500">المدينة</div>
+      <div class="text-lg font-bold mt-1">{{ provider.city|default:"—" }}</div>
+      <div class="text-sm text-gray-500 mt-3">يقبل عاجل</div>
+      <div class="mt-1">
+        {% if provider.accepts_urgent %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-indigo-50 text-indigo-700">نعم</span>
+        {% else %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">لا</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl p-5">
+      <div class="text-sm text-gray-500">التوثيق</div>
+      <div class="mt-2">
+        {% if provider.is_verified_blue or provider.is_verified_green %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">موثّق</span>
+        {% else %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">غير موثّق</span>
+        {% endif %}
+      </div>
+      <div class="text-sm text-gray-500 mt-3">النوع</div>
+      <div class="font-semibold mt-1">{{ provider.provider_type }}</div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl p-5">
+      <div class="text-sm text-gray-500">التقييم</div>
+      <div class="text-2xl font-bold mt-1">{{ provider.rating_avg }}</div>
+      <div class="text-sm text-gray-500 mt-1">عدد التقييمات: {{ provider.rating_count }}</div>
+      <div class="text-sm text-gray-500 mt-3">سنوات الخبرة</div>
+      <div class="font-semibold mt-1">{{ provider.years_experience }}</div>
+    </div>
+  </div>
+
+  <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+      <h2 class="font-bold">خدمات المزود</h2>
+      <a class="text-sm text-indigo-600 hover:underline" href="{% url 'dashboard:services_list' %}?q={{ provider.display_name }}">استعراض كل الخدمات</a>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="text-right px-5 py-3">#</th>
+            <th class="text-right px-5 py-3">العنوان</th>
+            <th class="text-right px-5 py-3">التصنيف</th>
+            <th class="text-right px-5 py-3">الحالة</th>
+            <th class="text-right px-5 py-3">آخر تحديث</th>
+            <th class="text-right px-5 py-3">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for s in services %}
+            <tr class="hover:bg-gray-50">
+              <td class="px-5 py-3 font-semibold">{{ s.id }}</td>
+              <td class="px-5 py-3">
+                <div class="font-medium">{{ s.title }}</div>
+                {% if s.description %}
+                  <div class="text-xs text-gray-500 mt-1">{{ s.description|truncatechars:120 }}</div>
+                {% endif %}
+              </td>
+              <td class="px-5 py-3">
+                <div>{{ s.subcategory.category.name }} / {{ s.subcategory.name }}</div>
+              </td>
+              <td class="px-5 py-3">
+                {% if s.is_active %}
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">مفعلة</span>
+                {% else %}
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">موقوفة</span>
+                {% endif %}
+              </td>
+              <td class="px-5 py-3">{{ s.updated_at|date:"Y-m-d H:i" }}</td>
+              <td class="px-5 py-3">
+                <form method="post" action="{% url 'dashboard:provider_service_toggle_active' provider.id s.id %}">
+                  {% csrf_token %}
+                  <button class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm" type="submit">
+                    {% if s.is_active %}إيقاف{% else %}تفعيل{% endif %}
+                  </button>
+                  <a class="text-indigo-600 hover:underline text-sm mr-3" href="{% url 'admin:providers_providerservice_change' s.id %}">فتح في admin</a>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td class="px-5 py-6 text-gray-500" colspan="6">لا توجد خدمات لهذا المزود.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bg-white border border-gray-200 rounded-2xl p-5 mt-6">
+    <h2 class="font-bold mb-2">نبذة</h2>
+    <div class="text-gray-700 text-sm leading-7">{{ provider.bio|default:"—" }}</div>
+  </div>
+{% endblock %}

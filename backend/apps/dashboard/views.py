@@ -16,7 +16,7 @@ from django.views.decorators.http import require_POST
 
 from apps.marketplace.models import ServiceRequest
 from apps.marketplace.services.actions import allowed_actions, execute_action
-from apps.providers.models import ProviderProfile
+from apps.providers.models import ProviderProfile, ProviderService
 from .forms import AcceptAssignProviderForm
 
 # إن كانت عندك Enums استوردها (عدّل حسب مشروعك)
@@ -28,6 +28,17 @@ except Exception:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _bool_param(v: str | None) -> bool | None:
+    if v is None:
+        return None
+    v = v.strip().lower()
+    if v in {"1", "true", "yes", "y", "on"}:
+        return True
+    if v in {"0", "false", "no", "n", "off"}:
+        return False
+    return None
 
 
 def _parse_date_yyyy_mm_dd(value: str | None):
@@ -171,6 +182,126 @@ def requests_list(request):
         "type_choices": type_choices,
     }
     return render(request, "dashboard/requests_list.html", ctx)
+
+
+@staff_member_required
+def providers_list(request: HttpRequest) -> HttpResponse:
+    qs = (
+        ProviderProfile.objects
+        .select_related("user")
+        .all()
+        .order_by("-id")
+    )
+
+    q = (request.GET.get("q") or "").strip()
+    city = (request.GET.get("city") or "").strip()
+    verified = _bool_param(request.GET.get("verified"))
+    accepts_urgent = _bool_param(request.GET.get("urgent"))
+
+    if q:
+        qs = qs.filter(
+            Q(display_name__icontains=q)
+            | Q(user__phone__icontains=q)
+            | Q(bio__icontains=q)
+        )
+
+    if city:
+        qs = qs.filter(city__icontains=city)
+
+    if verified is not None:
+        if verified:
+            qs = qs.filter(Q(is_verified_blue=True) | Q(is_verified_green=True))
+        else:
+            qs = qs.filter(is_verified_blue=False, is_verified_green=False)
+
+    if accepts_urgent is not None:
+        qs = qs.filter(accepts_urgent=accepts_urgent)
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page") or "1")
+
+    ctx = {
+        "page_obj": page_obj,
+        "q": q,
+        "city": city,
+        "verified": request.GET.get("verified") or "",
+        "urgent": request.GET.get("urgent") or "",
+    }
+    return render(request, "dashboard/providers_list.html", ctx)
+
+
+@staff_member_required
+def provider_detail(request: HttpRequest, provider_id: int) -> HttpResponse:
+    provider = get_object_or_404(
+        ProviderProfile.objects.select_related("user"),
+        id=provider_id,
+    )
+
+    services = (
+        ProviderService.objects
+        .select_related("subcategory", "subcategory__category")
+        .filter(provider_id=provider_id)
+        .order_by("-updated_at")
+    )
+
+    ctx = {
+        "provider": provider,
+        "services": list(services),
+    }
+    return render(request, "dashboard/provider_detail.html", ctx)
+
+
+@staff_member_required
+@require_POST
+def provider_service_toggle_active(request: HttpRequest, provider_id: int, service_id: int) -> HttpResponse:
+    service = get_object_or_404(
+        ProviderService,
+        id=service_id,
+        provider_id=provider_id,
+    )
+    service.is_active = not bool(service.is_active)
+    service.save(update_fields=["is_active", "updated_at"])
+    messages.success(request, "تم تحديث حالة الخدمة بنجاح")
+    return redirect("dashboard:provider_detail", provider_id=provider_id)
+
+
+@staff_member_required
+def services_list(request: HttpRequest) -> HttpResponse:
+    qs = (
+        ProviderService.objects
+        .select_related("provider", "provider__user", "subcategory", "subcategory__category")
+        .all()
+        .order_by("-updated_at")
+    )
+
+    q = (request.GET.get("q") or "").strip()
+    active = _bool_param(request.GET.get("active"))
+    city = (request.GET.get("city") or "").strip()
+
+    if q:
+        qs = qs.filter(
+            Q(title__icontains=q)
+            | Q(description__icontains=q)
+            | Q(provider__display_name__icontains=q)
+            | Q(provider__user__phone__icontains=q)
+        )
+
+    if active is not None:
+        qs = qs.filter(is_active=active)
+
+    if city:
+        qs = qs.filter(provider__city__icontains=city)
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page") or "1")
+
+    ctx = {
+        "page_obj": page_obj,
+        "q": q,
+        "active": request.GET.get("active") or "",
+        "city": city,
+    }
+    return render(request, "dashboard/services_list.html", ctx)
 
 
 @staff_member_required

@@ -8,6 +8,18 @@ urlpatterns = [
     path("requests/", views.requests_list, name="requests_list"),
     path("requests/<int:request_id>/", views.request_detail, name="request_detail"),
 
+    path("providers/", views.providers_list, name="providers_list"),
+    path("providers/<int:provider_id>/", views.provider_detail, name="provider_detail"),
+
+    path("services/", views.services_list, name="services_list"),
+
+    # Actions (POST)
+    path(
+        "providers/<int:provider_id>/services/<int:service_id>/actions/toggle-active/",
+        views.provider_service_toggle_active,
+        name="provider_service_toggle_active",
+    ),
+
     # Actions (POST)
     path(
         "requests/<int:request_id>/actions/accept/",

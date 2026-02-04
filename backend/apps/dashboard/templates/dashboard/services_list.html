@@ -1,0 +1,120 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block title %}خدمات المزوّدين{% endblock %}
+
+{% block content %}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">خدمات المزوّدين</h1>
+      <p class="text-gray-500 text-sm mt-1">استعراض خدمات المزوّدين وتفعيل/إيقاف الخدمات عبر صفحة المزود.</p>
+    </div>
+  </div>
+
+  <form method="get" class="bg-white border border-gray-200 rounded-2xl p-4 mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+      <div class="lg:col-span-2">
+        <label class="text-sm text-gray-600">بحث</label>
+        <input name="q" value="{{ q }}" placeholder="عنوان الخدمة / اسم المزوّد / الجوال"
+               class="mt-1 w-full rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400">
+      </div>
+
+      <div>
+        <label class="text-sm text-gray-600">المدينة</label>
+        <input name="city" value="{{ city }}" placeholder="مثال: الرياض"
+               class="mt-1 w-full rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400">
+      </div>
+
+      <div>
+        <label class="text-sm text-gray-600">نشطة</label>
+        <select name="active" class="mt-1 w-full rounded-lg border-gray-200">
+          <option value="" {% if active == "" %}selected{% endif %}>الكل</option>
+          <option value="1" {% if active == "1" %}selected{% endif %}>نعم</option>
+          <option value="0" {% if active == "0" %}selected{% endif %}>لا</option>
+        </select>
+      </div>
+
+      <div class="lg:col-span-1 flex items-end gap-2">
+        <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 w-full" type="submit">
+          تطبيق
+        </button>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <a class="text-sm text-indigo-600 hover:underline" href="{% url 'dashboard:services_list' %}">تصفير الفلاتر</a>
+    </div>
+  </form>
+
+  <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+      <h2 class="font-bold">القائمة</h2>
+      <div class="text-sm text-gray-500">الإجمالي: {{ page_obj.paginator.count }}</div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="text-right px-5 py-3">#</th>
+            <th class="text-right px-5 py-3">الخدمة</th>
+            <th class="text-right px-5 py-3">المزوّد</th>
+            <th class="text-right px-5 py-3">التصنيف</th>
+            <th class="text-right px-5 py-3">الحالة</th>
+            <th class="text-right px-5 py-3">آخر تحديث</th>
+            <th class="text-right px-5 py-3">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for s in page_obj.object_list %}
+            <tr class="hover:bg-gray-50">
+              <td class="px-5 py-3 font-semibold">{{ s.id }}</td>
+              <td class="px-5 py-3">
+                <div class="font-medium">{{ s.title }}</div>
+                {% if s.description %}
+                  <div class="text-xs text-gray-500 mt-1">{{ s.description|truncatechars:110 }}</div>
+                {% endif %}
+              </td>
+              <td class="px-5 py-3">
+                <div class="font-medium">{{ s.provider.display_name }}</div>
+                <div class="text-xs text-gray-500 mt-1">{{ s.provider.user.phone|default:"—" }} • {{ s.provider.city|default:"—" }}</div>
+              </td>
+              <td class="px-5 py-3">{{ s.subcategory.category.name }} / {{ s.subcategory.name }}</td>
+              <td class="px-5 py-3">
+                {% if s.is_active %}
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-50 text-green-700">مفعلة</span>
+                {% else %}
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100">موقوفة</span>
+                {% endif %}
+              </td>
+              <td class="px-5 py-3">{{ s.updated_at|date:"Y-m-d H:i" }}</td>
+              <td class="px-5 py-3">
+                <a class="text-indigo-600 hover:underline" href="{% url 'dashboard:provider_detail' s.provider.id %}">فتح المزود</a>
+                <span class="text-gray-300 px-2">|</span>
+                <a class="text-indigo-600 hover:underline" href="{% url 'admin:providers_providerservice_change' s.id %}">admin</a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td class="px-5 py-6 text-gray-500" colspan="7">لا توجد نتائج.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="px-5 py-4 border-t border-gray-200 flex items-center justify-between">
+      <div class="text-sm text-gray-500">
+        صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}
+      </div>
+      <div class="flex items-center gap-2">
+        {% if page_obj.has_previous %}
+          <a class="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200"
+             href="?page={{ page_obj.previous_page_number }}&q={{ q }}&city={{ city }}&active={{ active }}">السابق</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+          <a class="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200"
+             href="?page={{ page_obj.next_page_number }}&q={{ q }}&city={{ city }}&active={{ active }}">التالي</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
