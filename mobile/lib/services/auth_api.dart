@@ -89,18 +89,25 @@ class AuthApi {
     required String password,
     required String passwordConfirm,
     required bool acceptTerms,
+    String? city,
   }) async {
+    final data = {
+      'first_name': firstName,
+      'last_name': lastName,
+      'username': username,
+      'email': email,
+      'password': password,
+      'password_confirm': passwordConfirm,
+      'accept_terms': acceptTerms,
+    };
+    
+    if (city != null && city.isNotEmpty) {
+      data['city'] = city;
+    }
+    
     await _dio.post(
       '${ApiConfig.apiPrefix}/accounts/complete/',
-      data: {
-        'first_name': firstName,
-        'last_name': lastName,
-        'username': username,
-        'email': email,
-        'password': password,
-        'password_confirm': passwordConfirm,
-        'accept_terms': acceptTerms,
-      },
+      data: data,
       options: Options(
         headers: {
           'Authorization': 'Bearer $accessToken',

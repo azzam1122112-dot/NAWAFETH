@@ -25,13 +25,53 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
+  final _cityController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  String? _selectedCity;
   bool _agreeToTerms = false;
   bool _loading = false;
 
   final _nameAllowedChars = RegExp(r'[A-Za-z\u0600-\u06FF ]');
+  
+  final List<String> _saudiCities = [
+    'الرياض',
+    'جدة',
+    'مكة المكرمة',
+    'المدينة المنورة',
+    'الدمام',
+    'الخبر',
+    'الظهران',
+    'الطائف',
+    'تبوك',
+    'بريدة',
+    'خميس مشيط',
+    'الهفوف',
+    'حفر الباطن',
+    'حائل',
+    'نجران',
+    'جازان',
+    'ينبع',
+    'القطيف',
+    'أبها',
+    'عرعر',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhoneAndSetUsername();
+  }
+  
+  Future<void> _loadPhoneAndSetUsername() async {
+    final phone = await const SessionStorage().readPhone();
+    if (phone != null && phone.isNotEmpty) {
+      setState(() {
+        _usernameController.text = '@$phone';
+      });
+    }
+  }
 
   bool _isValidName(String value) {
     final v = value.trim();
@@ -50,6 +90,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _isValidName(_firstNameController.text) &&
       _isValidName(_lastNameController.text) &&
       _usernameController.text.isNotEmpty &&
+      _selectedCity != null &&
       _emailController.text.isNotEmpty &&
       _passwordController.text == _confirmPasswordController.text &&
       _isPasswordValid &&
@@ -64,6 +105,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _usernameController.dispose();
+    _cityController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -102,6 +144,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         password: _passwordController.text,
         passwordConfirm: _confirmPasswordController.text,
         acceptTerms: _agreeToTerms,
+        city: _selectedCity,
       );
 
       // Best-effort: persist canonical identity (including userId) for per-user local state.
@@ -164,132 +207,548 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      drawer: const CustomDrawer(),
-      appBar: const CustomAppBar(title: "إنشاء حساب جديد"),
-      backgroundColor: const Color(0xFFF2F3F5),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.deepPurple.withOpacity(0.05),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        drawer: const CustomDrawer(),
+        backgroundColor: isDark ? Colors.grey[900] : const Color(0xFFF8F9FD),
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(70),
+          child: AppBar(
+            backgroundColor: isDark ? Colors.grey[850] : Colors.white,
+            elevation: 0,
+            centerTitle: true,
+            title: Column(
+              children: [
+                const Text(
+                  "✨ إنشاء حساب جديد",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+                Text(
+                  "انضم إلى منصة نوافذ",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Cairo',
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildField(
-                  "الاسم الأول",
-                  _firstNameController,
-                  FontAwesomeIcons.idCard,
-                  keyboardType: TextInputType.name,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(_nameAllowedChars),
-                  ],
-                  onChanged: (_) => setState(() {}),
+            leading: Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu_rounded),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
+          ),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 500),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [
+                          Colors.grey[850]!,
+                          Colors.grey[800]!,
+                        ]
+                      : [
+                          Colors.white,
+                          Colors.grey[50]!,
+                        ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
-                const SizedBox(height: 16),
-                _buildField(
-                  "الاسم الأخير",
-                  _lastNameController,
-                  FontAwesomeIcons.idCard,
-                  keyboardType: TextInputType.name,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(_nameAllowedChars),
-                  ],
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-                _buildField(
-                  "اسم المستخدم",
-                  _usernameController,
-                  FontAwesomeIcons.user,
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-                _buildField(
-                  "البريد الإلكتروني",
-                  _emailController,
-                  FontAwesomeIcons.envelope,
-                  keyboardType: TextInputType.emailAddress,
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-                _buildField(
-                  "كلمة المرور",
-                  _passwordController,
-                  FontAwesomeIcons.lock,
-                  obscure: true,
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 10),
-                _buildPasswordValidation(),
-                const SizedBox(height: 16),
-                _buildField(
-                  "تأكيد كلمة المرور",
-                  _confirmPasswordController,
-                  FontAwesomeIcons.lockOpen,
-                  obscure: true,
-                ),
-                const SizedBox(height: 20),
-                CheckboxListTile(
-                  value: _agreeToTerms,
-                  onChanged:
-                      (val) => setState(() => _agreeToTerms = val ?? false),
-                  title: const Text(
-                    "أوافق على الشروط والأحكام",
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                  activeColor: AppColors.deepPurple,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: (_isAllValid && !_loading) ? _onRegisterPressed : null,
-                  icon: const Icon(Icons.check, color: Colors.white),
-                  label: const Text(
-                    "إنشاء الحساب",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Cairo',
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.deepPurple,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-                if (_loading) ...[
-                  const SizedBox(height: 14),
-                  const Center(
-                    child: SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withOpacity(0.15),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
                   ),
                 ],
-              ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header مع أيقونة
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF6366F1),
+                            Color(0xFFA855F7),
+                          ],
+                          begin: Alignment.topRight,
+                          end: Alignment.bottomLeft,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF6366F1).withOpacity(0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.25),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.4),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                '🎯',
+                                style: TextStyle(fontSize: 28),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "معلوماتك الشخصية",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    fontFamily: 'Cairo',
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  "املأ البيانات التالية لإكمال التسجيل",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'Cairo',
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    
+                    // الاسم الأول والأخير في صف واحد
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildEnhancedField(
+                            "الاسم الأول",
+                            _firstNameController,
+                            Icons.person_outline_rounded,
+                            isDark: isDark,
+                            keyboardType: TextInputType.name,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(_nameAllowedChars),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildEnhancedField(
+                            "الاسم الأخير",
+                            _lastNameController,
+                            Icons.person_rounded,
+                            isDark: isDark,
+                            keyboardType: TextInputType.name,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(_nameAllowedChars),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    
+                    // اسم المستخدم (تلقائي)
+                    _buildEnhancedField(
+                      "اسم المستخدم",
+                      _usernameController,
+                      Icons.alternate_email_rounded,
+                      isDark: isDark,
+                      enabled: false,
+                      hint: "يتم إنشاؤه تلقائياً",
+                    ),
+                    const SizedBox(height: 18),
+                    
+                    // المدينة
+                    _buildCityDropdown(isDark),
+                    const SizedBox(height: 18),
+                    
+                    // البريد الإلكتروني
+                    _buildEnhancedField(
+                      "البريد الإلكتروني",
+                      _emailController,
+                      Icons.email_outlined,
+                      isDark: isDark,
+                      keyboardType: TextInputType.emailAddress,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 18),
+                    
+                    // كلمة المرور
+                    _buildEnhancedField(
+                      "كلمة المرور",
+                      _passwordController,
+                      Icons.lock_outline_rounded,
+                      isDark: isDark,
+                      obscure: true,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildPasswordValidation(),
+                    const SizedBox(height: 18),
+                    
+                    // تأكيد كلمة المرور
+                    _buildEnhancedField(
+                      "تأكيد كلمة المرور",
+                      _confirmPasswordController,
+                      Icons.lock_open_rounded,
+                      isDark: isDark,
+                      obscure: true,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // الموافقة على الشروط
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF6366F1).withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Checkbox(
+                              value: _agreeToTerms,
+                              onChanged: (val) =>
+                                  setState(() => _agreeToTerms = val ?? false),
+                              activeColor: const Color(0xFF6366F1),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              "أوافق على الشروط والأحكام",
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    
+                    // زر إنشاء الحساب
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: _isAllValid && !_loading
+                            ? const LinearGradient(
+                                colors: [
+                                  Color(0xFF6366F1),
+                                  Color(0xFFA855F7),
+                                ],
+                                begin: Alignment.centerRight,
+                                end: Alignment.centerLeft,
+                              )
+                            : null,
+                        color: _isAllValid && !_loading
+                            ? null
+                            : Colors.grey[400],
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: _isAllValid && !_loading
+                            ? [
+                                BoxShadow(
+                                  color:
+                                      const Color(0xFF6366F1).withOpacity(0.4),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap:
+                              (_isAllValid && !_loading) ? _onRegisterPressed : null,
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            child: _loading
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 3,
+                                      ),
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle_rounded,
+                                        color: _isAllValid
+                                            ? Colors.white
+                                            : Colors.white70,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        "إنشاء الحساب",
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w900,
+                                          fontFamily: 'Cairo',
+                                          color: _isAllValid
+                                              ? Colors.white
+                                              : Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildEnhancedField(
+    String label,
+    TextEditingController controller,
+    IconData icon, {
+    bool obscure = false,
+    bool isDark = false,
+    bool enabled = true,
+    String? hint,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    void Function(String)? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Cairo',
+            color: isDark ? Colors.white : const Color(0xFF1F2937),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: enabled
+                ? (isDark ? Colors.grey[800] : Colors.white)
+                : (isDark ? Colors.grey[850] : Colors.grey[100]),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark
+                  ? Colors.grey[700]!
+                  : const Color(0xFF6366F1).withOpacity(0.2),
+              width: 1.5,
+            ),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF6366F1).withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: obscure,
+            enabled: enabled,
+            keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
+            onChanged: onChanged,
+            style: TextStyle(
+              fontSize: 15,
+              fontFamily: 'Cairo',
+              color: enabled
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : (isDark ? Colors.grey[600] : Colors.grey[500]),
+            ),
+            textAlign: TextAlign.right,
+            decoration: InputDecoration(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              border: InputBorder.none,
+              hintText: hint,
+              hintStyle: TextStyle(
+                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                fontSize: 14,
+                fontFamily: 'Cairo',
+              ),
+              prefixIcon: Icon(
+                icon,
+                color: enabled
+                    ? const Color(0xFF6366F1)
+                    : (isDark ? Colors.grey[700] : Colors.grey[400]),
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCityDropdown(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "المدينة",
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Cairo',
+            color: isDark ? Colors.white : const Color(0xFF1F2937),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[800] : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark
+                  ? Colors.grey[700]!
+                  : const Color(0xFF6366F1).withOpacity(0.2),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6366F1).withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: DropdownButtonFormField<String>(
+            value: _selectedCity,
+            hint: Row(
+              children: [
+                Icon(
+                  Icons.location_city_rounded,
+                  color: const Color(0xFF6366F1).withOpacity(0.7),
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'اختر مدينتك',
+                  style: TextStyle(
+                    color: isDark ? Colors.grey[400] : Colors.grey[500],
+                    fontSize: 14,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+              ],
+            ),
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            decoration: const InputDecoration(
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              border: InputBorder.none,
+            ),
+            dropdownColor: isDark ? Colors.grey[850] : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            items: _saudiCities.map((city) {
+              return DropdownMenuItem<String>(
+                value: city,
+                alignment: AlignmentDirectional.centerEnd,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      city,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontFamily: 'Cairo',
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.location_on_rounded,
+                      color: const Color(0xFF6366F1).withOpacity(0.6),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedCity = value;
+              });
+            },
+          ),
+        ),
+      ],
     );
   }
 
