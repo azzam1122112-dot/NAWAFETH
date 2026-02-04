@@ -272,8 +272,9 @@ class _ProviderMapSelectionScreenState
                           children: [
                             TileLayer(
                               urlTemplate:
-                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              userAgentPackageName: 'com.nawafeth.mobile',
+                                  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              subdomains: const ['a', 'b', 'c'],
+                              userAgentPackageName: 'com.nawafeth.app',
                             ),
                             MarkerLayer(
                               markers: _providers
