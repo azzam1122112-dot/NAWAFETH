@@ -59,7 +59,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
     await const SessionStorage().clear();
     if (!mounted) return;
     setState(() {});
-    Navigator.of(context).pushNamedAndRemoveUntil('/onboarding', (r) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/entry', (r) => false);
   }
 
   Future<void> _deleteAccount() async {

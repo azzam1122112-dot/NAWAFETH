@@ -216,10 +216,12 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: Colors.deepPurple,
         elevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         title: const Text(
           "تسجيل الدخول",
           style: TextStyle(

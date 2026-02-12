@@ -64,7 +64,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _skip() => _finishOnboarding();
 
   void _finishOnboarding() {
-    Navigator.pushReplacementNamed(context, '/home');
+    Navigator.pushReplacementNamed(context, '/entry');
   }
 
   @override

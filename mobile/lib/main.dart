@@ -19,6 +19,7 @@ import 'screens/orders_hub_screen.dart';
 
 // 🆕 شاشة الترحيب (Onboarding)
 import 'screens/onboarding_screen.dart';
+import 'screens/entry_screen.dart';
 
 import 'services/app_snackbar.dart';
 import 'services/notifications_badge_controller.dart';
@@ -130,8 +131,9 @@ class _NawafethAppState extends State<NawafethApp> {
         ],
 
         // ✅ المسارات
-        initialRoute: '/onboarding', // شاشة البداية عند أول تشغيل
+        initialRoute: '/entry', // شاشة البداية (تحدد الوجهة حسب حالة تسجيل الدخول)
         routes: {
+          '/entry': (context) => const EntryScreen(),
           '/onboarding': (context) => const OnboardingScreen(),
           '/home': (context) => const HomeScreen(),
           '/chats': (context) => const MyChatsScreen(),
