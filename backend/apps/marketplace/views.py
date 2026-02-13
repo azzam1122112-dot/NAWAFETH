@@ -391,7 +391,7 @@ class ProviderAssignedRequestAcceptView(APIView):
 			with transaction.atomic():
 				sr = (
 					ServiceRequest.objects.select_for_update()
-					.select_related("client", "provider")
+					.select_related("client")
 					.filter(id=request_id)
 					.first()
 				)
@@ -441,7 +441,7 @@ class ProviderAssignedRequestRejectView(APIView):
 		with transaction.atomic():
 			sr = (
 				ServiceRequest.objects.select_for_update()
-				.select_related("client", "provider")
+				.select_related("client")
 				.filter(id=request_id)
 				.first()
 			)
@@ -608,7 +608,7 @@ class RequestStartView(APIView):
 		with transaction.atomic():
 			sr = (
 				ServiceRequest.objects.select_for_update()
-				.select_related("client", "provider")
+				.select_related("client")
 				.filter(id=request_id)
 				.first()
 			)
@@ -656,7 +656,7 @@ class RequestCompleteView(APIView):
 		with transaction.atomic():
 			sr = (
 				ServiceRequest.objects.select_for_update()
-				.select_related("client", "provider")
+				.select_related("client")
 				.filter(id=request_id)
 				.first()
 			)
@@ -702,7 +702,7 @@ class RequestCancelView(APIView):
 		with transaction.atomic():
 			sr = (
 				ServiceRequest.objects.select_for_update()
-				.select_related("client", "provider")
+				.select_related("client")
 				.filter(id=request_id)
 				.first()
 			)
