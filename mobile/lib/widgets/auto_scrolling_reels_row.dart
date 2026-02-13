@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'video_reels.dart';
+import 'video_thumbnail_widget.dart';
 
 class AutoScrollingReelsRow extends StatefulWidget {
   final List<String> videoPaths;

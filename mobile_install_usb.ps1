@@ -107,6 +107,9 @@ try {
     $modeFlag = "--$Mode"
     Write-Host "Building APK ($Mode)..." -ForegroundColor Cyan
     flutter build apk $modeFlag
+    if ($LASTEXITCODE -ne 0) {
+        throw "flutter build apk failed (exit code $LASTEXITCODE)."
+    }
 
     $apkName = switch ($Mode) {
         'debug' { 'app-debug.apk' }

@@ -11,6 +11,7 @@ import '../widgets/auto_scrolling_reels_row.dart';
 import '../widgets/platform_report_dialog.dart';
 import '../widgets/video_reels.dart';
 import '../widgets/video_full_screen.dart';
+import '../widgets/video_thumbnail_widget.dart';
 import 'provider_dashboard/reviews_tab.dart';
 import 'service_request_form_screen.dart';
 import 'provider_service_detail_screen.dart';
