@@ -107,6 +107,8 @@ class BackofficeVerificationRequestsListView(generics.ListAPIView):
         qs = VerificationRequest.objects.all().order_by("-id")
 
         ap = getattr(user, "access_profile", None)
+        if not ap:
+            return VerificationRequest.objects.none()
         if ap and ap.level == "user":
             # موظف توثيق: يشوف غير المعيّن/المجدد (نمط بسيط الآن)
             qs = qs.filter(status__in=[VerificationStatus.NEW, VerificationStatus.IN_REVIEW, VerificationStatus.PENDING_PAYMENT])

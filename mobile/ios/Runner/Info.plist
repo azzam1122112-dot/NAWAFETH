@@ -46,9 +46,23 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
-	<!-- Location permission (geolocator) -->
+	<!-- Camera permission -->
+	<key>NSCameraUsageDescription</key>
+	<string>نحتاج الوصول إلى الكاميرا لالتقاط الصور والفيديو داخل التطبيق. We need camera access to capture photos and videos in the app.</string>
+
+	<!-- Microphone permission -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>نحتاج الوصول إلى الميكروفون لتسجيل المقاطع الصوتية داخل التطبيق. We need microphone access to record audio in the app.</string>
+
+	<!-- Photo Library permission -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>نحتاج الوصول إلى معرض الصور لاختيار الصور أو الفيديو ورفعها. We need photo library access to pick photos or videos for upload.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>قد نحتاج حفظ الوسائط في مكتبة الصور عند طلبك. We may need to save media to your photo library when you choose to do so.</string>
+
+	<!-- Location permission (geolocator - when in use only) -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>نحتاج موقعك لتحديد موقعك الجغرافي بدقة على الخريطة.</string>
+	<string>نحتاج موقعك أثناء استخدام التطبيق لتحديد موقعك على الخريطة. We need your location while using the app to place you accurately on the map.</string>
 
 	<!-- Google Maps (google_maps_flutter) -->
 	<key>GMSApiKey</key>

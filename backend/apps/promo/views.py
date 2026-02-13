@@ -108,6 +108,8 @@ class BackofficePromoRequestsListView(generics.ListAPIView):
         qs = PromoRequest.objects.all().order_by("-id")
 
         ap = getattr(user, "access_profile", None)
+        if not ap:
+            return PromoRequest.objects.none()
         if ap and ap.level == "user":
             qs = qs.filter(status__in=[
                 PromoRequestStatus.NEW,

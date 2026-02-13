@@ -1,4 +1,5 @@
 import pytest
+from datetime import timedelta
 from rest_framework.test import APIClient
 
 from django.utils import timezone
@@ -39,12 +40,14 @@ def test_create_promo_request(api, user):
         end_at=timezone.now(),
     )
 
+    start_at = timezone.now() + timedelta(days=1)
+    end_at = timezone.now() + timedelta(days=5)
     api.force_authenticate(user=user)
     r = api.post("/api/promo/requests/create/", data={
         "title": "test",
         "ad_type": "banner_home",
-        "start_at": "2026-02-01T10:00:00Z",
-        "end_at": "2026-02-05T10:00:00Z",
+        "start_at": start_at.isoformat(),
+        "end_at": end_at.isoformat(),
         "frequency": "60s",
         "position": "normal",
         "target_city": "Riyadh",
@@ -68,3 +71,18 @@ def test_backoffice_list(api, admin_user, user):
     r = api.get("/api/promo/backoffice/requests/")
     assert r.status_code == 200
     assert len(r.data) >= 1
+
+
+def test_backoffice_list_forbidden_without_access_profile(api, user):
+    PromoRequest.objects.create(
+        requester=user,
+        title="x",
+        ad_type="banner_home",
+        start_at="2026-02-01T10:00:00Z",
+        end_at="2026-02-05T10:00:00Z",
+        frequency="60s",
+        position="normal",
+    )
+    api.force_authenticate(user=user)
+    r = api.get("/api/promo/backoffice/requests/")
+    assert r.status_code == 403

@@ -70,6 +70,8 @@ class SupportTicketBackofficeListView(generics.ListAPIView):
 
         # لو ليس admin/power: قيد على المكلّف فقط (حسب مواصفات NAWAFETH)
         ap = getattr(user, "access_profile", None)
+        if not ap:
+            return SupportTicket.objects.none()
         if ap and ap.level == "user":
             qs = qs.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
 

@@ -784,150 +784,204 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   }
 
   Widget _buildProviderSection() {
-    if (isProviderRegistered) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF2C3E50), Color(0xFF4CA1AF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    final role = RoleController.instance.notifier.value;
+    final isProviderModeActive = role.isProvider;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF4CA1AF).withValues(alpha: 0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-             Row(
-               children: [
-                 Container(
-                   padding: const EdgeInsets.all(8),
-                   decoration: BoxDecoration(
-                     color: Colors.white.withValues(alpha: 0.2),
-                     borderRadius: BorderRadius.circular(12),
-                   ),
-                   child: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-                 ),
-                 const SizedBox(width: 12),
-                 const Expanded(
-                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     children: [
-                       Text(
-                         'التبديل بين الحسابات',
-                         style: TextStyle(
-                           fontFamily: 'Cairo',
-                           fontSize: 16,
-                           fontWeight: FontWeight.bold,
-                           color: Colors.white,
-                         ),
-                       ),
-                       Text(
-                         'اختر عميل أو مقدم خدمة بسهولة',
-                         style: TextStyle(
-                           fontFamily: 'Cairo',
-                           fontSize: 12,
-                           color: Colors.white70,
-                         ),
-                       ),
-                     ],
-                   ),
-                 ),
-               ],
-             ),
-             const SizedBox(height: 20),
-             SizedBox(
-               width: double.infinity,
-               child: ElevatedButton.icon(
-                 onPressed: () async => AccountSwitcher.show(context),
-                 style: ElevatedButton.styleFrom(
-                   backgroundColor: Colors.white,
-                   foregroundColor: const Color(0xFF2C3E50),
-                   elevation: 0,
-                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                   padding: const EdgeInsets.symmetric(vertical: 14),
-                 ),
-                 icon: const Icon(Icons.swap_horiz_rounded),
-                 label: const Text(
-                   'تبديل الحساب',
-                   style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                 ),
-               ),
-             ),
-          ],
-        ),
-      );
-    } else {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.1)),
-          boxShadow: [
-             BoxShadow(
-              color: Colors.grey.withValues(alpha: 0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 5)
-             )
-          ]
-        ),
-        child: Column(
-          children: [
-            const Icon(Icons.rocket_launch_outlined, size: 48, color: AppColors.deepPurple),
-            const SizedBox(height: 16),
-            const Text(
-              'هل لديك مهارة؟',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.softBlue,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'انضم إلى نخبة مزودي الخدمات وابدأ في زيادة دخلك اليوم معنا.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 14,
-                color: Colors.grey[600],
-                height: 1.5
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                   Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const RegisterServiceProviderPage(),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.deepPurple,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.account_circle_rounded, color: AppColors.deepPurple, size: 22),
+              SizedBox(width: 8),
+              Text(
+                'الحسابات المتاحة',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.softBlue,
                 ),
-                child: const Text('سجل كمقدم خدمة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'واجهة موحّدة لحساب العميل ومقدم الخدمة مع تمييز الحساب النشط بوضوح.',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _accountModeCard(
+            title: 'حساب العميل',
+            subtitle: 'تصفح وطلب الخدمات ومتابعة الطلبات',
+            icon: Icons.person_rounded,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            active: !isProviderModeActive,
+            enabled: true,
+          ),
+          const SizedBox(height: 10),
+          _accountModeCard(
+            title: 'حساب مقدم الخدمة',
+            subtitle: isProviderRegistered
+                ? 'إدارة الخدمات والطلبات والتقييمات'
+                : 'غير مفعل - سجّل كمقدم خدمة أولاً',
+            icon: Icons.storefront_rounded,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF00695C), Color(0xFF00A78E)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            active: isProviderModeActive,
+            enabled: isProviderRegistered,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                if (isProviderRegistered) {
+                  await AccountSwitcher.show(context);
+                  return;
+                }
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterServiceProviderPage(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.deepPurple,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: Icon(isProviderRegistered ? Icons.swap_horiz_rounded : Icons.rocket_launch_outlined),
+              label: Text(
+                isProviderRegistered ? 'تبديل الحساب' : 'تفعيل حساب مقدم الخدمة',
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
             ),
-          ],
-        ),
-      );
-    }
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _accountModeCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Gradient gradient,
+    required bool active,
+    required bool enabled,
+  }) {
+    final borderColor = active
+        ? AppColors.deepPurple.withValues(alpha: 0.45)
+        : Colors.grey.withValues(alpha: 0.20);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: enabled ? Colors.white : Colors.grey.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor, width: active ? 1.4 : 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: active ? 0.07 : 0.03),
+            blurRadius: active ? 14 : 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: gradient,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: enabled ? AppColors.softBlue : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    height: 1.3,
+                    color: enabled ? Colors.grey[600] : Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: active
+                  ? AppColors.deepPurple.withValues(alpha: 0.12)
+                  : Colors.grey.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              active ? 'نشط' : 'متاح',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: active ? AppColors.deepPurple : Colors.grey[700],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

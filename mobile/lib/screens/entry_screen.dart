@@ -88,8 +88,233 @@ class _EntryScreenState extends State<EntryScreen> {
           return const HomeScreen();
         }
 
-        return const LoginScreen(redirectTo: HomeScreen());
+        return const _GuestEntryLanding();
       },
+    );
+  }
+}
+
+class _GuestEntryLanding extends StatelessWidget {
+  const _GuestEntryLanding();
+
+  static const String _brandLogoAsset = 'assets/images/p.png';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: [
+              Color(0xFF1D1458),
+              Color(0xFF3E2F8E),
+              Color(0xFF8E7CFF),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            child: Column(
+              children: [
+                const Spacer(flex: 2),
+                _buildLogoBadge(),
+                const SizedBox(height: 20),
+                const Text(
+                  'نوافذ',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'منصة رقمية متكاملة تربط العملاء بمقدمي الخدمات بسهولة وموثوقية.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 15,
+                    height: 1.6,
+                    color: Colors.white.withAlpha(230),
+                  ),
+                ),
+                const SizedBox(height: 26),
+                _buildFeatureStrip(),
+                const Spacer(flex: 3),
+                _buildActions(context),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogoBadge() {
+    return Container(
+      width: 118,
+      height: 118,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withAlpha(35),
+        border: Border.all(color: Colors.white.withAlpha(65), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(35),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ClipOval(
+          child: Image.asset(
+            _brandLogoAsset,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => const Icon(
+              Icons.widgets_rounded,
+              color: Colors.white,
+              size: 48,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureStrip() {
+    Widget item(IconData icon, String text) {
+      return Expanded(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withAlpha(28),
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: Colors.white.withAlpha(220),
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withAlpha(30), width: 1),
+      ),
+      child: Row(
+        children: [
+          item(Icons.verified_user_rounded, 'مزودون موثوقون'),
+          item(Icons.flash_on_rounded, 'تنفيذ سريع'),
+          item(Icons.support_agent_rounded, 'دعم مستمر'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    final login = ElevatedButton.icon(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LoginScreen(redirectTo: HomeScreen()),
+          ),
+        );
+      },
+      icon: const Icon(Icons.login_rounded, size: 20),
+      label: const Text(
+        'تسجيل الدخول',
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        minimumSize: const Size.fromHeight(54),
+        backgroundColor: const Color(0xFF00C2A8),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+
+    final guest = OutlinedButton.icon(
+      onPressed: () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      },
+      icon: const Icon(Icons.travel_explore_rounded, size: 20),
+      label: const Text(
+        'الدخول كزائر',
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(52),
+        foregroundColor: Colors.white,
+        side: BorderSide(color: Colors.white.withAlpha(160), width: 1.1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(16),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withAlpha(24), width: 1),
+          ),
+          child: Text(
+            'بمجرد إدخال رقم الجوال وتأكيده، إذا لم يكن لديك حساب مسبق سيتم إنشاء حساب جديد تلقائيًا.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              height: 1.5,
+              color: Colors.white.withAlpha(235),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        login,
+        const SizedBox(height: 10),
+        guest,
+        const SizedBox(height: 10),
+      ],
     );
   }
 }

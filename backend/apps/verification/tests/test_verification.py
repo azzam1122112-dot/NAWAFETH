@@ -51,3 +51,10 @@ def test_backoffice_list(api, admin_user, user):
     r = api.get("/api/verification/backoffice/requests/")
     assert r.status_code == 200
     assert len(r.data) >= 1
+
+
+def test_backoffice_list_forbidden_without_access_profile(api, user):
+    VerificationRequest.objects.create(requester=user, badge_type="blue")
+    api.force_authenticate(user=user)
+    r = api.get("/api/verification/backoffice/requests/")
+    assert r.status_code == 403

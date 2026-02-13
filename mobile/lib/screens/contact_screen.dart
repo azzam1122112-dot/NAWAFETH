@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
+import '../core/api/device_features_api.dart';
+import '../core/permissions/permissions_service.dart';
 import '../models/ticket_model.dart';
 
 class ContactScreen extends StatefulWidget {
@@ -21,6 +24,10 @@ class ContactScreen extends StatefulWidget {
 }
 
 class _ContactScreenState extends State<ContactScreen> {
+  final DeviceFeaturesApi _deviceFeaturesApi = DeviceFeaturesApi();
+  bool _isFeatureActionInProgress = false;
+  double _uploadProgress = 0;
+
   // البيانات التجريبية
   List<Ticket> tickets = [
     Ticket(
@@ -128,32 +135,121 @@ class _ContactScreenState extends State<ContactScreen> {
   }
 
   Future<void> _pickImage() async {
+    final perm = await PermissionsService.ensureGallery();
+    if (!perm.isGranted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(perm.messageAr)),
+      );
+      return;
+    }
+
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       setState(() {
-        attachments.add(image.path);
+        _isFeatureActionInProgress = true;
+        _uploadProgress = 0;
       });
+      final result = await _deviceFeaturesApi.uploadImage(
+        file: File(image.path),
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() => _uploadProgress = p);
+        },
+      );
+      setState(() {
+        attachments.add(image.path);
+        _isFeatureActionInProgress = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.messageAr)),
+      );
     }
   }
 
   Future<void> _takePhoto() async {
+    final perm = await PermissionsService.ensureCamera();
+    if (!perm.isGranted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(perm.messageAr)),
+      );
+      return;
+    }
+
     final ImagePicker picker = ImagePicker();
     final XFile? photo = await picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
       setState(() {
-        attachments.add(photo.path);
+        _isFeatureActionInProgress = true;
+        _uploadProgress = 0;
       });
+      final result = await _deviceFeaturesApi.uploadImage(
+        file: File(photo.path),
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() => _uploadProgress = p);
+        },
+      );
+      setState(() {
+        attachments.add(photo.path);
+        _isFeatureActionInProgress = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.messageAr)),
+      );
     }
   }
 
   Future<void> _pickFile() async {
+    final perm = await PermissionsService.ensureFileAccess();
+    if (!perm.isGranted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(perm.messageAr)),
+      );
+      return;
+    }
+
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result != null && result.files.single.path != null) {
       setState(() {
-        attachments.add(result.files.single.path!);
+        _isFeatureActionInProgress = true;
+        _uploadProgress = 0;
       });
+      final upload = await _deviceFeaturesApi.uploadDocument(
+        file: File(result.files.single.path!),
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() => _uploadProgress = p);
+        },
+      );
+      setState(() {
+        attachments.add(result.files.single.path!);
+        _isFeatureActionInProgress = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(upload.messageAr)),
+      );
     }
+  }
+
+  Future<void> _sendCurrentLocation() async {
+    setState(() {
+      _isFeatureActionInProgress = true;
+    });
+    final result = await _deviceFeaturesApi.submitCurrentLocation();
+    if (!mounted) return;
+    setState(() {
+      _isFeatureActionInProgress = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.messageAr)),
+    );
   }
 
   void _createNewTicket() {
@@ -625,6 +721,22 @@ class _ContactScreenState extends State<ContactScreen> {
                     ),
                   ),
                 ],
+                if (_isFeatureActionInProgress) ...[
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(value: _uploadProgress > 0 ? _uploadProgress : null),
+                ],
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isFeatureActionInProgress ? null : _sendCurrentLocation,
+                    icon: const Icon(Icons.my_location),
+                    label: const Text(
+                      'إرسال موقعي الحالي',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

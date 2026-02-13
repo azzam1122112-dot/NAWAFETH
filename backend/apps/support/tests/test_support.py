@@ -49,3 +49,10 @@ def test_backoffice_list(api, staff_user, client_user):
     r = api.get("/api/support/backoffice/tickets/")
     assert r.status_code == 200
     assert len(r.data) >= 1
+
+
+def test_backoffice_list_forbidden_without_access_profile(api, client_user):
+    SupportTicket.objects.create(requester=client_user, ticket_type="tech", description="test")
+    api.force_authenticate(user=client_user)
+    r = api.get("/api/support/backoffice/tickets/")
+    assert r.status_code == 403

@@ -11,27 +11,11 @@ class IsRequesterOrBackofficeSupport(BasePermission):
 
     message = "غير مصرح لك."
 
-    def has_permission(self, request, view):
+    def _is_backoffice_request(self, request) -> bool:
+        return "/backoffice/" in (getattr(request, "path", "") or "")
+
+    def _has_backoffice_access(self, request) -> bool:
         user = request.user
-        if not user or not user.is_authenticated:
-            return False
-
-        # السماح للعميل بإنشاء تذكرة
-        if request.method == "POST":
-            return True
-
-        # غير POST: يحتاج يا (owner) أو backoffice
-        return True
-
-    def has_object_permission(self, request, view, obj):
-        user = request.user
-
-        # مالك التذكرة
-        if obj.requester_id == user.id:
-            # العميل لا يقدر يغير status/assignment عبر endpoints التشغيل
-            return True
-
-        # backoffice support check
         ap = getattr(user, "access_profile", None)
         if not ap:
             return False
@@ -44,9 +28,32 @@ class IsRequesterOrBackofficeSupport(BasePermission):
             self.message = "حساب QA للعرض فقط."
             return False
 
-        # admin/power يشوف كله
         if ap.level in ("admin", "power"):
             return True
 
-        # user يحتاج وصول للوحة support
         return ap.is_allowed("support")
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        # Endpoints under /backoffice/ must always be protected by backoffice access.
+        if self._is_backoffice_request(request):
+            return self._has_backoffice_access(request)
+
+        # Client-side support endpoints are available to authenticated users.
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+
+        # Backoffice objects require backoffice access even if requester matches.
+        if self._is_backoffice_request(request):
+            return self._has_backoffice_access(request)
+
+        # مالك التذكرة
+        if obj.requester_id == user.id:
+            return True
+
+        return self._has_backoffice_access(request)

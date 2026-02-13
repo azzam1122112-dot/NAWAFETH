@@ -248,6 +248,50 @@ class MarketplaceApi {
     }
   }
 
+  Future<bool> startAssignedRequest({required int requestId, String? note}) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/start/',
+        data: {
+          if ((note ?? '').trim().isNotEmpty) 'note': note,
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> completeAssignedRequest({required int requestId, String? note}) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/complete/',
+        data: {
+          if ((note ?? '').trim().isNotEmpty) 'note': note,
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> createOffer({
     required int requestId,
     required double price,

@@ -39,7 +39,7 @@ class AccountSwitchSheet extends StatelessWidget {
                     height: 42,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF4CA1AF), Color(0xFF2C3E50)],
+                        colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -72,7 +72,7 @@ class AccountSwitchSheet extends StatelessWidget {
                 subtitle: 'تصفح واطلب الخدمات',
                 icon: Icons.person_rounded,
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+                  colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -86,7 +86,7 @@ class AccountSwitchSheet extends StatelessWidget {
                 subtitle: providerEnabled ? 'إدارة خدماتك وطلباتك' : 'غير متاح — سجّل كمقدم خدمة أولاً',
                 icon: Icons.storefront_rounded,
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
+                  colors: [Color(0xFF00695C), Color(0xFF00A78E)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -99,7 +99,10 @@ class AccountSwitchSheet extends StatelessWidget {
                 width: double.infinity,
                 child: TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+                  child: const Text(
+                    'إغلاق',
+                    style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF5B5BD6), fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ],
@@ -186,7 +189,7 @@ class _AccountChoiceCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (selected)
-                  const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                  const Icon(Icons.check_circle, color: Color(0xFF5B5BD6))
                 else
                   const Icon(Icons.chevron_left, color: Colors.black45),
               ],
