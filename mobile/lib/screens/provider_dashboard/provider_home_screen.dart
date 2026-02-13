@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/account_api.dart';
@@ -11,7 +10,6 @@ import '../../services/api_config.dart';
 import '../../services/providers_api.dart';
 import '../../services/reviews_api.dart';
 import '../../services/account_switcher.dart';
-import '../../utils/user_scoped_prefs.dart';
 import '../../constants/colors.dart';
 
 import '../../widgets/bottom_nav.dart';
@@ -66,7 +64,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
   Future<void> _loadProviderData() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final me = await AccountApi().me();
       final id = me['provider_profile_id'];
       final int? providerId = id is int ? id : int.tryParse((id ?? '').toString());
@@ -84,18 +81,42 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       try {
         myProfile = await ProvidersApi().getMyProviderProfile();
       } catch (_) {}
+      List<int> subcategoryIds = <int>[];
+      try {
+        subcategoryIds = await ProvidersApi().getMyProviderSubcategories();
+      } catch (_) {
+        subcategoryIds = <int>[];
+      }
 
       final providerDisplayName = (myProfile?['display_name'] ?? '').toString().trim();
       final providerUsername = (me['username'] ?? '').toString().trim();
       final providerCity = (myProfile?['city'] ?? '').toString().trim();
 
-      // --- Profile Completion Logic (shared) ---
-      final userId = await UserScopedPrefs.readUserId();
-      final sectionDone = <String, bool>{};
-      for (final id in ProviderCompletionUtils.sectionKeys) {
-        final baseKey = 'provider_section_done_$id';
-        sectionDone[id] =
-            (await UserScopedPrefs.getBoolScoped(prefs, baseKey, userId: userId)) ?? false;
+      // --- Profile Completion Logic (backend-driven) ---
+      bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
+      bool hasAnyList(dynamic v) =>
+          v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
+      final sectionDone = <String, bool>{
+        'service_details': subcategoryIds.isNotEmpty,
+        'contact_full':
+            hasAnyString(myProfile?['whatsapp']) ||
+            hasAnyString(myProfile?['website']) ||
+            hasAnyList(myProfile?['social_links']),
+        'lang_loc':
+            hasAnyList(myProfile?['languages']) ||
+            (myProfile?['lat'] != null && myProfile?['lng'] != null),
+        'additional':
+            hasAnyString(myProfile?['about_details']) ||
+            hasAnyList(myProfile?['qualifications']) ||
+            hasAnyList(myProfile?['experiences']),
+        'content': hasAnyList(myProfile?['content_sections']),
+        'seo':
+            hasAnyString(myProfile?['seo_keywords']) ||
+            hasAnyString(myProfile?['seo_meta_description']) ||
+            hasAnyString(myProfile?['seo_slug']),
+      };
+      for (final key in ProviderCompletionUtils.sectionKeys) {
+        sectionDone.putIfAbsent(key, () => false);
       }
       final completionPercent = ProviderCompletionUtils.completionPercent(
         me: me,

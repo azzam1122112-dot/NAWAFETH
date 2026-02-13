@@ -59,6 +59,17 @@ class ServiceRequest(models.Model):
 
 	created_at = models.DateTimeField(auto_now_add=True)
 	expires_at = models.DateTimeField(null=True, blank=True)
+	expected_delivery_at = models.DateTimeField(null=True, blank=True)
+	estimated_service_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+	received_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+	remaining_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+	delivered_at = models.DateTimeField(null=True, blank=True)
+	actual_service_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+	canceled_at = models.DateTimeField(null=True, blank=True)
+	cancel_reason = models.CharField(max_length=255, blank=True)
+	provider_inputs_approved = models.BooleanField(null=True, blank=True)
+	provider_inputs_decided_at = models.DateTimeField(null=True, blank=True)
+	provider_inputs_decision_note = models.CharField(max_length=255, blank=True)
 
 	def mark_sent(self) -> None:
 		if self.status != RequestStatus.NEW:

@@ -156,6 +156,9 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
         return self._status_group_value(getattr(obj, "status", ""))
 
     def get_status_label(self, obj):
+        raw = (getattr(obj, "status", "") or "").strip().lower()
+        if raw == "accepted":
+            return "بانتظار اعتماد العميل"
         group = self.get_status_group(obj)
         return {
             "new": "جديد",
@@ -185,6 +188,17 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
             "provider",
             "provider_name",
             "provider_phone",
+            "expected_delivery_at",
+            "estimated_service_amount",
+            "received_amount",
+            "remaining_amount",
+            "delivered_at",
+            "actual_service_amount",
+            "canceled_at",
+            "cancel_reason",
+            "provider_inputs_approved",
+            "provider_inputs_decided_at",
+            "provider_inputs_decision_note",
             "subcategory",
             "subcategory_name",
             "category_name",
@@ -218,6 +232,45 @@ class OfferListSerializer(serializers.ModelSerializer):
 
 class RequestActionSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class RequestStartSerializer(RequestActionSerializer):
+    expected_delivery_at = serializers.DateTimeField(required=True)
+    estimated_service_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+    received_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+
+    def validate(self, attrs):
+        estimated = attrs.get("estimated_service_amount")
+        received = attrs.get("received_amount")
+        if estimated is not None and estimated < 0:
+            raise serializers.ValidationError({"estimated_service_amount": "القيمة يجب أن تكون موجبة"})
+        if received is not None and received < 0:
+            raise serializers.ValidationError({"received_amount": "القيمة يجب أن تكون موجبة"})
+        if estimated is not None and received is not None and received > estimated:
+            raise serializers.ValidationError({"received_amount": "المبلغ المستلم لا يمكن أن يكون أكبر من القيمة المقدرة"})
+        if estimated is not None and received is not None:
+            attrs["remaining_amount"] = estimated - received
+        return attrs
+
+
+class ProviderInputsDecisionSerializer(RequestActionSerializer):
+    approved = serializers.BooleanField(required=True)
+
+
+class RequestCompleteSerializer(RequestActionSerializer):
+    delivered_at = serializers.DateTimeField(required=True)
+    actual_service_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+
+    def validate(self, attrs):
+        amount = attrs.get("actual_service_amount")
+        if amount is not None and amount < 0:
+            raise serializers.ValidationError({"actual_service_amount": "القيمة يجب أن تكون موجبة"})
+        return attrs
+
+
+class ProviderRejectSerializer(RequestActionSerializer):
+    canceled_at = serializers.DateTimeField(required=True)
+    cancel_reason = serializers.CharField(max_length=255, required=True, allow_blank=False)
 
 
 class ServiceRequestAttachmentSerializer(serializers.ModelSerializer):

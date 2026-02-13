@@ -11,6 +11,7 @@ from .views import (
     ProviderRequestDetailView,
     ProviderAssignedRequestAcceptView,
     ProviderAssignedRequestRejectView,
+    ProviderInputsDecisionView,
     provider_requests,
     RequestCancelView,
     RequestCompleteView,
@@ -107,5 +108,10 @@ urlpatterns += [
         "requests/<int:request_id>/cancel/",
         RequestCancelView.as_view(),
         name="request_cancel",
+    ),
+    path(
+        "requests/<int:request_id>/provider-inputs/decision/",
+        ProviderInputsDecisionView.as_view(),
+        name="provider_inputs_decision",
     ),
 ]

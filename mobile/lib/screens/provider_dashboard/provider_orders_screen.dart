@@ -10,14 +10,14 @@ import 'provider_order_details_screen.dart';
 /// صفحة تتبع الطلبات الخاصة بمزود الخدمة
 /// ====================================
 /// هذه الصفحة مخصصة فقط لمزودي الخدمة لرؤية وإدارة طلباتهم.
-/// 
+///
 /// التبويبات الثلاثة:
 /// 1. طلباتي (Assigned): الطلبات المُسندة للمزود (مرتبطة بـ /marketplace/provider/requests/)
 /// 2. العاجلة المتاحة (Urgent Available): الطلبات العاجلة التي يمكن قبولها (مرتبطة بـ /marketplace/provider/urgent/available/)
 /// 3. العروض المتاحة (Competitive Available): طلبات العروض التنافسية (مرتبطة بـ /marketplace/provider/competitive/available/)
-/// 
+///
 /// ملاحظة مهمة: هذه الصفحة منفصلة تماماً عن ClientOrdersScreen (طلبات العميل)
-/// 
+///
 class ProviderOrdersScreen extends StatefulWidget {
   final bool embedded;
 
@@ -27,7 +27,8 @@ class ProviderOrdersScreen extends StatefulWidget {
   State<ProviderOrdersScreen> createState() => _ProviderOrdersScreenState();
 }
 
-class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with SingleTickerProviderStateMixin {
+class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
+    with SingleTickerProviderStateMixin {
   static const Color _mainColor = Colors.deepPurple;
 
   String _selectedAssignedStatus = 'جديد';
@@ -88,11 +89,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _refreshAll() async {
-    await Future.wait([
-      _fetchAssigned(),
-      _fetchUrgent(),
-      _fetchCompetitive(),
-    ]);
+    await Future.wait([_fetchAssigned(), _fetchUrgent(), _fetchCompetitive()]);
   }
 
   Future<void> _fetchAssigned() async {
@@ -118,7 +115,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           break;
       }
 
-      final list = await MarketplaceApi().getMyProviderRequests(statusGroup: statusGroup);
+      final list = await MarketplaceApi().getMyProviderRequests(
+        statusGroup: statusGroup,
+      );
       if (!mounted) return;
       setState(() {
         _assigned = list.cast<Map<String, dynamic>>();
@@ -137,7 +136,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (!mounted) return;
     setState(() => _loadingUrgent = true);
     try {
-      final list = await MarketplaceApi().getAvailableUrgentRequestsForProvider();
+      final list = await MarketplaceApi()
+          .getAvailableUrgentRequestsForProvider();
       if (!mounted) return;
       setState(() {
         _urgent = list.cast<Map<String, dynamic>>();
@@ -156,7 +156,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (!mounted) return;
     setState(() => _loadingCompetitive = true);
     try {
-      final list = await MarketplaceApi().getAvailableCompetitiveRequestsForProvider();
+      final list = await MarketplaceApi()
+          .getAvailableCompetitiveRequestsForProvider();
       if (!mounted) return;
       setState(() {
         _competitive = list.cast<Map<String, dynamic>>();
@@ -179,6 +180,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       case 'sent':
         return 'جديد';
       case 'accepted':
+        return 'بانتظار اعتماد العميل';
       case 'in_progress':
         return 'تحت التنفيذ';
       case 'completed':
@@ -211,7 +213,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         return 'in_progress';
       }
       if (raw == 'completed') return 'completed';
-      if (raw == 'cancelled' || raw == 'canceled' || raw == 'expired') return 'cancelled';
+      if (raw == 'cancelled' || raw == 'canceled' || raw == 'expired')
+        return 'cancelled';
     }
 
     final label = (req['status_label'] ?? '').toString().trim();
@@ -259,6 +262,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       title: (req['title'] ?? '').toString(),
       details: (req['description'] ?? '').toString(),
       attachments: attachments,
+      deliveredAt: DateTime.tryParse((req['delivered_at'] ?? '').toString()),
+      actualServiceAmountSR: double.tryParse(
+        (req['actual_service_amount'] ?? '').toString(),
+      ),
+      canceledAt: DateTime.tryParse((req['canceled_at'] ?? '').toString()),
+      cancelReason: (req['cancel_reason'] ?? '').toString().trim().isEmpty
+          ? null
+          : (req['cancel_reason'] ?? '').toString(),
     );
   }
 
@@ -279,6 +290,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         return Colors.green;
       case 'ملغي':
         return Colors.red;
+      case 'بانتظار اعتماد العميل':
       case 'تحت التنفيذ':
         return Colors.orange;
       case 'جديد':
@@ -388,15 +400,24 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   Widget _requestCard(Map<String, dynamic> req, {required bool urgentTab}) {
     final statusLabel = (req['status_label'] ?? '').toString().trim();
-    final statusAr = statusLabel.isNotEmpty ? statusLabel : _mapStatus((req['status'] ?? '').toString());
+    final statusAr = statusLabel.isNotEmpty
+        ? statusLabel
+        : _mapStatus((req['status'] ?? '').toString());
     final statusColor = _statusColor(statusAr);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isUrgent = type == 'urgent';
     final isCompetitive = type == 'competitive';
     final typeLabel = isUrgent ? 'عاجل' : (isCompetitive ? 'عروض' : 'عادي');
-    final typeColor = isUrgent ? Colors.redAccent : (isCompetitive ? Colors.blueGrey : _mainColor);
+    final typeColor = isUrgent
+        ? Colors.redAccent
+        : (isCompetitive ? Colors.blueGrey : _mainColor);
     final rawStatus = (req['status'] ?? '').toString().trim().toLowerCase();
-    final showStartButton = !urgentTab && (rawStatus == 'new' || rawStatus == 'sent' || rawStatus == 'open' || rawStatus == 'pending');
+    final showStartButton =
+        !urgentTab &&
+        (rawStatus == 'new' ||
+            rawStatus == 'sent' ||
+            rawStatus == 'open' ||
+            rawStatus == 'pending');
 
     return GestureDetector(
       onTap: () => _openRequestDetails(req, urgentTab: urgentTab),
@@ -406,51 +427,101 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '#${_extractRequestId(req) ?? '-'}  ${(req['title'] ?? '').toString()}',
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 6,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: typeColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: typeColor.withOpacity(0.4)),
                   ),
-                  child: Text(typeLabel, style: TextStyle(color: typeColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    typeLabel,
+                    style: TextStyle(
+                      color: typeColor,
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: statusColor.withOpacity(0.4)),
                   ),
-                  child: Text(statusAr, style: TextStyle(color: statusColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    statusAr,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
               '${(req['subcategory_name'] ?? '').toString()} • ${(req['city'] ?? '').toString()}',
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black54),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_formatDate(req['created_at']), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45)),
+                Text(
+                  _formatDate(req['created_at']),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: Colors.black45,
+                  ),
+                ),
                 if ((req['client_phone'] ?? '').toString().trim().isNotEmpty)
-                  Text((req['client_phone'] ?? '').toString(), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45)),
+                  Text(
+                    (req['client_phone'] ?? '').toString(),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      color: Colors.black45,
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 10),
@@ -458,7 +529,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               (req['description'] ?? '').toString(),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black87, height: 1.5),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: Colors.black87,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 12),
             Row(
@@ -471,24 +547,43 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                         backgroundColor: _mainColor,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       icon: const Icon(Icons.play_circle_outline, size: 18),
-                      label: const Text('بدء التنفيذ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
+                      label: const Text(
+                        'بدء التنفيذ',
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                 ],
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _openRequestDetails(req, urgentTab: urgentTab),
+                    onPressed: () =>
+                        _openRequestDetails(req, urgentTab: urgentTab),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       side: BorderSide(color: Colors.grey.shade400),
                     ),
                     icon: const Icon(Icons.article_outlined, size: 18),
-                    label: const Text('شرح الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
+                    label: const Text(
+                      'شرح الطلب',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -499,11 +594,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     );
   }
 
-  Future<void> _openRequestDetails(Map<String, dynamic> req, {required bool urgentTab}) async {
+  Future<void> _openRequestDetails(
+    Map<String, dynamic> req, {
+    required bool urgentTab,
+  }) async {
     final requestId = _extractRequestId(req);
     Map<String, dynamic> details = req;
     if (requestId != null) {
-      final fresh = await MarketplaceApi().getProviderRequestDetail(requestId: requestId);
+      final fresh = await MarketplaceApi().getProviderRequestDetail(
+        requestId: requestId,
+      );
       if (fresh != null) {
         details = {...req, ...fresh};
       }
@@ -511,7 +611,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (!mounted) return;
     if (requestId == null || requestId <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('رقم الطلب غير صالح', style: TextStyle(fontFamily: 'Cairo'))),
+        const SnackBar(
+          content: Text(
+            'رقم الطلب غير صالح',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
       );
       return;
     }
@@ -526,9 +631,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           requestType: (details['request_type'] ?? '').toString(),
           statusLogs: (details['status_logs'] is List)
               ? (details['status_logs'] as List)
-                  .whereType<Map>()
-                  .map((e) => Map<String, dynamic>.from(e))
-                  .toList()
+                    .whereType<Map>()
+                    .map((e) => Map<String, dynamic>.from(e))
+                    .toList()
               : const [],
         ),
       ),
@@ -544,7 +649,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('رقم الطلب غير صالح', style: TextStyle(fontFamily: 'Cairo')),
+          content: Text(
+            'رقم الطلب غير صالح',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -557,8 +665,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('بدء التنفيذ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'بدء التنفيذ',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
           content: const Text(
             'هل تريد بدء تنفيذ هذا الطلب؟',
             style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
@@ -572,9 +685,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _mainColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: const Text('بدء', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+              child: const Text(
+                'بدء',
+                style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -583,27 +701,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
     if (confirm != true || !mounted) return;
 
-    // إرسال الطلب للـ backend
-    final success = await MarketplaceApi().startAssignedRequest(requestId: requestId);
-    
     if (!mounted) return;
-    
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم بدء تنفيذ الطلب بنجاح', style: TextStyle(fontFamily: 'Cairo')),
-          backgroundColor: Colors.green,
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'يرجى تعبئة بيانات "تحت التنفيذ" الإلزامية داخل تفاصيل الطلب.',
+          style: TextStyle(fontFamily: 'Cairo'),
         ),
-      );
-      await _refreshAll();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('حدث خطأ أثناء بدء التنفيذ، يرجى المحاولة مرة أخرى', style: TextStyle(fontFamily: 'Cairo')),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+      ),
+    );
+    await _openRequestDetails(req, urgentTab: false);
   }
 
   Widget _searchBar() {
@@ -646,12 +753,22 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         children: [
           Icon(Icons.inbox_outlined, size: 42, color: Colors.grey.shade500),
           const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: 'Cairo', color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: Colors.grey.shade600,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -663,7 +780,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final isUrgent = tabIndex == 1;
     final isCompetitive = tabIndex == 2;
 
-    final loading = isAssigned ? _loadingAssigned : (isUrgent ? _loadingUrgent : _loadingCompetitive);
+    final loading = isAssigned
+        ? _loadingAssigned
+        : (isUrgent ? _loadingUrgent : _loadingCompetitive);
     final list = isAssigned ? _assigned : (isUrgent ? _urgent : _competitive);
     final filtered = _filtered(list);
 
@@ -672,7 +791,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     }
 
     return RefreshIndicator(
-      onRefresh: isAssigned ? _fetchAssigned : (isUrgent ? _fetchUrgent : _fetchCompetitive),
+      onRefresh: isAssigned
+          ? _fetchAssigned
+          : (isUrgent ? _fetchUrgent : _fetchCompetitive),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -684,12 +805,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             _emptyState(
               isUrgent
                   ? 'لا توجد طلبات عاجلة متاحة حالياً'
-                  : (isCompetitive ? 'لا توجد طلبات عروض متاحة حالياً' : 'لا توجد طلبات حالياً'),
+                  : (isCompetitive
+                        ? 'لا توجد طلبات عروض متاحة حالياً'
+                        : 'لا توجد طلبات حالياً'),
               isUrgent
                   ? 'تأكد من تفعيل الطلبات العاجلة واختيار تخصصاتك في إكمال الملف التعريفي.'
                   : (isCompetitive
-                      ? 'ستظهر هنا طلبات العروض المطابقة لتخصصك ومدينتك لتقديم عروضك.'
-                      : 'ستظهر الطلبات هنا عندما يتم إسنادها لك.'),
+                        ? 'ستظهر هنا طلبات العروض المطابقة لتخصصك ومدينتك لتقديم عروضك.'
+                        : 'ستظهر الطلبات هنا عندما يتم إسنادها لك.'),
             )
           else
             ...filtered.map((e) => _requestCard(e, urgentTab: isUrgent)),
@@ -701,7 +824,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   @override
   Widget build(BuildContext context) {
     if (!_accountChecked) {
-      if (widget.embedded) return const Center(child: CircularProgressIndicator());
+      if (widget.embedded)
+        return const Center(child: CircularProgressIndicator());
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
@@ -722,7 +846,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 indicatorColor: Colors.white,
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
-                labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                labelStyle: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                ),
                 tabs: const [
                   Tab(text: 'طلباتي'),
                   Tab(text: 'العاجلة المتاحة'),
@@ -752,11 +879,17 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         appBar: AppBar(
           backgroundColor: _mainColor,
           foregroundColor: Colors.white,
-          title: const Text('تتبع الطلبات', style: TextStyle(fontFamily: 'Cairo')),
+          title: const Text(
+            'تتبع الطلبات',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
           bottom: TabBar(
             controller: _tabController,
             indicatorColor: Colors.white,
-            labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+            labelStyle: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
             tabs: const [
               Tab(text: 'طلباتي'),
               Tab(text: 'العاجلة المتاحة'),

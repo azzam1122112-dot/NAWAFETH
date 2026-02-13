@@ -3,7 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
 from apps.providers.models import Category, SubCategory, ProviderProfile, ProviderCategory
-from apps.marketplace.models import ServiceRequest, RequestType, RequestStatus, Offer
+from apps.marketplace.models import ServiceRequest, RequestType, RequestStatus, Offer, RequestStatusLog
 from apps.messaging.models import Thread, Message
 from apps.notifications.models import Notification
 
@@ -63,3 +63,46 @@ def test_notifications_api_list_and_unread():
     r2 = api.get("/api/notifications/unread-count/")
     assert r2.status_code == 200
     assert r2.data["unread"] == 1
+
+
+@pytest.mark.django_db
+def test_status_log_creates_notification_for_counterparty():
+    client_user = User.objects.create_user(phone="0509000021")
+    provider_user = User.objects.create_user(phone="0509000022")
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="صيانة")
+    sub = SubCategory.objects.create(category=cat, name="كهرباء")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب تحديث حالة",
+        description="وصف",
+        request_type=RequestType.NORMAL,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    RequestStatusLog.objects.create(
+        request=sr,
+        actor=provider_user,
+        from_status=RequestStatus.ACCEPTED,
+        to_status=RequestStatus.IN_PROGRESS,
+        note="بدء التنفيذ",
+    )
+
+    notif = Notification.objects.filter(user=client_user, title="تحديث على الطلب").first()
+    assert notif is not None
+    assert "تحت التنفيذ" in notif.body

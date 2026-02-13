@@ -6,6 +6,7 @@ import '../../constants/colors.dart';
 import '../../utils/user_scoped_prefs.dart';
 
 import '../../services/account_api.dart';
+import '../../services/providers_api.dart';
 import '../../services/session_storage.dart';
 
 // ⬇️ استيراد القوالب الموجودة
@@ -292,6 +293,18 @@ class _ProviderProfileCompletionScreenState
       }
 
       final me = await AccountApi().me();
+      Map<String, dynamic>? providerProfile;
+      try {
+        providerProfile = await ProvidersApi().getMyProviderProfile();
+      } catch (_) {
+        providerProfile = null;
+      }
+      List<int> subcategories = <int>[];
+      try {
+        subcategories = await ProvidersApi().getMyProviderSubcategories();
+      } catch (_) {
+        subcategories = <int>[];
+      }
 
       String? nonEmpty(dynamic v) {
         final s = (v ?? '').toString().trim();
@@ -330,6 +343,35 @@ class _ProviderProfileCompletionScreenState
         _username = username;
         _email = email;
         _phone = phone;
+        if (providerProfile != null) {
+          bool hasAnyList(dynamic v) => v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
+          bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
+
+          _sections['service_details'] =
+              (_sections['service_details'] ?? false) || subcategories.isNotEmpty;
+          _sections['contact_full'] =
+              (_sections['contact_full'] ?? false) ||
+              hasAnyString(providerProfile['whatsapp']) ||
+              hasAnyString(providerProfile['website']) ||
+              hasAnyList(providerProfile['social_links']);
+          _sections['lang_loc'] =
+              (_sections['lang_loc'] ?? false) ||
+              hasAnyList(providerProfile['languages']) ||
+              (providerProfile['lat'] != null && providerProfile['lng'] != null);
+          _sections['additional'] =
+              (_sections['additional'] ?? false) ||
+              hasAnyString(providerProfile['about_details']) ||
+              hasAnyList(providerProfile['qualifications']) ||
+              hasAnyList(providerProfile['experiences']);
+          _sections['content'] =
+              (_sections['content'] ?? false) ||
+              hasAnyList(providerProfile['content_sections']);
+          _sections['seo'] =
+              (_sections['seo'] ?? false) ||
+              hasAnyString(providerProfile['seo_keywords']) ||
+              hasAnyString(providerProfile['seo_meta_description']) ||
+              hasAnyString(providerProfile['seo_slug']);
+        }
         _loading = false;
       });
     } catch (_) {
@@ -455,7 +497,7 @@ class _ProviderProfileCompletionScreenState
         gradient: LinearGradient(
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
-          colors: [Color(0xFF3F2B96), Color(0xFF6A4CFF)],
+          colors: [Color(0xFF0F4C81), Color(0xFF4D7CFE)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(26),
@@ -515,7 +557,7 @@ class _ProviderProfileCompletionScreenState
                       nextId == null ? null : () => _openSection(nextId),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF3F2B96),
+                    foregroundColor: const Color(0xFF0F4C81),
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -868,7 +910,7 @@ class _ProviderProfileCompletionScreenState
               child: ElevatedButton(
                 onPressed: nextId == null ? null : () => _openSection(nextId),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.deepPurple,
+                  backgroundColor: const Color(0xFF0F4C81),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 12),

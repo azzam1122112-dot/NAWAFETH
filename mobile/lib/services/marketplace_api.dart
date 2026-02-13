@@ -19,8 +19,8 @@ class MarketplaceApi {
   final SessionStorage _session;
 
   MarketplaceApi({Dio? dio, SessionStorage? session})
-      : _dio = dio ?? ApiDio.dio,
-        _session = session ?? const SessionStorage() {
+    : _dio = dio ?? ApiDio.dio,
+      _session = session ?? const SessionStorage() {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }
 
@@ -48,45 +48,42 @@ class MarketplaceApi {
         'description': description,
         'request_type': requestType,
         'city': city,
-        if ((dispatchMode ?? '').trim().isNotEmpty) 'dispatch_mode': dispatchMode!.trim(),
+        if ((dispatchMode ?? '').trim().isNotEmpty)
+          'dispatch_mode': dispatchMode!.trim(),
       });
 
       // Add Images
       if (images != null) {
         for (var file in images) {
-          formData.files.add(MapEntry(
-            'images',
-            await MultipartFile.fromFile(file.path),
-          ));
+          formData.files.add(
+            MapEntry('images', await MultipartFile.fromFile(file.path)),
+          );
         }
       }
 
       // Add Videos
       if (videos != null) {
         for (var file in videos) {
-          formData.files.add(MapEntry(
-            'videos',
-            await MultipartFile.fromFile(file.path),
-          ));
+          formData.files.add(
+            MapEntry('videos', await MultipartFile.fromFile(file.path)),
+          );
         }
       }
 
       // Add Files
       if (files != null) {
         for (var file in files) {
-          formData.files.add(MapEntry(
-            'files',
-            await MultipartFile.fromFile(file.path),
-          ));
+          formData.files.add(
+            MapEntry('files', await MultipartFile.fromFile(file.path)),
+          );
         }
       }
 
       // Add Audio
       if (audioPath != null) {
-        formData.files.add(MapEntry(
-          'audio',
-          await MultipartFile.fromFile(audioPath),
-        ));
+        formData.files.add(
+          MapEntry('audio', await MultipartFile.fromFile(audioPath)),
+        );
       }
 
       await _dio.post(
@@ -106,24 +103,24 @@ class MarketplaceApi {
     }
   }
 
-  Future<List<dynamic>> getMyRequests({String? statusGroup, String? type}) async {
+  Future<List<dynamic>> getMyRequests({
+    String? statusGroup,
+    String? type,
+  }) async {
     final token = await _session.readAccessToken();
     if (token == null) return [];
 
     try {
       final queryParameters = <String, dynamic>{
-        if ((statusGroup ?? '').trim().isNotEmpty) 'status_group': statusGroup!.trim(),
+        if ((statusGroup ?? '').trim().isNotEmpty)
+          'status_group': statusGroup!.trim(),
         if ((type ?? '').trim().isNotEmpty) 'type': type!.trim(),
       };
 
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/client/requests/',
         queryParameters: queryParameters.isEmpty ? null : queryParameters,
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;
     } catch (e) {
@@ -137,17 +134,14 @@ class MarketplaceApi {
 
     try {
       final queryParameters = <String, dynamic>{
-        if ((statusGroup ?? '').trim().isNotEmpty) 'status_group': statusGroup!.trim(),
+        if ((statusGroup ?? '').trim().isNotEmpty)
+          'status_group': statusGroup!.trim(),
       };
 
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/provider/requests/',
         queryParameters: queryParameters.isEmpty ? null : queryParameters,
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;
     } catch (_) {
@@ -162,11 +156,7 @@ class MarketplaceApi {
     try {
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/provider/urgent/available/',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;
     } catch (_) {
@@ -181,11 +171,7 @@ class MarketplaceApi {
     try {
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/provider/competitive/available/',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;
     } catch (_) {
@@ -200,14 +186,8 @@ class MarketplaceApi {
     try {
       await _dio.post(
         '${ApiConfig.apiPrefix}/marketplace/requests/urgent/accept/',
-        data: {
-          'request_id': requestId,
-        },
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        data: {'request_id': requestId},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (_) {
@@ -223,11 +203,7 @@ class MarketplaceApi {
       await _dio.post(
         '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/accept/',
         data: {},
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (_) {
@@ -235,7 +211,12 @@ class MarketplaceApi {
     }
   }
 
-  Future<bool> rejectAssignedRequest({required int requestId, String? note}) async {
+  Future<bool> rejectAssignedRequest({
+    required int requestId,
+    String? note,
+    DateTime? canceledAt,
+    String? cancelReason,
+  }) async {
     final token = await _session.readAccessToken();
     if (token == null) return false;
 
@@ -244,12 +225,10 @@ class MarketplaceApi {
         '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/reject/',
         data: {
           if ((note ?? '').trim().isNotEmpty) 'note': note,
+          if (canceledAt != null) 'canceled_at': canceledAt.toUtc().toIso8601String(),
+          if ((cancelReason ?? '').trim().isNotEmpty) 'cancel_reason': cancelReason!.trim(),
         },
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (_) {
@@ -257,7 +236,33 @@ class MarketplaceApi {
     }
   }
 
-  Future<bool> startAssignedRequest({required int requestId, String? note}) async {
+  Future<Map<String, dynamic>?> getMyRequestDetail({
+    required int requestId,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return null;
+
+    try {
+      final response = await _dio.get(
+        '${ApiConfig.apiPrefix}/marketplace/client/requests/$requestId/',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return Map<String, dynamic>.from(response.data as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> startAssignedRequest({
+    required int requestId,
+    String? note,
+    DateTime? expectedDeliveryAt,
+    double? estimatedServiceAmount,
+    double? receivedAmount,
+  }) async {
     final token = await _session.readAccessToken();
     if (token == null) return false;
 
@@ -266,12 +271,15 @@ class MarketplaceApi {
         '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/start/',
         data: {
           if ((note ?? '').trim().isNotEmpty) 'note': note,
+          if (expectedDeliveryAt != null)
+            'expected_delivery_at': expectedDeliveryAt
+                .toUtc()
+                .toIso8601String(),
+          if (estimatedServiceAmount != null)
+            'estimated_service_amount': estimatedServiceAmount,
+          if (receivedAmount != null) 'received_amount': receivedAmount,
         },
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (_) {
@@ -284,28 +292,35 @@ class MarketplaceApi {
   }) async {
     final token = await _session.readAccessToken();
     if (token == null) {
-      return const MarketplaceActionResult(ok: false, message: 'انتهت الجلسة. فضلاً سجل الدخول مرة أخرى.');
+      return const MarketplaceActionResult(
+        ok: false,
+        message: 'انتهت الجلسة. فضلاً سجل الدخول مرة أخرى.',
+      );
     }
 
     try {
       await _dio.post(
         '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/accept/',
         data: {},
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return const MarketplaceActionResult(ok: true, message: 'تم قبول الطلب.');
     } on DioException catch (e) {
       return MarketplaceActionResult(ok: false, message: _extractDioMessage(e));
     } catch (_) {
-      return const MarketplaceActionResult(ok: false, message: 'تعذر قبول الطلب حالياً.');
+      return const MarketplaceActionResult(
+        ok: false,
+        message: 'تعذر قبول الطلب حالياً.',
+      );
     }
   }
 
-  Future<bool> completeAssignedRequest({required int requestId, String? note}) async {
+  Future<bool> completeAssignedRequest({
+    required int requestId,
+    String? note,
+    DateTime? deliveredAt,
+    double? actualServiceAmount,
+  }) async {
     final token = await _session.readAccessToken();
     if (token == null) return false;
 
@@ -314,12 +329,10 @@ class MarketplaceApi {
         '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/complete/',
         data: {
           if ((note ?? '').trim().isNotEmpty) 'note': note,
+          if (deliveredAt != null) 'delivered_at': deliveredAt.toUtc().toIso8601String(),
+          if (actualServiceAmount != null) 'actual_service_amount': actualServiceAmount,
         },
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (_) {
@@ -344,11 +357,7 @@ class MarketplaceApi {
           'duration_days': durationDays,
           if ((note ?? '').trim().isNotEmpty) 'note': note,
         },
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (_) {
@@ -356,18 +365,16 @@ class MarketplaceApi {
     }
   }
 
-  Future<Map<String, dynamic>?> getProviderRequestDetail({required int requestId}) async {
+  Future<Map<String, dynamic>?> getProviderRequestDetail({
+    required int requestId,
+  }) async {
     final token = await _session.readAccessToken();
     if (token == null) return null;
 
     try {
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/detail/',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       if (response.data is Map<String, dynamic>) {
         return response.data as Map<String, dynamic>;
@@ -385,11 +392,7 @@ class MarketplaceApi {
     try {
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/offers/',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return (response.data as List).map((e) => Offer.fromJson(e)).toList();
     } catch (e) {
@@ -405,14 +408,33 @@ class MarketplaceApi {
       await _dio.post(
         '${ApiConfig.apiPrefix}/marketplace/offers/$offerId/accept/',
         data: {},
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> submitProviderInputsDecision({
+    required int requestId,
+    required bool approved,
+    String? note,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/provider-inputs/decision/',
+        data: {
+          'approved': approved,
+          if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(),
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      return true;
+    } catch (_) {
       return false;
     }
   }

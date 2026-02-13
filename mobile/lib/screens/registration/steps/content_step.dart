@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../utils/user_scoped_prefs.dart';
+import '../../../services/providers_api.dart';
+import '../../../widgets/profile_wizard_shell.dart';
 
 class ContentStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -29,11 +31,54 @@ class _ContentStepState extends State<ContentStep> {
   int? _editingIndex;
 
   Timer? _draftTimer;
+  bool _loadingFromBackend = false;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _loadDraft();
+    _loadFromBackendBestEffort();
+  }
+
+  Future<void> _loadFromBackendBestEffort() async {
+    if (_loadingFromBackend) return;
+    setState(() => _loadingFromBackend = true);
+    try {
+      final profile = await ProvidersApi().getMyProviderProfile();
+      if (profile == null) return;
+      final raw = profile['content_sections'];
+      if (raw is! List || raw.isEmpty) return;
+      if (!mounted) return;
+      if (sections.isNotEmpty) return;
+
+      final restored = <SectionContent>[];
+      for (final item in raw) {
+        if (item is! Map) continue;
+        restored.add(
+          SectionContent(
+            title: (item['title'] ?? '').toString(),
+            description: (item['description'] ?? '').toString(),
+            contentVideos: <XFile>[],
+            contentImages: <XFile>[],
+          ),
+        );
+      }
+      setState(() {
+        sections
+          ..clear()
+          ..addAll(restored);
+      });
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+    } finally {
+      if (mounted) {
+        setState(() => _loadingFromBackend = false);
+      } else {
+        _loadingFromBackend = false;
+      }
+    }
   }
 
   Future<void> _loadDraft() async {
@@ -273,157 +318,120 @@ class _ContentStepState extends State<ContentStep> {
       return;
     }
 
-    _scheduleDraftSave();
-    _updateSectionDone();
-    // لاحقًا: جمع البيانات وإرسالها للباكند
-    widget.onNext();
+    _saveToBackendAndContinue();
+  }
+
+  Future<void> _saveToBackendAndContinue() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final payloadSections = sections
+          .map(
+            (s) => {
+              'title': s.title.trim(),
+              'description': s.description.trim(),
+              'media_count': s.contentVideos.length + s.contentImages.length + (s.mainImage != null ? 1 : 0),
+            },
+          )
+          .toList(growable: false);
+
+      final updated = await ProvidersApi().updateMyProviderProfile({
+        'content_sections': payloadSections,
+      });
+      if (updated == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ محتوى الخدمات حالياً.')),
+        );
+        return;
+      }
+      _scheduleDraftSave();
+      _updateSectionDone();
+      if (!mounted) return;
+      widget.onNext();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ محتوى الخدمات حالياً.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      } else {
+        _saving = false;
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF3F4FC),
-        bottomNavigationBar: BottomAppBar(
-          elevation: 10,
-          color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: widget.onBack,
-                icon: const Icon(Icons.arrow_back, color: Colors.deepPurple),
-                label: const Text(
-                  "السابق",
-                  style: TextStyle(
-                    color: Colors.deepPurple,
-                    fontFamily: "Cairo",
+    return ProfileWizardShell(
+      title: 'محتوى خدماتك',
+      subtitle: 'نظّم أعمالك في أقسام واضحة تساعد العميل يفهم خبرتك بسرعة.',
+      showTopLoader: _loadingFromBackend,
+      onBack: widget.onBack,
+      onNext: _saveAndContinue,
+      nextBusy: _saving,
+      body: SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoTip(),
+                const SizedBox(height: 18),
+                for (int i = 0; i < sections.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SectionSummaryCard(
+                      index: i,
+                      section: sections[i],
+                      onTap: () => _startEditSection(i),
+                      onDelete: () => _confirmDeleteSection(i),
+                    ),
                   ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.deepPurple),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: _saveAndContinue,
-                icon: const Icon(Icons.check, color: Colors.white),
-                label: const Text(
-                  "التالي",
-                  style: TextStyle(color: Colors.white, fontFamily: "Cairo"),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 28, 16, 130),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '🎬 محتوى خدماتك',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple,
-                        fontFamily: "Cairo",
+                const SizedBox(height: 12),
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        (_isAddingNew || _editingIndex != null)
+                            ? null
+                            : _startAddSection,
+                    icon: const Icon(Icons.add),
+                    label: const Text(
+                      "إضافة قسم جديد",
+                      style: TextStyle(fontFamily: "Cairo"),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F4C81),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'اعرض أعمالك السابقة بطريقة منظمة: كل قسم يمثل مشروعًا أو خدمة مع صورة رئيسية وفيديوهات مرتبطة.',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontFamily: "Cairo",
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _infoTip(),
-                    const SizedBox(height: 18),
-
-                    // الكروت المختصرة للأقسام
-                    for (int i = 0; i < sections.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _SectionSummaryCard(
-                          index: i,
-                          section: sections[i],
-                          onTap: () => _startEditSection(i),
-                          onDelete: () => _confirmDeleteSection(i),
-                        ),
-                      ),
-
-                    const SizedBox(height: 12),
-
-                    // زر إضافة قسم جديد
-                    Center(
-                      child: ElevatedButton.icon(
-                        onPressed:
-                            (_isAddingNew || _editingIndex != null)
-                                ? null
-                                : _startAddSection,
-                        icon: const Icon(Icons.add),
-                        label: const Text(
-                          "إضافة قسم جديد",
-                          style: TextStyle(fontFamily: "Cairo"),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // محرر القسم الجديد
-                    if (_isAddingNew || _editingIndex != null)
-                      NewSectionEditor(
-                        initialSection:
-                            _editingIndex != null
-                                ? sections[_editingIndex!]
-                                : null,
-                        onCancel: _cancelAddSection,
-                        onSave:
-                            _editingIndex != null
-                                ? _saveEditedSection
-                                : _saveNewSection,
-                      ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                if (_isAddingNew || _editingIndex != null)
+                  NewSectionEditor(
+                    initialSection:
+                        _editingIndex != null
+                            ? sections[_editingIndex!]
+                            : null,
+                    onCancel: _cancelAddSection,
+                    onSave:
+                        _editingIndex != null
+                            ? _saveEditedSection
+                            : _saveNewSection,
+                  ),
+              ],
             ),
           ),
         ),

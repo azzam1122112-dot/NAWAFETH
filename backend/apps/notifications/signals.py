@@ -8,6 +8,19 @@ from .models import EventType
 from .services import create_notification
 
 
+def _status_label(raw: str) -> str:
+    s = (raw or "").strip().lower()
+    if s in {"new", "sent"}:
+        return "جديد"
+    if s in {"accepted", "in_progress"}:
+        return "تحت التنفيذ"
+    if s == "completed":
+        return "مكتمل"
+    if s in {"cancelled", "canceled", "expired"}:
+        return "ملغي"
+    return raw or "-"
+
+
 @receiver(post_save, sender=Offer)
 def notify_offer_created(sender, instance: Offer, created, **kwargs):
     if not created:
@@ -71,4 +84,49 @@ def notify_new_message(sender, instance: Message, created, **kwargs):
         event_type=EventType.MESSAGE_NEW,
         request_id=sr.id,
         message_id=instance.id,
+    )
+
+
+@receiver(post_save, sender=RequestStatusLog)
+def notify_request_status_changed(sender, instance: RequestStatusLog, created, **kwargs):
+    if not created:
+        return
+
+    sr = instance.request
+    actor_id = instance.actor_id
+    target = None
+
+    if sr.provider_id and actor_id == sr.client_id:
+        target = sr.provider.user
+    elif sr.provider_id and sr.provider.user_id == actor_id:
+        target = sr.client
+    elif sr.provider_id:
+        target = sr.client
+
+    if target is None:
+        return
+
+    status_label = _status_label(instance.to_status)
+    note = (instance.note or "").strip()
+    if instance.to_status == "sent" and "اختيار عرض" in note:
+        # Offer selection already emits OFFER_SELECTED notification.
+        return
+    body = f"تم تحديث حالة طلبك ({sr.title}) إلى: {status_label}"
+    if note:
+        body = f"{body}. {note}"
+
+    create_notification(
+        user=target,
+        title="تحديث على الطلب",
+        body=body,
+        kind="info",
+        url=f"/requests/{sr.id}",
+        actor=instance.actor,
+        event_type=EventType.STATUS_CHANGED,
+        request_id=sr.id,
+        meta={
+            "from_status": instance.from_status,
+            "to_status": instance.to_status,
+            "note": note,
+        },
     )

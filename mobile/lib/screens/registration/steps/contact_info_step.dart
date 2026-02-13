@@ -68,6 +68,8 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   bool _loadingFromBackend = false;
   bool _saving = false;
   String? _initialWhatsapp;
+  String? _initialWebsite;
+  String _initialSocialSignature = '[]';
 
   Timer? _draftTimer;
   Timer? _patchTimer;
@@ -313,20 +315,43 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         phoneController.text = normalizeLocal05(phone);
       }
       
-      // Load city from user account
-      final city = (me['city'] ?? '').toString().trim();
+      final myProfile = await ProvidersApi().getMyProviderProfile();
+      // Load city from account payload first (provider_city), then provider profile.
+      final cityFromAccount = (me['provider_city'] ?? me['city'] ?? '').toString().trim();
+      final cityFromProfile = (myProfile?['city'] ?? '').toString().trim();
+      final city = cityFromAccount.isNotEmpty ? cityFromAccount : cityFromProfile;
       if (_ownsCity && cityController.text.trim().isEmpty && city.isNotEmpty) {
         cityController.text = city;
         _selectedCity = city;
       }
 
-      // WhatsApp is stored on the provider profile.
-      final myProfile = await ProvidersApi().getMyProviderProfile();
+      // Contact profile fields are stored on provider profile.
       final whatsapp = (myProfile?['whatsapp'] ?? '').toString().trim();
+      final website = (myProfile?['website'] ?? '').toString().trim();
+      List<String> socials = <String>[];
+      final rawSocial = myProfile?['social_links'];
+      if (rawSocial is List) {
+        socials = rawSocial
+            .map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
       _initialWhatsapp = whatsapp;
+      _initialWebsite = website;
+      _initialSocialSignature = jsonEncode(socials);
       _lastPatchedWhatsapp = whatsapp;
       if (_ownsWhatsapp && whatsappController.text.trim().isEmpty && whatsapp.isNotEmpty) {
         whatsappController.text = whatsapp;
+      }
+      if (websiteController.text.trim().isEmpty && website.isNotEmpty) {
+        websiteController.text = website;
+      }
+      if (socials.isNotEmpty) {
+        for (var i = 0; i < socialControllers.length && i < socials.length; i++) {
+          if (socialControllers[i].text.trim().isEmpty) {
+            socialControllers[i].text = socials[i];
+          }
+        }
       }
     } catch (_) {
       // Best-effort.
@@ -345,24 +370,49 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     setState(() => _saving = true);
     try {
       final whatsapp = whatsappController.text.trim();
+      final website = websiteController.text.trim();
+      final social = socialControllers
+          .map((c) => c.text.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(growable: false);
+      final socialSignature = jsonEncode(social);
       if (_initialWhatsapp == null) {
         // If we didn't prefill, still keep a baseline to avoid spamming PATCH.
         _initialWhatsapp = whatsapp;
+        _initialWebsite = website;
+        _initialSocialSignature = socialSignature;
         return true;
       }
-      if (whatsapp == _initialWhatsapp) return true;
+      final sameWhatsapp = whatsapp == _initialWhatsapp;
+      final sameWebsite = website == (_initialWebsite ?? '');
+      final sameSocial = socialSignature == _initialSocialSignature;
+      if (sameWhatsapp && sameWebsite && sameSocial) return true;
 
       final updated = await ProvidersApi().updateMyProviderProfile({
         'whatsapp': whatsapp,
+        'website': website,
+        'social_links': social,
       });
       if (updated == null) { 
         if (!mounted) return false;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر حفظ رقم الواتساب حالياً.')),
+          const SnackBar(content: Text('تعذر حفظ بيانات التواصل حالياً.')),
         );
         return false;
       }
       _initialWhatsapp = (updated['whatsapp'] ?? '').toString().trim();
+      _initialWebsite = (updated['website'] ?? '').toString().trim();
+      final savedSocial = updated['social_links'];
+      if (savedSocial is List) {
+        _initialSocialSignature = jsonEncode(
+          savedSocial
+              .map((e) => (e ?? '').toString().trim())
+              .where((s) => s.isNotEmpty)
+              .toList(),
+        );
+      } else {
+        _initialSocialSignature = '[]';
+      }
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -430,11 +480,11 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       }
 
       if (status != null) {
-        return 'تعذر حفظ رقم الواتساب حالياً (HTTP $status).';
+        return 'تعذر حفظ بيانات التواصل حالياً (HTTP $status).';
       }
     }
 
-    return 'تعذر حفظ رقم الواتساب حالياً.';
+    return 'تعذر حفظ بيانات التواصل حالياً.';
   }
 
   void _validateForm() {

@@ -177,12 +177,18 @@ class ProviderListView(generics.ListAPIView):
 
 		q = (self.request.query_params.get("q") or "").strip()
 		city = (self.request.query_params.get("city") or "").strip()
+		has_location = (self.request.query_params.get("has_location") or "").strip().lower()
+		accepts_urgent = (self.request.query_params.get("accepts_urgent") or "").strip().lower()
 		category_id = (self.request.query_params.get("category_id") or "").strip()
 		subcategory_id = (self.request.query_params.get("subcategory_id") or "").strip()
 		if q:
 			qs = qs.filter(display_name__icontains=q)
 		if city:
 			qs = qs.filter(city__icontains=city)
+		if has_location in {"1", "true", "yes"}:
+			qs = qs.exclude(lat__isnull=True).exclude(lng__isnull=True)
+		if accepts_urgent in {"1", "true", "yes"}:
+			qs = qs.filter(accepts_urgent=True)
 
 		# Optional service taxonomy filters via ProviderCategory
 		if subcategory_id:

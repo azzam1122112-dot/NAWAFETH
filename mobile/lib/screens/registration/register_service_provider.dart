@@ -325,6 +325,12 @@ class _RegisterServiceProviderPageState
         acceptsUrgent: _acceptsUrgent,
         subcategoryIds: _selectedSubcategoryIds.isNotEmpty ? _selectedSubcategoryIds : null,
       );
+      final whatsapp = _whatsappCtrl.text.trim();
+      if (whatsapp.isNotEmpty) {
+        await ProvidersApi().updateMyProviderProfile({
+          'whatsapp': whatsapp,
+        });
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isProviderRegistered', true);

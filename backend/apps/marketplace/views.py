@@ -31,8 +31,12 @@ from .models import (
 from .serializers import (
 	OfferCreateSerializer,
 	OfferListSerializer,
+	ProviderInputsDecisionSerializer,
+	ProviderRejectSerializer,
+	RequestCompleteSerializer,
 	ProviderRequestDetailSerializer,
 	RequestActionSerializer,
+	RequestStartSerializer,
 	ServiceRequestCreateSerializer,
 	ServiceRequestListSerializer,
 	UrgentRequestAcceptSerializer,
@@ -196,9 +200,17 @@ class UrgentRequestAcceptView(APIView):
 				)
 
 			# ✅ قبول الطلب
+			old = service_request.status
 			service_request.provider = provider
 			service_request.status = RequestStatus.ACCEPTED
 			service_request.save(update_fields=["provider", "status"])
+			RequestStatusLog.objects.create(
+				request=service_request,
+				actor=request.user,
+				from_status=old,
+				to_status=service_request.status,
+				note="قبول طلب عاجل من المزود",
+			)
 
 		return Response(
 			{
@@ -434,9 +446,11 @@ class ProviderAssignedRequestRejectView(APIView):
 	def post(self, request, request_id: int):
 		_expire_urgent_requests()
 		provider = request.user.provider_profile
-		s = RequestActionSerializer(data=request.data)
+		s = ProviderRejectSerializer(data=request.data)
 		s.is_valid(raise_exception=True)
 		note = s.validated_data.get("note", "")
+		canceled_at = s.validated_data["canceled_at"]
+		cancel_reason = s.validated_data["cancel_reason"].strip()
 
 		with transaction.atomic():
 			sr = (
@@ -460,13 +474,15 @@ class ProviderAssignedRequestRejectView(APIView):
 
 			old = sr.status
 			sr.status = RequestStatus.CANCELLED
-			sr.save(update_fields=["status"])
+			sr.canceled_at = canceled_at
+			sr.cancel_reason = cancel_reason
+			sr.save(update_fields=["status", "canceled_at", "cancel_reason"])
 			RequestStatusLog.objects.create(
 				request=sr,
 				actor=request.user,
 				from_status=old,
 				to_status=sr.status,
-				note=note or "رفض من المزود",
+				note=note or f"إلغاء من المزود: {cancel_reason}",
 			)
 
 		return Response({"ok": True, "request_id": sr.id, "status": sr.status}, status=status.HTTP_200_OK)
@@ -474,7 +490,7 @@ class ProviderAssignedRequestRejectView(APIView):
 
 class MyClientRequestDetailView(generics.RetrieveAPIView):
 	permission_classes = [IsAtLeastClient]
-	serializer_class = ServiceRequestListSerializer
+	serializer_class = ProviderRequestDetailSerializer
 	lookup_url_kwarg = "request_id"
 
 	def get_queryset(self):
@@ -482,6 +498,10 @@ class MyClientRequestDetailView(generics.RetrieveAPIView):
 			"provider",
 			"subcategory",
 			"subcategory__category",
+		).prefetch_related(
+			"attachments",
+			"status_logs",
+			"status_logs__actor",
 		).filter(client=self.request.user)
 
 
@@ -577,10 +597,19 @@ class AcceptOfferView(APIView):
 					status=status.HTTP_400_BAD_REQUEST,
 				)
 
-			# تحديث الطلب
+			# تحديث الطلب: بعد اختيار العرض يُسند الطلب للمزود كـ SENT
+			# ليبدأ المزود إجراءات القبول/التنفيذ من صفحة التتبع.
+			old = service_request.status
 			service_request.provider = offer.provider
-			service_request.status = RequestStatus.ACCEPTED
+			service_request.status = RequestStatus.SENT
 			service_request.save(update_fields=["provider", "status"])
+			RequestStatusLog.objects.create(
+				request=service_request,
+				actor=request.user,
+				from_status=old,
+				to_status=service_request.status,
+				note="اختيار عرض وإسناد الطلب لمزود الخدمة",
+			)
 
 			# تحديث العروض
 			Offer.objects.filter(request=service_request).exclude(id=offer.id).update(
@@ -599,7 +628,7 @@ class RequestStartView(APIView):
 	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
 
 	def post(self, request, request_id):
-		s = RequestActionSerializer(data=request.data)
+		s = RequestStartSerializer(data=request.data)
 		s.is_valid(raise_exception=True)
 		note = s.validated_data.get("note", "")
 
@@ -626,15 +655,32 @@ class RequestStartView(APIView):
 				)
 
 			old = sr.status
-			sr.status = RequestStatus.IN_PROGRESS
-			sr.save(update_fields=["status"])
+			sr.expected_delivery_at = s.validated_data["expected_delivery_at"]
+			sr.estimated_service_amount = s.validated_data["estimated_service_amount"]
+			sr.received_amount = s.validated_data["received_amount"]
+			sr.remaining_amount = s.validated_data["remaining_amount"]
+			# Client must explicitly approve/reject provider execution inputs.
+			sr.provider_inputs_approved = None
+			sr.provider_inputs_decided_at = None
+			sr.provider_inputs_decision_note = ""
+			sr.save(
+				update_fields=[
+					"expected_delivery_at",
+					"estimated_service_amount",
+					"received_amount",
+					"remaining_amount",
+					"provider_inputs_approved",
+					"provider_inputs_decided_at",
+					"provider_inputs_decision_note",
+				]
+			)
 
 			RequestStatusLog.objects.create(
 				request=sr,
 				actor=request.user,
 				from_status=old,
 				to_status=sr.status,
-				note=note or "بدء التنفيذ",
+				note=note or "إرسال مدخلات التنفيذ بانتظار اعتماد العميل",
 			)
 
 		return Response(
@@ -643,11 +689,75 @@ class RequestStartView(APIView):
 		)
 
 
+class ProviderInputsDecisionView(APIView):
+	permission_classes = [IsAtLeastClient]
+
+	def post(self, request, request_id):
+		s = ProviderInputsDecisionSerializer(data=request.data)
+		s.is_valid(raise_exception=True)
+		approved = s.validated_data["approved"]
+		note = s.validated_data.get("note", "").strip()
+
+		with transaction.atomic():
+			sr = (
+				ServiceRequest.objects.select_for_update()
+				.select_related("client")
+				.filter(id=request_id)
+				.first()
+			)
+
+			if not sr:
+				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+			if sr.client_id != request.user.id:
+				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
+			if sr.status != RequestStatus.ACCEPTED:
+				return Response({"detail": "لا يمكن اعتماد/رفض المدخلات في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
+			if (
+				sr.expected_delivery_at is None
+				or sr.estimated_service_amount is None
+				or sr.received_amount is None
+				or sr.remaining_amount is None
+			):
+				return Response({"detail": "لا توجد مدخلات تنفيذ من المزود لاعتمادها"}, status=status.HTTP_400_BAD_REQUEST)
+
+			old = sr.status
+			sr.provider_inputs_approved = approved
+			sr.provider_inputs_decided_at = timezone.now()
+			sr.provider_inputs_decision_note = note
+			if approved:
+				sr.status = RequestStatus.IN_PROGRESS
+			sr.save(
+				update_fields=[
+					"status",
+					"provider_inputs_approved",
+					"provider_inputs_decided_at",
+					"provider_inputs_decision_note",
+				]
+			)
+
+			RequestStatusLog.objects.create(
+				request=sr,
+				actor=request.user,
+				from_status=old,
+				to_status=sr.status,
+				note=note or ("اعتماد مدخلات التنفيذ من العميل" if approved else "رفض مدخلات التنفيذ من العميل"),
+			)
+
+		return Response(
+			{
+				"ok": True,
+				"request_id": sr.id,
+				"approved": approved,
+			},
+			status=status.HTTP_200_OK,
+		)
+
+
 class RequestCompleteView(APIView):
 	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
 
 	def post(self, request, request_id):
-		s = RequestActionSerializer(data=request.data)
+		s = RequestCompleteSerializer(data=request.data)
 		s.is_valid(raise_exception=True)
 		note = s.validated_data.get("note", "")
 
@@ -675,14 +785,16 @@ class RequestCompleteView(APIView):
 
 			old = sr.status
 			sr.status = RequestStatus.COMPLETED
-			sr.save(update_fields=["status"])
+			sr.delivered_at = s.validated_data["delivered_at"]
+			sr.actual_service_amount = s.validated_data["actual_service_amount"]
+			sr.save(update_fields=["status", "delivered_at", "actual_service_amount"])
 
 			RequestStatusLog.objects.create(
 				request=sr,
 				actor=request.user,
 				from_status=old,
 				to_status=sr.status,
-				note=note or "تم الإكمال",
+				note=note or "تم الإكمال. يرجى مراجعة الطلب وتقييم الخدمة.",
 			)
 
 		return Response(

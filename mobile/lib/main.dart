@@ -147,6 +147,10 @@ class _NawafethAppState extends State<NawafethApp> {
               final threadId = _asInt(args['threadId']);
               final name = (args['name'] ?? '').toString().trim();
               final isOnline = args['isOnline'] == true;
+              final requestCode = (args['requestCode'] ?? '').toString().trim();
+              final requestTitle = (args['requestTitle'] ?? '')
+                  .toString()
+                  .trim();
               if (requestId != null || threadId != null) {
                 return MaterialPageRoute(
                   builder: (_) => ChatDetailScreen(
@@ -154,6 +158,8 @@ class _NawafethAppState extends State<NawafethApp> {
                     isOnline: isOnline,
                     requestId: requestId,
                     threadId: threadId,
+                    requestCode: requestCode.isEmpty ? null : requestCode,
+                    requestTitle: requestTitle.isEmpty ? null : requestTitle,
                   ),
                 );
               }
@@ -164,7 +170,8 @@ class _NawafethAppState extends State<NawafethApp> {
         },
 
         // ✅ المسارات
-        initialRoute: '/entry', // شاشة البداية (تحدد الوجهة حسب حالة تسجيل الدخول)
+        initialRoute:
+            '/entry', // شاشة البداية (تحدد الوجهة حسب حالة تسجيل الدخول)
         routes: {
           '/entry': (context) => const EntryScreen(),
           '/onboarding': (context) => const OnboardingScreen(),
@@ -174,7 +181,9 @@ class _NawafethAppState extends State<NawafethApp> {
             valueListenable: RoleController.instance.notifier,
             builder: (context, role, _) {
               return InteractiveScreen(
-                mode: role.isProvider ? InteractiveMode.provider : InteractiveMode.client,
+                mode: role.isProvider
+                    ? InteractiveMode.provider
+                    : InteractiveMode.client,
               );
             },
           ),

@@ -45,11 +45,22 @@ class ProviderProfile(models.Model):
     years_experience = models.PositiveIntegerField(default=0)
 
     whatsapp = models.CharField(max_length=30, null=True, blank=True)
+    website = models.URLField(blank=True, default="")
+    social_links = models.JSONField(default=list, blank=True)
+    languages = models.JSONField(default=list, blank=True)
 
     city = models.CharField(max_length=100)
     lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     coverage_radius_km = models.PositiveIntegerField(default=10)
+
+    about_details = models.TextField(blank=True, default="")
+    qualifications = models.JSONField(default=list, blank=True)
+    experiences = models.JSONField(default=list, blank=True)
+    content_sections = models.JSONField(default=list, blank=True)
+    seo_keywords = models.CharField(max_length=500, blank=True, default="")
+    seo_meta_description = models.CharField(max_length=500, blank=True, default="")
+    seo_slug = models.CharField(max_length=150, blank=True, default="")
 
     accepts_urgent = models.BooleanField(default=False)
 

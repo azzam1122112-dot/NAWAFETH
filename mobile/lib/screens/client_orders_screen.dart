@@ -10,9 +10,9 @@ import 'client_order_details_screen.dart';
 /// ============================
 /// هذه الصفحة مخصصة فقط للعملاء لرؤية طلباتهم الخاصة.
 /// مرتبطة بـ /marketplace/client/requests/ في الـ backend
-/// 
+///
 /// ملاحظة مهمة: هذه الصفحة منفصلة تماماً عن ProviderOrdersScreen (تتبع الطلبات لمزود الخدمة)
-/// 
+///
 class ClientOrdersScreen extends StatefulWidget {
   final bool embedded;
 
@@ -31,6 +31,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
   List<ClientOrder> _orders = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -42,7 +43,10 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   }
 
   Future<void> _fetchOrders() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       String? statusGroup;
       switch (_selectedFilter) {
@@ -84,6 +88,11 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       }
     } catch (e) {
       debugPrint('Error fetching orders: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'تعذر تحميل الطلبات، حاول مرة أخرى.';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -103,6 +112,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
         return Colors.green;
       case 'ملغي':
         return Colors.red;
+      case 'بانتظار اعتماد العميل':
       case 'تحت التنفيذ':
         return Colors.orange;
       case 'جديد':
@@ -126,7 +136,14 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     }
 
     if (_selectedFilter != 'الكل') {
-      result = result.where((o) => o.status == _selectedFilter);
+      if (_selectedFilter == 'تحت التنفيذ') {
+        result = result.where(
+          (o) =>
+              o.status == 'تحت التنفيذ' || o.status == 'بانتظار اعتماد العميل',
+        );
+      } else {
+        result = result.where((o) => o.status == _selectedFilter);
+      }
     }
 
     if (query.isNotEmpty) {
@@ -176,7 +193,9 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? _mainColor.withValues(alpha: 0.12) : Colors.transparent,
+          color: selected
+              ? _mainColor.withValues(alpha: 0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: selected ? _mainColor : Colors.grey.shade300,
@@ -198,9 +217,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   Future<void> _openDetails(ClientOrder order) async {
     final updated = await Navigator.push<ClientOrder>(
       context,
-      MaterialPageRoute(
-        builder: (_) => ClientOrderDetailsScreen(order: order),
-      ),
+      MaterialPageRoute(builder: (_) => ClientOrderDetailsScreen(order: order)),
     );
 
     if (!mounted || updated == null) return;
@@ -216,20 +233,13 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final bool isCompact = width < 370;
     final orders = _filteredOrders(_orders);
-    
-    final content = _isLoading 
-        ? const Center(child: CircularProgressIndicator()) 
-        : _buildBody(
-            isDark: isDark,
-            orders: orders,
-            isCompact: isCompact,
-          );
+
+    final content = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : _buildBody(isDark: isDark, orders: orders, isCompact: isCompact);
 
     if (widget.embedded) {
-      return Directionality(
-        textDirection: TextDirection.rtl,
-        child: content,
-      );
+      return Directionality(textDirection: TextDirection.rtl, child: content);
     }
 
     return Directionality(
@@ -240,12 +250,16 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           backgroundColor: _mainColor,
           title: const Text(
             'طلباتي',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              color: Colors.white,
-            ),
+            style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
           ),
           iconTheme: const IconThemeData(color: Colors.white),
+          actions: [
+            IconButton(
+              onPressed: _fetchOrders,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'تحديث',
+            ),
+          ],
         ),
         body: content,
       ),
@@ -261,14 +275,97 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     final cardRadius = isCompact ? 14.0 : 18.0;
 
     final total = _orders.length;
-    final inProgress = _orders.where((o) => o.status == 'تحت التنفيذ').length;
+    final inProgress = _orders
+        .where(
+          (o) =>
+              o.status == 'تحت التنفيذ' || o.status == 'بانتظار اعتماد العميل',
+        )
+        .length;
     final completed = _orders.where((o) => o.status == 'مكتمل').length;
     final canceled = _orders.where((o) => o.status == 'ملغي').length;
+
+    final listContent = orders.isEmpty
+        ? ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              14,
+            ),
+            children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.12),
+              Container(
+                padding: EdgeInsets.all(isCompact ? 16 : 22),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  borderRadius: BorderRadius.circular(cardRadius),
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.inbox_outlined,
+                      size: isCompact ? 34 : 40,
+                      color: Colors.grey.shade400,
+                    ),
+                    SizedBox(height: isCompact ? 8 : 10),
+                    Text(
+                      'لا توجد طلبات حالياً',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: isCompact ? 13 : 14,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'عند إنشاء طلب جديد سيظهر هنا مع حالته وتفاصيله.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: isCompact ? 11 : 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          )
+        : ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              14,
+            ),
+            itemCount: orders.length,
+            separatorBuilder: (context, index) =>
+                SizedBox(height: isCompact ? 8 : 10),
+            itemBuilder: (_, index) {
+              final order = orders[index];
+              return _orderCard(
+                order: order,
+                isDark: isDark,
+                isCompact: isCompact,
+              );
+            },
+          );
 
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(horizontalPadding, 12, horizontalPadding, 8),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            12,
+            horizontalPadding,
+            8,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -295,7 +392,11 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.assignment_rounded, color: Colors.white, size: 20),
+                        Icon(
+                          Icons.assignment_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                         SizedBox(width: 8),
                         Text(
                           'طلباتي',
@@ -322,10 +423,26 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _summaryBadge('الإجمالي', total.toString(), compact: isCompact),
-                        _summaryBadge('تحت التنفيذ', inProgress.toString(), compact: isCompact),
-                        _summaryBadge('مكتمل', completed.toString(), compact: isCompact),
-                        _summaryBadge('ملغي', canceled.toString(), compact: isCompact),
+                        _summaryBadge(
+                          'الإجمالي',
+                          total.toString(),
+                          compact: isCompact,
+                        ),
+                        _summaryBadge(
+                          'تحت التنفيذ',
+                          inProgress.toString(),
+                          compact: isCompact,
+                        ),
+                        _summaryBadge(
+                          'مكتمل',
+                          completed.toString(),
+                          compact: isCompact,
+                        ),
+                        _summaryBadge(
+                          'ملغي',
+                          canceled.toString(),
+                          compact: isCompact,
+                        ),
                       ],
                     ),
                   ],
@@ -382,37 +499,37 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                     _filterChip(
                       label: 'الكل',
                       selected: _selectedType == 'الكل',
-                        onTap: () {
-                          setState(() => _selectedType = 'الكل');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedType = 'الكل');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'عادي',
                       selected: _selectedType == 'عادي',
-                        onTap: () {
-                          setState(() => _selectedType = 'عادي');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedType = 'عادي');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'عاجل',
                       selected: _selectedType == 'عاجل',
-                        onTap: () {
-                          setState(() => _selectedType = 'عاجل');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedType = 'عاجل');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'عروض',
                       selected: _selectedType == 'عروض',
-                        onTap: () {
-                          setState(() => _selectedType = 'عروض');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedType = 'عروض');
+                        _fetchOrders();
+                      },
                     ),
                   ],
                 ),
@@ -426,46 +543,46 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                     _filterChip(
                       label: 'الكل',
                       selected: _selectedFilter == 'الكل',
-                        onTap: () {
-                          setState(() => _selectedFilter = 'الكل');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedFilter = 'الكل');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'جديد',
                       selected: _selectedFilter == 'جديد',
-                        onTap: () {
-                          setState(() => _selectedFilter = 'جديد');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedFilter = 'جديد');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'تحت التنفيذ',
                       selected: _selectedFilter == 'تحت التنفيذ',
-                        onTap: () {
-                          setState(() => _selectedFilter = 'تحت التنفيذ');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedFilter = 'تحت التنفيذ');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'مكتمل',
                       selected: _selectedFilter == 'مكتمل',
-                        onTap: () {
-                          setState(() => _selectedFilter = 'مكتمل');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedFilter = 'مكتمل');
+                        _fetchOrders();
+                      },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'ملغي',
                       selected: _selectedFilter == 'ملغي',
-                        onTap: () {
-                          setState(() => _selectedFilter = 'ملغي');
-                          _fetchOrders();
-                        },
+                      onTap: () {
+                        setState(() => _selectedFilter = 'ملغي');
+                        _fetchOrders();
+                      },
                     ),
                   ],
                 ),
@@ -473,57 +590,35 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
             ],
           ),
         ),
-        Expanded(
-          child: orders.isEmpty
-              ? Center(
-                child: Container(
-                    margin: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 14),
-                    padding: EdgeInsets.all(isCompact ? 16 : 22),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                      borderRadius: BorderRadius.circular(cardRadius),
-                      border: Border.all(color: isDark ? Colors.white10 : Colors.grey.shade200),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.inbox_outlined, size: isCompact ? 34 : 40, color: Colors.grey.shade400),
-                        SizedBox(height: isCompact ? 8 : 10),
-                        Text(
-                          'لا توجد طلبات حالياً',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.bold,
-                            fontSize: isCompact ? 13 : 14,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'عند إنشاء طلب جديد سيظهر هنا مع حالته وتفاصيله.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: isCompact ? 11 : 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 14),
-                  itemCount: orders.length,
-                  separatorBuilder: (context, index) => SizedBox(height: isCompact ? 8 : 10),
-                  itemBuilder: (_, index) {
-                    final order = orders[index];
-                    return _orderCard(
-                      order: order,
-                      isDark: isDark,
-                      isCompact: isCompact,
-                    );
-                  },
+        if (_errorMessage != null)
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              8,
+            ),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+              ),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: RefreshIndicator(onRefresh: _fetchOrders, child: listContent),
         ),
       ],
     );
@@ -648,7 +743,11 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_left_rounded, size: 18, color: _mainColor.withValues(alpha: 0.9)),
+                Icon(
+                  Icons.chevron_left_rounded,
+                  size: 18,
+                  color: _mainColor.withValues(alpha: 0.9),
+                ),
               ],
             ),
           ],

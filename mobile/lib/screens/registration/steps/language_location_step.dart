@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../services/providers_api.dart';
 import '../../../utils/user_scoped_prefs.dart';
 import '../../provider_dashboard/google_map_location_picker_screen.dart';
+import '../../../widgets/profile_wizard_shell.dart';
 
 class LanguageLocationStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -87,13 +88,27 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
 
       final lat = asDouble(json['lat']);
       final lng = asDouble(json['lng']);
-      if (lat == null || lng == null) return;
+      List<String> asList(dynamic v) {
+        if (v is! List) return <String>[];
+        return v
+            .map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
+      final langs = asList(json['languages']);
       if (!mounted) return;
 
       setState(() {
-        _selectedCenter = LatLng(lat, lng);
-        locationController.text =
-            '(${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)})';
+        if (selectedLanguages.isEmpty && langs.isNotEmpty) {
+          selectedLanguages
+            ..clear()
+            ..addAll(langs);
+        }
+        if (lat != null && lng != null) {
+          _selectedCenter = LatLng(lat, lng);
+          locationController.text =
+              '(${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)})';
+        }
       });
       // Keep local draft in sync when backend location changes.
       await _saveDraftNow();
@@ -200,7 +215,22 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
     }).catchError((_) {});
   }
 
-  void _handleNext() {
+  Future<bool> _saveLanguagesToBackendBestEffort() async {
+    try {
+      final langs = <String>[
+        ...selectedLanguages.where((s) => s.trim().isNotEmpty),
+        ...customLanguages.where((s) => s.trim().isNotEmpty),
+      ];
+      final updated = await ProvidersApi().updateMyProviderProfile({
+        'languages': langs,
+      });
+      return updated != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _handleNext() async {
     _updateSectionDone();
     final prefsDone = selectedLanguages.isNotEmpty ||
       customLanguages.isNotEmpty ||
@@ -217,28 +247,33 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       return;
     }
 
-    // Ensure draft + backend location are in sync best-effort.
-    () async {
-      // If user typed coordinates but didn't use the picker, try to parse them.
-      if (_selectedCenter == null) {
-        final text = locationController.text.trim();
-        final m = RegExp(r'\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?').firstMatch(text);
-        if (m != null) {
-          final lat = double.tryParse(m.group(1) ?? '');
-          final lng = double.tryParse(m.group(2) ?? '');
-          if (lat != null && lng != null) {
-            _selectedCenter = LatLng(lat, lng);
-          }
+    // If user typed coordinates but didn't use the picker, try to parse them.
+    if (_selectedCenter == null) {
+      final text = locationController.text.trim();
+      final m = RegExp(r'\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?').firstMatch(text);
+      if (m != null) {
+        final lat = double.tryParse(m.group(1) ?? '');
+        final lng = double.tryParse(m.group(2) ?? '');
+        if (lat != null && lng != null) {
+          _selectedCenter = LatLng(lat, lng);
         }
       }
+    }
 
-      await _saveDraftNow();
+    await _saveDraftNow();
 
-      final point = _selectedCenter;
-      if (point != null) {
-        await _saveLocationToBackendBestEffort(point, showSnack: false);
-      }
-    }();
+    final langsSaved = await _saveLanguagesToBackendBestEffort();
+    if (!langsSaved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ اللغات حالياً.')),
+      );
+      return;
+    }
+
+    final point = _selectedCenter;
+    if (point != null) {
+      await _saveLocationToBackendBestEffort(point, showSnack: false);
+    }
 
     _scheduleDraftSave();
     widget.onNext();
@@ -370,59 +405,30 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF3F4FC),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 12),
-                Expanded(child: SingleChildScrollView(child: _buildForm())),
-                const SizedBox(height: 12),
-                _buildActionButtons(),
-              ],
+    return ProfileWizardShell(
+      title: 'اللغة والموقع',
+      subtitle: 'حدد نطاق عملك الجغرافي واللغات لتصل للعملاء المناسبين أسرع.',
+      showTopLoader: _loadingFromBackend,
+      onBack: () {
+        _scheduleDraftSave();
+        _updateSectionDone();
+        widget.onBack();
+      },
+      onNext: _handleNext,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        child: Column(
+          children: [
+            _infoTip(
+              icon: Icons.info_outline,
+              text:
+                  "اختيار اللغات وتحديد موقعك الجغرافي يساعد في عرضك للعملاء المناسبين أكثر.",
             ),
-          ),
+            const SizedBox(height: 12),
+            _buildForm(),
+          ],
         ),
       ),
-    );
-  }
-
-  // ---------------- HEADER ----------------
-
-  Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "اللغة والموقع الجغرافي",
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.deepPurple,
-            fontFamily: "Cairo",
-          ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          "حدد اللغات التي يمكنك التعامل بها وموقعك الجغرافي.",
-          style: TextStyle(
-            fontFamily: "Cairo",
-            fontSize: 13,
-            color: Colors.black54,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _infoTip(
-          icon: Icons.info_outline,
-          text:
-              "اختيار اللغات وتحديد موقعك الجغرافي يساعد في عرضك للعملاء المناسبين أكثر.",
-        ),
-      ],
     );
   }
 
@@ -697,47 +703,4 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
     );
   }
 
-  // ---------------- ACTION BUTTONS ----------------
-
-  Widget _buildActionButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () {
-              _scheduleDraftSave();
-              _updateSectionDone();
-              widget.onBack();
-            },
-            icon: const Icon(Icons.arrow_back),
-            label: const Text("السابق", style: TextStyle(fontFamily: "Cairo")),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              side: const BorderSide(color: Colors.deepPurple),
-              foregroundColor: Colors.deepPurple,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: _handleNext,
-            icon: const Icon(Icons.arrow_forward),
-            label: const Text("التالي", style: TextStyle(fontFamily: "Cairo")),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

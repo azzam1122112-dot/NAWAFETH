@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../services/marketplace_api.dart';
 import '../services/messaging_api.dart';
 import '../services/session_storage.dart';
 
@@ -12,6 +13,8 @@ class ChatDetailScreen extends StatefulWidget {
   final bool isOnline;
   final int? requestId;
   final int? threadId;
+  final String? requestCode;
+  final String? requestTitle;
 
   const ChatDetailScreen({
     super.key,
@@ -19,6 +22,8 @@ class ChatDetailScreen extends StatefulWidget {
     required this.isOnline,
     this.requestId,
     this.threadId,
+    this.requestCode,
+    this.requestTitle,
   });
 
   @override
@@ -27,6 +32,7 @@ class ChatDetailScreen extends StatefulWidget {
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final MessagingApi _api = MessagingApi();
+  final MarketplaceApi _marketplaceApi = MarketplaceApi();
   final SessionStorage _session = const SessionStorage();
   final TextEditingController _controller = TextEditingController();
 
@@ -38,6 +44,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _peerTyping = false;
   int? _requestId;
   int? _threadId;
+  String? _requestCode;
+  String? _requestTitle;
   int? _myUserId;
   bool _manualWsClose = false;
   int _reconnectAttempts = 0;
@@ -53,6 +61,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     _requestId = widget.requestId;
     _threadId = widget.threadId;
+    _requestCode = widget.requestCode;
+    _requestTitle = widget.requestTitle;
     _bootstrap();
   }
 
@@ -82,6 +92,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
 
       if (_requestId != null) {
+        await _resolveRequestMeta();
         await _loadMessages();
         await _api.markRead(requestId: _requestId!);
       }
@@ -100,19 +111,60 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
+  Future<void> _resolveRequestMeta() async {
+    if (_requestId == null) return;
+    if ((_requestCode ?? '').trim().isNotEmpty &&
+        (_requestTitle ?? '').trim().isNotEmpty) {
+      return;
+    }
+
+    try {
+      final clientDetail = await _marketplaceApi.getMyRequestDetail(
+        requestId: _requestId!,
+      );
+      if (clientDetail != null) {
+        if (!mounted) return;
+        setState(() {
+          _requestCode ??= 'R${_requestId.toString().padLeft(6, '0')}';
+          _requestTitle ??= (clientDetail['title'] ?? '').toString().trim();
+        });
+        return;
+      }
+    } catch (_) {}
+
+    try {
+      final providerDetail = await _marketplaceApi.getProviderRequestDetail(
+        requestId: _requestId!,
+      );
+      if (providerDetail != null) {
+        if (!mounted) return;
+        setState(() {
+          _requestCode ??= 'R${_requestId.toString().padLeft(6, '0')}';
+          _requestTitle ??= (providerDetail['title'] ?? '').toString().trim();
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadMessages() async {
     if (_requestId == null) return;
     final raw = await _api.getThreadMessages(_requestId!);
     final items = raw
-        .map((m) => {
-              'id': _asInt(m['id']),
-              'senderId': _asInt(m['sender']),
-              'text': (m['body'] ?? '').toString(),
-              'sentAt': DateTime.tryParse((m['created_at'] ?? '').toString()) ?? DateTime.now(),
-              'readByPeer': _isReadByPeer(m['read_by_ids']),
-            })
+        .map(
+          (m) => {
+            'id': _asInt(m['id']),
+            'senderId': _asInt(m['sender']),
+            'text': (m['body'] ?? '').toString(),
+            'sentAt':
+                DateTime.tryParse((m['created_at'] ?? '').toString()) ??
+                DateTime.now(),
+            'readByPeer': _isReadByPeer(m['read_by_ids']),
+          },
+        )
         .toList();
-    items.sort((a, b) => (a['sentAt'] as DateTime).compareTo(b['sentAt'] as DateTime));
+    items.sort(
+      (a, b) => (a['sentAt'] as DateTime).compareTo(b['sentAt'] as DateTime),
+    );
     if (!mounted) return;
     setState(() {
       _messages
@@ -165,7 +217,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     _reconnectTimer?.cancel();
     _reconnectAttempts += 1;
-    final seconds = _reconnectAttempts <= 2 ? 2 : (_reconnectAttempts <= 4 ? 4 : 8);
+    final seconds = _reconnectAttempts <= 2
+        ? 2
+        : (_reconnectAttempts <= 4 ? 4 : 8);
     _reconnectTimer = Timer(Duration(seconds: seconds), () {
       if (!mounted || _manualWsClose) return;
       _connectWs();
@@ -212,7 +266,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         'id': id,
         'senderId': _asInt(payload['sender_id']),
         'text': (payload['text'] ?? '').toString(),
-        'sentAt': DateTime.tryParse((payload['sent_at'] ?? '').toString()) ?? DateTime.now(),
+        'sentAt':
+            DateTime.tryParse((payload['sent_at'] ?? '').toString()) ??
+            DateTime.now(),
         'readByPeer': false,
       };
 
@@ -323,9 +379,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر إرسال الرسالة.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تعذر إرسال الرسالة.')));
       }
     } finally {
       if (mounted) {
@@ -342,13 +398,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.name, style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              widget.name,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             Text(
               _wsConnected
                   ? 'متصل الآن'
                   : (widget.requestId == null && widget.threadId == null
-                      ? 'يتطلب طلب خدمة'
-                      : (_reconnectAttempts > 0 ? 'إعادة اتصال...' : 'غير متصل')),
+                        ? 'يتطلب طلب خدمة'
+                        : (_reconnectAttempts > 0
+                              ? 'إعادة اتصال...'
+                              : 'غير متصل')),
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
             ),
           ],
@@ -356,6 +421,46 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ),
       body: Column(
         children: [
+          if (_requestId != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.deepPurple.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.deepPurple.withValues(alpha: 0.20),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (_requestCode ?? '').trim().isEmpty
+                        ? 'R${_requestId.toString().padLeft(6, '0')}'
+                        : _requestCode!,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    (_requestTitle ?? '').trim().isEmpty
+                        ? 'طلب خدمة'
+                        : _requestTitle!,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_peerTyping)
             Container(
               width: double.infinity,
@@ -363,74 +468,93 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               color: Colors.amber.shade50,
               child: const Text(
                 'الطرف الآخر يكتب الآن...',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black87),
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: Colors.black87,
+                ),
               ),
             ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _messages.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'لا توجد رسائل بعد.',
-                          style: TextStyle(fontFamily: 'Cairo'),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final m = _messages[index];
-                          final isMe = _myUserId != null && m['senderId'] == _myUserId;
-                          final sentAt = (m['sentAt'] as DateTime?) ?? DateTime.now();
+                ? const Center(
+                    child: Text(
+                      'لا توجد رسائل بعد.',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final m = _messages[index];
+                      final isMe =
+                          _myUserId != null && m['senderId'] == _myUserId;
+                      final sentAt =
+                          (m['sentAt'] as DateTime?) ?? DateTime.now();
 
-                          return Align(
-                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              constraints: const BoxConstraints(maxWidth: 320),
-                              decoration: BoxDecoration(
-                                color: isMe ? Colors.deepPurple : Colors.grey.shade200,
-                                borderRadius: BorderRadius.circular(12),
+                      return Align(
+                        alignment: isMe
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          decoration: BoxDecoration(
+                            color: isMe
+                                ? Colors.deepPurple
+                                : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (m['text'] ?? '').toString(),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  color: isMe ? Colors.white : Colors.black87,
+                                ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    (m['text'] ?? '').toString(),
+                                    '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}',
                                     style: TextStyle(
-                                      fontFamily: 'Cairo',
-                                      color: isMe ? Colors.white : Colors.black87,
+                                      fontSize: 11,
+                                      color: isMe
+                                          ? Colors.white70
+                                          : Colors.black54,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isMe ? Colors.white70 : Colors.black54,
-                                        ),
-                                      ),
-                                      if (isMe) ...[
-                                        const SizedBox(width: 6),
-                                        Icon(
-                                          m['readByPeer'] == true ? Icons.done_all : Icons.done,
-                                          size: 14,
-                                          color: m['readByPeer'] == true ? Colors.lightBlueAccent : Colors.white70,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
+                                  if (isMe) ...[
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      m['readByPeer'] == true
+                                          ? Icons.done_all
+                                          : Icons.done,
+                                      size: 14,
+                                      color: m['readByPeer'] == true
+                                          ? Colors.lightBlueAccent
+                                          : Colors.white70,
+                                    ),
+                                  ],
                                 ],
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
           Container(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
@@ -469,14 +593,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   onPressed: _isSending ? null : _sendMessage,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     minimumSize: const Size(52, 52),
                   ),
                   child: _isSending
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Icon(Icons.send, color: Colors.white),
                 ),

@@ -11,6 +11,8 @@ class ChatNav {
     int? threadId,
     required String name,
     bool isOnline = false,
+    String? requestCode,
+    String? requestTitle,
   }) {
     if (requestId == null && threadId == null) {
       return openInbox(context);
@@ -23,6 +25,10 @@ class ChatNav {
         if (threadId != null) 'threadId': threadId,
         'name': name,
         'isOnline': isOnline,
+        if ((requestCode ?? '').trim().isNotEmpty)
+          'requestCode': requestCode!.trim(),
+        if ((requestTitle ?? '').trim().isNotEmpty)
+          'requestTitle': requestTitle!.trim(),
       },
     );
   }

@@ -2,7 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import OTP
-from apps.providers.models import Category, ProviderProfile, SubCategory
+from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
 
 
 @pytest.mark.django_db
@@ -202,3 +202,67 @@ def test_provider_services_crud_and_public_list():
     public_list2 = client.get(f"/api/providers/{provider_id}/services/")
     assert public_list2.status_code == 200
     assert len(public_list2.json()) == 0
+
+
+@pytest.mark.django_db
+def test_provider_list_supports_urgent_and_location_filters():
+    cat = Category.objects.create(name="خدمات منزلية", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="سباكة", is_active=True)
+
+    from apps.accounts.models import User
+
+    p1_user = User.objects.create(phone="0501111111", username="provider_a")
+    p1 = ProviderProfile.objects.create(
+        user=p1_user,
+        provider_type="individual",
+        display_name="مزود عاجل مع موقع",
+        bio="bio",
+        years_experience=2,
+        city="الرياض",
+        accepts_urgent=True,
+        lat=24.7136,
+        lng=46.6753,
+    )
+    ProviderCategory.objects.get_or_create(provider=p1, subcategory=sub)
+
+    p2_user = User.objects.create(phone="0502222222", username="provider_b")
+    p2 = ProviderProfile.objects.create(
+        user=p2_user,
+        provider_type="individual",
+        display_name="مزود بدون موقع",
+        bio="bio",
+        years_experience=2,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=p2, subcategory=sub)
+
+    p3_user = User.objects.create(phone="0503333333", username="provider_c")
+    p3 = ProviderProfile.objects.create(
+        user=p3_user,
+        provider_type="individual",
+        display_name="مزود غير عاجل",
+        bio="bio",
+        years_experience=2,
+        city="الرياض",
+        accepts_urgent=False,
+        lat=24.7200,
+        lng=46.6800,
+    )
+    ProviderCategory.objects.get_or_create(provider=p3, subcategory=sub)
+
+    client = APIClient()
+    res = client.get(
+        "/api/providers/list/",
+        {
+            "subcategory_id": sub.id,
+            "city": "الرياض",
+            "has_location": "true",
+            "accepts_urgent": "true",
+        },
+    )
+
+    assert res.status_code == 200
+    payload = res.json()
+    assert len(payload) == 1
+    assert payload[0]["display_name"] == "مزود عاجل مع موقع"

@@ -180,7 +180,7 @@ def test_client_can_list_offers_and_accept_one_updates_statuses():
     assert accept.status_code == 200
 
     service_request.refresh_from_db()
-    assert service_request.status == RequestStatus.ACCEPTED
+    assert service_request.status == RequestStatus.SENT
     assert service_request.provider_id == p2.id
 
     offer1 = Offer.objects.get(id=offer1_id)

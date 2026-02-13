@@ -11,14 +11,15 @@ import 'dio_proxy.dart';
 class ProvidersApi {
   final Dio _dio;
 
-  ProvidersApi({Dio? dio})
-      : _dio = dio ?? ApiDio.dio {
+  ProvidersApi({Dio? dio}) : _dio = dio ?? ApiDio.dio {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }
 
   Future<List<Category>> getCategories() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/categories/');
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/categories/',
+      );
       final list = (res.data as List).map((e) => Category.fromJson(e)).toList();
       return list;
     } catch (e) {
@@ -30,7 +31,9 @@ class ProvidersApi {
   Future<List<ProviderProfile>> getProviders() async {
     try {
       final res = await _dio.get('${ApiConfig.apiPrefix}/providers/list/');
-      final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
+      final list = (res.data as List)
+          .map((e) => ProviderProfile.fromJson(e))
+          .toList();
       return list;
     } catch (e) {
       return [];
@@ -56,11 +59,13 @@ class ProvidersApi {
         '${ApiConfig.apiPrefix}/providers/list/',
         queryParameters: params,
       );
-      
+
       print('✅ Response status: ${res.statusCode}');
       print('✅ Response data length: ${(res.data as List).length}');
-      
-      final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
+
+      final list = (res.data as List)
+          .map((e) => ProviderProfile.fromJson(e))
+          .toList();
       return list;
     } catch (e) {
       print('❌ Error in getProvidersFiltered: $e');
@@ -72,14 +77,19 @@ class ProvidersApi {
   /// مخصص لشاشة الخريطة لاختيار المزودين للطلبات العاجلة
   Future<List<Map<String, dynamic>>> getProvidersForMap({
     required int subcategoryId,
+    String? city,
+    bool acceptsUrgentOnly = true,
   }) async {
     try {
+      final params = <String, dynamic>{
+        'subcategory_id': subcategoryId,
+        'has_location': true,
+        if ((city ?? '').trim().isNotEmpty) 'city': city!.trim(),
+        if (acceptsUrgentOnly) 'accepts_urgent': true,
+      };
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/list/',
-        queryParameters: {
-          'subcategory_id': subcategoryId,
-          'has_location': true,
-        },
+        queryParameters: params,
       );
 
       double? _asDouble(dynamic value) {
@@ -109,7 +119,8 @@ class ProvidersApi {
         final lat = _asDouble(provider['lat']);
         final lng = _asDouble(provider['lng']);
         if (lat != null && lng != null) {
-          final imageRaw = provider['logo'] ??
+          final imageRaw =
+              provider['logo'] ??
               provider['logo_url'] ??
               provider['avatar'] ??
               provider['avatar_url'] ??
@@ -139,7 +150,7 @@ class ProvidersApi {
       return [];
     }
   }
-  
+
   Future<ProviderProfile?> getProviderDetail(int id) async {
     try {
       final res = await _dio.get('${ApiConfig.apiPrefix}/providers/$id/');
@@ -151,8 +162,12 @@ class ProvidersApi {
 
   Future<List<ProviderService>> getProviderServices(int providerId) async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/$providerId/services/');
-      final list = (res.data as List).map((e) => ProviderService.fromJson(e)).toList();
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/$providerId/services/',
+      );
+      final list = (res.data as List)
+          .map((e) => ProviderService.fromJson(e))
+          .toList();
       return list;
     } catch (_) {
       return [];
@@ -161,8 +176,12 @@ class ProvidersApi {
 
   Future<List<ProviderService>> getMyServices() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/services/');
-      final list = (res.data as List).map((e) => ProviderService.fromJson(e)).toList();
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/me/services/',
+      );
+      final list = (res.data as List)
+          .map((e) => ProviderService.fromJson(e))
+          .toList();
       return list;
     } catch (_) {
       return [];
@@ -199,7 +218,10 @@ class ProvidersApi {
     }
   }
 
-  Future<ProviderService?> updateMyService(int serviceId, Map<String, dynamic> patch) async {
+  Future<ProviderService?> updateMyService(
+    int serviceId,
+    Map<String, dynamic> patch,
+  ) async {
     try {
       final res = await _dio.patch(
         '${ApiConfig.apiPrefix}/providers/me/services/$serviceId/',
@@ -213,7 +235,9 @@ class ProvidersApi {
 
   Future<bool> deleteMyService(int serviceId) async {
     try {
-      await _dio.delete('${ApiConfig.apiPrefix}/providers/me/services/$serviceId/');
+      await _dio.delete(
+        '${ApiConfig.apiPrefix}/providers/me/services/$serviceId/',
+      );
       return true;
     } catch (_) {
       return false;
@@ -222,8 +246,12 @@ class ProvidersApi {
 
   Future<List<ProviderProfile>> getMyFollowingProviders() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/following/');
-      final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/me/following/',
+      );
+      final list = (res.data as List)
+          .map((e) => ProviderProfile.fromJson(e))
+          .toList();
       return list;
     } catch (e) {
       return [];
@@ -233,7 +261,9 @@ class ProvidersApi {
   Future<List<ProviderProfile>> getMyLikedProviders() async {
     try {
       final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/likes/');
-      final list = (res.data as List).map((e) => ProviderProfile.fromJson(e)).toList();
+      final list = (res.data as List)
+          .map((e) => ProviderProfile.fromJson(e))
+          .toList();
       return list;
     } catch (e) {
       return [];
@@ -242,8 +272,12 @@ class ProvidersApi {
 
   Future<List<UserSummary>> getMyProviderFollowers() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/followers/');
-      final list = (res.data as List).map((e) => UserSummary.fromJson(e)).toList();
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/me/followers/',
+      );
+      final list = (res.data as List)
+          .map((e) => UserSummary.fromJson(e))
+          .toList();
       return list;
     } catch (e) {
       return [];
@@ -253,7 +287,9 @@ class ProvidersApi {
   Future<List<UserSummary>> getMyProviderLikers() async {
     try {
       final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/likers/');
-      final list = (res.data as List).map((e) => UserSummary.fromJson(e)).toList();
+      final list = (res.data as List)
+          .map((e) => UserSummary.fromJson(e))
+          .toList();
       return list;
     } catch (e) {
       return [];
@@ -262,7 +298,9 @@ class ProvidersApi {
 
   Future<List<ProviderPortfolioItem>> getMyFavoriteMedia() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/favorites/');
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/me/favorites/',
+      );
       final list = (res.data as List)
           .map((e) => ProviderPortfolioItem.fromJson(e))
           .toList();
@@ -272,9 +310,13 @@ class ProvidersApi {
     }
   }
 
-  Future<List<ProviderPortfolioItem>> getProviderPortfolio(int providerId) async {
+  Future<List<ProviderPortfolioItem>> getProviderPortfolio(
+    int providerId,
+  ) async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/$providerId/portfolio/');
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/$providerId/portfolio/',
+      );
       final list = (res.data as List)
           .map((e) => ProviderPortfolioItem.fromJson(e))
           .toList();
@@ -286,7 +328,9 @@ class ProvidersApi {
 
   Future<bool> likePortfolioItem(int itemId) async {
     try {
-      await _dio.post('${ApiConfig.apiPrefix}/providers/portfolio/$itemId/like/');
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/providers/portfolio/$itemId/like/',
+      );
       return true;
     } catch (_) {
       return false;
@@ -295,7 +339,9 @@ class ProvidersApi {
 
   Future<bool> unlikePortfolioItem(int itemId) async {
     try {
-      await _dio.post('${ApiConfig.apiPrefix}/providers/portfolio/$itemId/unlike/');
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/providers/portfolio/$itemId/unlike/',
+      );
       return true;
     } catch (_) {
       return false;
@@ -340,7 +386,7 @@ class ProvidersApi {
     if (yearsExperience != null) {
       payload['years_experience'] = yearsExperience;
     }
-    
+
     if (subcategoryIds != null && subcategoryIds.isNotEmpty) {
       payload['subcategory_ids'] = subcategoryIds;
     }
@@ -358,7 +404,9 @@ class ProvidersApi {
 
   Future<Map<String, dynamic>?> getMyProviderProfile() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/profile/');
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/me/profile/',
+      );
       if (res.data is Map<String, dynamic>) {
         return res.data as Map<String, dynamic>;
       }
@@ -368,10 +416,14 @@ class ProvidersApi {
     }
   }
 
-  Future<Map<String, dynamic>?> updateMyProviderProfile(Map<String, dynamic> patch) async {
+  Future<Map<String, dynamic>?> updateMyProviderProfile(
+    Map<String, dynamic> patch,
+  ) async {
     dynamic normalizeCoord(dynamic v) {
       if (v == null) return null;
-      final d = (v is num) ? v.toDouble() : double.tryParse(v.toString().trim());
+      final d = (v is num)
+          ? v.toDouble()
+          : double.tryParse(v.toString().trim());
       if (d == null) return v;
       // Backend enforces max 6 decimal places for lat/lng.
       return double.parse(d.toStringAsFixed(6));
@@ -407,12 +459,17 @@ class ProvidersApi {
 
   Future<List<int>> getMyProviderSubcategories() async {
     try {
-      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/subcategories/');
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/me/subcategories/',
+      );
       if (res.data is Map) {
         final map = Map<String, dynamic>.from(res.data as Map);
         final list = map['subcategory_ids'];
         if (list is List) {
-          return list.map((e) => int.tryParse(e.toString()) ?? 0).where((v) => v > 0).toList();
+          return list
+              .map((e) => int.tryParse(e.toString()) ?? 0)
+              .where((v) => v > 0)
+              .toList();
         }
       }
       return [];
@@ -422,9 +479,7 @@ class ProvidersApi {
   }
 
   Future<List<int>> setMyProviderSubcategories(List<int> subcategoryIds) async {
-    final payload = <String, dynamic>{
-      'subcategory_ids': subcategoryIds,
-    };
+    final payload = <String, dynamic>{'subcategory_ids': subcategoryIds};
     final res = await _dio.put(
       '${ApiConfig.apiPrefix}/providers/me/subcategories/',
       data: payload,
@@ -434,7 +489,10 @@ class ProvidersApi {
       final map = Map<String, dynamic>.from(res.data as Map);
       final list = map['subcategory_ids'];
       if (list is List) {
-        return list.map((e) => int.tryParse(e.toString()) ?? 0).where((v) => v > 0).toList();
+        return list
+            .map((e) => int.tryParse(e.toString()) ?? 0)
+            .where((v) => v > 0)
+            .toList();
       }
     }
     return subcategoryIds;

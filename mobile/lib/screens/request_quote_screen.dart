@@ -73,9 +73,9 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
 
     if (_selectedSubCategory == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر التصنيف الفرعي')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اختر التصنيف الفرعي')));
       return;
     }
 
@@ -124,71 +124,67 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder:
-          (_) => Center(
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: 320,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 12,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
+      builder: (_) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 320,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      size: 60,
-                      color: Colors.green,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      "تم إرسال طلبك بنجاح!",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      "ستتلقى العروض قريبًا في قسم\nطلباتي > طلبات العروض",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, height: 1.6),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pushNamedAndRemoveUntil(context, '/orders', (r) => false);
-                      },
-                      icon: const Icon(Icons.arrow_forward),
-                      label: const Text("اذهب إلى طلباتي"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.deepPurple,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, size: 60, color: Colors.green),
+                const SizedBox(height: 16),
+                const Text(
+                  "تم إرسال طلبك بنجاح!",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
-              ),
+                const SizedBox(height: 12),
+                const Text(
+                  "ستتلقى العروض قريبًا في قسم\nطلباتي > طلبات العروض",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, height: 1.6),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/orders',
+                      (r) => false,
+                    );
+                  },
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text("اذهب إلى طلباتي"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.deepPurple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+        ),
+      ),
     );
   }
 
@@ -275,11 +271,15 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.local_offer_rounded, color: Colors.white, size: 22),
+                    Icon(
+                      Icons.local_offer_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'عبّئ بيانات طلبك وسيصلك أفضل عرض من المزودين.',
+                        'عبّئ بيانات طلبك وسيتم إرساله لكل المزودين المطابقين في نفس المدينة والتصنيف.',
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           color: Colors.white,
@@ -303,7 +303,9 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                       value: _selectedCategory,
                       decoration: _fieldDecoration(
                         isDark: isDark,
-                        hint: _loadingCats ? 'جاري تحميل التصنيفات...' : 'اختر التصنيف الرئيسي',
+                        hint: _loadingCats
+                            ? 'جاري تحميل التصنيفات...'
+                            : 'اختر التصنيف الرئيسي',
                         prefixIcon: Icons.category,
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -318,18 +320,23 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                       isExpanded: true,
                       alignment: AlignmentDirectional.centerEnd,
                       items: _categories
-                          .map((c) => DropdownMenuItem<Category>(
-                                value: c,
-                                alignment: AlignmentDirectional.centerEnd,
-                                child: Text(c.name, style: const TextStyle(fontFamily: 'Cairo')),
-                              ))
+                          .map(
+                            (c) => DropdownMenuItem<Category>(
+                              value: c,
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: Text(
+                                c.name,
+                                style: const TextStyle(fontFamily: 'Cairo'),
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: _loadingCats
                           ? null
                           : (val) => setState(() {
-                                _selectedCategory = val;
-                                _selectedSubCategory = null;
-                              }),
+                              _selectedCategory = val;
+                              _selectedSubCategory = null;
+                            }),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<SubCategory>(
@@ -350,14 +357,22 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                       ),
                       isExpanded: true,
                       alignment: AlignmentDirectional.centerEnd,
-                      items: (_selectedCategory?.subcategories ?? const <SubCategory>[])
-                          .map((s) => DropdownMenuItem<SubCategory>(
-                                value: s,
-                                alignment: AlignmentDirectional.centerEnd,
-                                child: Text(s.name, style: const TextStyle(fontFamily: 'Cairo')),
-                              ))
-                          .toList(),
-                      onChanged: (val) => setState(() => _selectedSubCategory = val),
+                      items:
+                          (_selectedCategory?.subcategories ??
+                                  const <SubCategory>[])
+                              .map(
+                                (s) => DropdownMenuItem<SubCategory>(
+                                  value: s,
+                                  alignment: AlignmentDirectional.centerEnd,
+                                  child: Text(
+                                    s.name,
+                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                      onChanged: (val) =>
+                          setState(() => _selectedSubCategory = val),
                     ),
                   ],
                 ),
@@ -389,11 +404,16 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                       isExpanded: true,
                       alignment: AlignmentDirectional.centerEnd,
                       items: _saudiCities
-                          .map((c) => DropdownMenuItem<String>(
-                                value: c,
-                                alignment: AlignmentDirectional.centerEnd,
-                                child: Text(c, style: const TextStyle(fontFamily: 'Cairo')),
-                              ))
+                          .map(
+                            (c) => DropdownMenuItem<String>(
+                              value: c,
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: Text(
+                                c,
+                                style: const TextStyle(fontFamily: 'Cairo'),
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: (val) => setState(() => _selectedCity = val),
                     ),
@@ -415,7 +435,8 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                       maxLines: 4,
                       decoration: _fieldDecoration(
                         isDark: isDark,
-                        hint: 'اكتب تفاصيل واضحة تساعد المزودين على تقديم أفضل عرض',
+                        hint:
+                            'اكتب تفاصيل واضحة تساعد المزودين على تقديم أفضل عرض',
                         prefixIcon: Icons.notes_rounded,
                       ),
                       style: const TextStyle(fontFamily: 'Cairo'),
@@ -444,7 +465,10 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 16,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(
                         color: isDark ? Colors.white12 : Colors.grey.shade300,
@@ -486,7 +510,9 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _submitting ? null : () => Navigator.pop(context),
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         side: BorderSide(
@@ -498,7 +524,10 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                       ),
                       child: const Text(
                         'إلغاء',
-                        style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -584,11 +613,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                   color: AppColors.deepPurple.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: AppColors.deepPurple,
-                ),
+                child: Icon(icon, size: 18, color: AppColors.deepPurple),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -624,11 +649,15 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white12 : Colors.grey.shade300,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white12 : Colors.grey.shade300,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),

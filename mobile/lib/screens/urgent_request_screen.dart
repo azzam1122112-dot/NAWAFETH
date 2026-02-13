@@ -4,6 +4,7 @@ import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
 import '../models/category.dart';
 import '../utils/auth_guard.dart';
+import 'urgent_providers_map_screen.dart';
 
 class UrgentRequestScreen extends StatefulWidget {
   const UrgentRequestScreen({super.key});
@@ -24,7 +25,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
   String _dispatchMode = 'all'; // all | nearest
 
   List<Category> _categories = [];
-  
+
   final List<String> _saudiCities = [
     'الرياض',
     'جدة',
@@ -56,15 +57,18 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
 
     if (_selectedSubCategory == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اختر التصنيف الفرعي')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اختر التصنيف الفرعي')));
       return;
     }
 
     final title = _titleController.text.trim();
     final desc = _descriptionController.text.trim();
-    if (title.isEmpty || desc.isEmpty || _selectedCity == null || _selectedCity!.isEmpty) {
+    if (title.isEmpty ||
+        desc.isEmpty ||
+        _selectedCity == null ||
+        _selectedCity!.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('أكمل العنوان والوصف والمدينة')),
@@ -275,7 +279,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
 
   Widget _buildForm(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -349,7 +353,10 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               ),
               const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
@@ -383,7 +390,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        
+
         // Form Card
         Container(
           padding: const EdgeInsets.all(20),
@@ -406,15 +413,19 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               const SizedBox(height: 12),
               _buildCategoryDropdown(theme, isDark),
               const SizedBox(height: 16),
-              
+
               if (_selectedCategory != null &&
                   _selectedCategory!.subcategories.isNotEmpty) ...[
                 _buildSubCategoryDropdown(theme, isDark),
                 const SizedBox(height: 24),
               ],
-              
+
               // Request Details
-              _buildSectionHeader("تفاصيل الطلب", Icons.description_rounded, isDark),
+              _buildSectionHeader(
+                "تفاصيل الطلب",
+                Icons.description_rounded,
+                isDark,
+              ),
               const SizedBox(height: 12),
               _buildTextField(
                 _titleController,
@@ -431,9 +442,13 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                 maxLines: 4,
               ),
               const SizedBox(height: 24),
-              
+
               // City Selection
-              _buildSectionHeader("المدينة", Icons.location_city_rounded, isDark),
+              _buildSectionHeader(
+                "المدينة",
+                Icons.location_city_rounded,
+                isDark,
+              ),
               const SizedBox(height: 12),
               _buildCityDropdown(isDark),
               const SizedBox(height: 24),
@@ -441,14 +456,66 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               _buildSectionHeader("طريقة الإرسال", Icons.send_rounded, isDark),
               const SizedBox(height: 12),
               _buildDispatchModeCard(isDark),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _openUrgentProvidersMap,
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text(
+                    'عرض مزودي العاجل على الخريطة',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    side: BorderSide(
+                      color: isDark ? Colors.white24 : Colors.grey.shade300,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 24),
-        
+
         // Action Buttons
         _buildSubmitButton(isDark),
       ],
+    );
+  }
+
+  Future<void> _openUrgentProvidersMap() async {
+    if (_selectedSubCategory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر التصنيف الفرعي أولاً')),
+      );
+      return;
+    }
+    if ((_selectedCity ?? '').trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اختر المدينة أولاً')));
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => UrgentProvidersMapScreen(
+          subcategoryId: _selectedSubCategory!.id,
+          city: _selectedCity!,
+          subcategoryName: _selectedSubCategory!.name,
+        ),
+      ),
     );
   }
 
@@ -486,7 +553,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       ),
     );
   }
-  
+
   Widget _buildSectionHeader(String title, IconData icon, bool isDark) {
     return Row(
       children: [
@@ -498,11 +565,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
             ),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(
-            icon,
-            color: Colors.white,
-            size: 18,
-          ),
+          child: Icon(icon, color: Colors.white, size: 18),
         ),
         const SizedBox(width: 12),
         Text(
@@ -517,7 +580,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       ],
     );
   }
-  
+
   Widget _buildTextField(
     TextEditingController controller,
     String hint,
@@ -528,27 +591,19 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     return TextField(
       controller: controller,
       maxLines: maxLines,
-      style: const TextStyle(
-        fontSize: 15,
-        fontFamily: 'Cairo',
-      ),
+      style: const TextStyle(fontSize: 15, fontFamily: 'Cairo'),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(
-          fontSize: 14,
-          fontFamily: 'Cairo',
-        ),
+        hintStyle: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
         prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
         isDense: true,
       ),
     );
   }
-  
+
   Widget _buildCityDropdown(bool isDark) {
     return DropdownButtonFormField<String>(
       value: _selectedCity,
@@ -556,9 +611,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
         hintText: 'اختر المدينة',
         hintStyle: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
         prefixIcon: const Icon(Icons.location_city),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
         isDense: true,
@@ -571,10 +624,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
           alignment: AlignmentDirectional.centerEnd,
           child: Text(
             city,
-            style: const TextStyle(
-              fontSize: 15,
-              fontFamily: 'Cairo',
-            ),
+            style: const TextStyle(fontSize: 15, fontFamily: 'Cairo'),
           ),
         );
       }).toList(),
@@ -585,7 +635,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       },
     );
   }
-  
+
   Widget _buildSubmitButton(bool isDark) {
     return Container(
       decoration: BoxDecoration(
@@ -638,7 +688,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       ),
     );
   }
-  
+
   Widget _buildCategoryDropdown(ThemeData theme, bool isDark) {
     return DropdownButtonFormField<Category>(
       value: _selectedCategory,
@@ -646,9 +696,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
         hintText: 'اختر التصنيف الرئيسي',
         hintStyle: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
         prefixIcon: const Icon(Icons.category),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
         isDense: true,
@@ -656,17 +704,16 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       dropdownColor: isDark ? Colors.grey[850] : Colors.white,
       borderRadius: BorderRadius.circular(12),
       items: _categories
-          .map((c) => DropdownMenuItem<Category>(
-                value: c,
-                alignment: AlignmentDirectional.centerEnd,
-                child: Text(
-                  c.name,
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 15,
-                  ),
-                ),
-              ))
+          .map(
+            (c) => DropdownMenuItem<Category>(
+              value: c,
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                c.name,
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 15),
+              ),
+            ),
+          )
           .toList(),
       onChanged: (val) {
         setState(() {
@@ -679,18 +726,16 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
 
   Widget _buildSubCategoryDropdown(ThemeData theme, bool isDark) {
     final subs = _selectedCategory?.subcategories ?? const <SubCategory>[];
-    
+
     if (subs.isEmpty) return const SizedBox.shrink();
-    
+
     return DropdownButtonFormField<SubCategory>(
       value: _selectedSubCategory,
       decoration: InputDecoration(
         hintText: 'اختر التصنيف الفرعي',
         hintStyle: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
         prefixIcon: const Icon(Icons.subdirectory_arrow_right),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
         isDense: true,
@@ -698,17 +743,16 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       dropdownColor: isDark ? Colors.grey[850] : Colors.white,
       borderRadius: BorderRadius.circular(12),
       items: subs
-          .map((s) => DropdownMenuItem<SubCategory>(
-                value: s,
-                alignment: AlignmentDirectional.centerEnd,
-                child: Text(
-                  s.name,
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 15,
-                  ),
-                ),
-              ))
+          .map(
+            (s) => DropdownMenuItem<SubCategory>(
+              value: s,
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                s.name,
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 15),
+              ),
+            ),
+          )
           .toList(),
       onChanged: (val) => setState(() => _selectedSubCategory = val),
     );

@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../utils/user_scoped_prefs.dart';
+import '../../../services/providers_api.dart';
+import '../../../widgets/profile_wizard_shell.dart';
 
 class AdditionalDetailsStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -33,15 +35,61 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   final TextEditingController _dialogController = TextEditingController();
 
   Timer? _draftTimer;
+  bool _loadingFromBackend = false;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _loadDraft();
+    _loadFromBackendBestEffort();
     aboutController.addListener(() {
       _scheduleDraftSave();
       _updateSectionDone();
     });
+  }
+
+  Future<void> _loadFromBackendBestEffort() async {
+    if (_loadingFromBackend) return;
+    setState(() => _loadingFromBackend = true);
+    try {
+      final profile = await ProvidersApi().getMyProviderProfile();
+      if (profile == null) return;
+
+      List<String> asList(dynamic v) {
+        if (v is! List) return <String>[];
+        return v
+            .map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
+
+      final about = (profile['about_details'] ?? '').toString().trim();
+      final qs = asList(profile['qualifications']);
+      final ex = asList(profile['experiences']);
+
+      if (!mounted) return;
+      setState(() {
+        if (aboutController.text.trim().isEmpty && about.isNotEmpty) {
+          aboutController.text = about;
+        }
+        if (qualifications.isEmpty && qs.isNotEmpty) {
+          qualifications.addAll(qs);
+        }
+        if (experiences.isEmpty && ex.isNotEmpty) {
+          experiences.addAll(ex);
+        }
+      });
+      _updateSectionDone();
+    } catch (_) {
+      // Best-effort.
+    } finally {
+      if (mounted) {
+        setState(() => _loadingFromBackend = false);
+      } else {
+        _loadingFromBackend = false;
+      }
+    }
   }
 
   Future<void> _loadDraft() async {
@@ -233,8 +281,42 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
     _updateSectionDone();
   }
 
-  void _handleNext() {
-    // كلها اختيارية، لكن لو حاب تضيف تحقق بسيط ممكن هنا
+  Future<bool> _saveToBackend() async {
+    if (_saving) return false;
+    setState(() => _saving = true);
+    try {
+      final payload = <String, dynamic>{
+        'about_details': aboutController.text.trim(),
+        'qualifications': qualifications,
+        'experiences': experiences,
+      };
+      final updated = await ProvidersApi().updateMyProviderProfile(payload);
+      if (updated == null) {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ التفاصيل الإضافية حالياً.')),
+        );
+        return false;
+      }
+      return true;
+    } catch (_) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ التفاصيل الإضافية حالياً.')),
+      );
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      } else {
+        _saving = false;
+      }
+    }
+  }
+
+  Future<void> _handleNext() async {
+    final ok = await _saveToBackend();
+    if (!ok) return;
     _updateSectionDone();
     _clearDraft();
     widget.onNext();
@@ -242,90 +324,30 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 700),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 14),
-              _buildInfoCard(),
-              const SizedBox(height: 18),
-
-              // نبذة تفصيلية عامة عن المزود وخدماته
-              _buildAboutCard(),
-              const SizedBox(height: 16),
-
-              // كرت المؤهلات
-              _buildQualificationsCard(),
-              const SizedBox(height: 16),
-
-              // كرت الخبرات العملية
-              _buildExperiencesCard(),
-              const SizedBox(height: 26),
-
-              // أزرار الانتقال
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: widget.onBack,
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new,
-                        size: 16,
-                        color: Colors.deepPurple,
-                      ),
-                      label: const Text(
-                        "السابق",
-                        style: TextStyle(
-                          fontFamily: "Cairo",
-                          color: Colors.deepPurple,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        side: BorderSide(
-                          color: Colors.deepPurple.withOpacity(0.7),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _handleNext,
-                      icon: const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        "التالي",
-                        style: TextStyle(
-                          fontFamily: "Cairo",
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+    return ProfileWizardShell(
+      title: 'تفاصيل إضافية عنك',
+      subtitle: 'عرّف العملاء بخبرتك ومؤهلاتك لتعزيز الثقة قبل طلب الخدمة.',
+      showTopLoader: _loadingFromBackend,
+      onBack: widget.onBack,
+      onNext: _handleNext,
+      nextBusy: _saving,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 18),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInfoCard(),
+                const SizedBox(height: 18),
+                _buildAboutCard(),
+                const SizedBox(height: 16),
+                _buildQualificationsCard(),
+                const SizedBox(height: 16),
+                _buildExperiencesCard(),
+              ],
+            ),
           ),
         ),
       ),
@@ -333,32 +355,6 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   }
 
   // ================= UI Helpers =================
-
-  Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Text(
-          "تفاصيل عنك كمقدم خدمة",
-          style: TextStyle(
-            fontFamily: "Cairo",
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.deepPurple,
-          ),
-        ),
-        SizedBox(height: 6),
-        Text(
-          "عرّف عملاءك على مؤهلاتك وخبراتك ونبذة تفصيلية عنك وعن أسلوب عملك.",
-          style: TextStyle(
-            fontFamily: "Cairo",
-            fontSize: 13,
-            color: Colors.black54,
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildInfoCard() {
     return Container(

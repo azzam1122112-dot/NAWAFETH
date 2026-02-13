@@ -37,7 +37,8 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   List<Map<String, dynamic>> _allChats = <Map<String, dynamic>>[];
 
   final Map<int, WebSocket> _sockets = <int, WebSocket>{};
-  final Map<int, StreamSubscription<dynamic>> _socketSubs = <int, StreamSubscription<dynamic>>{};
+  final Map<int, StreamSubscription<dynamic>> _socketSubs =
+      <int, StreamSubscription<dynamic>>{};
   final Map<int, Timer> _reconnectTimers = <int, Timer>{};
   final Map<int, int> _reconnectAttempts = <int, int>{};
 
@@ -116,20 +117,37 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
         final threadId = _asInt(thread['id']);
         final messages = await _messagingApi.getThreadMessages(requestId);
 
-        final latest = messages.isNotEmpty ? messages.first : <String, dynamic>{};
-        final createdAt = DateTime.tryParse((latest['created_at'] ?? '').toString()) ??
+        final latest = messages.isNotEmpty
+            ? messages.first
+            : <String, dynamic>{};
+        final createdAt =
+            DateTime.tryParse((latest['created_at'] ?? '').toString()) ??
             DateTime.tryParse((req['created_at'] ?? '').toString()) ??
             DateTime.now();
 
         final name = _isProviderAccount
-            ? _pickNonEmpty(req['client_name'], req['client_phone'], 'عميل #$requestId')
-            : _pickNonEmpty(req['provider_name'], req['provider_phone'], 'مقدم خدمة #$requestId');
+            ? _pickNonEmpty(
+                req['client_name'],
+                req['client_phone'],
+                'عميل #$requestId',
+              )
+            : _pickNonEmpty(
+                req['provider_name'],
+                req['provider_phone'],
+                'مقدم خدمة #$requestId',
+              );
 
         chats.add({
           'requestId': requestId,
           'threadId': threadId,
+          'requestCode': 'R${requestId.toString().padLeft(6, '0')}',
+          'requestTitle': (req['title'] ?? '').toString(),
           'name': name,
-          'lastMessage': _pickNonEmpty(latest['body'], req['title'], 'ابدأ المحادثة الآن'),
+          'lastMessage': _pickNonEmpty(
+            latest['body'],
+            req['title'],
+            'ابدأ المحادثة الآن',
+          ),
           'time': DateFormat('hh:mm a', 'ar').format(createdAt),
           'timestamp': createdAt,
           'unread': _computeUnread(messages),
@@ -142,8 +160,12 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     }
 
     chats.sort((a, b) {
-      final da = (a['timestamp'] as DateTime?) ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final db = (b['timestamp'] as DateTime?) ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final da =
+          (a['timestamp'] as DateTime?) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final db =
+          (b['timestamp'] as DateTime?) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
       return db.compareTo(da);
     });
 
@@ -182,7 +204,10 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     }
   }
 
-  Future<void> _connectSocket({required int threadId, required int requestId}) async {
+  Future<void> _connectSocket({
+    required int threadId,
+    required int requestId,
+  }) async {
     final token = await _messagingApi.getAccessToken();
     if (token == null || token.trim().isEmpty) return;
 
@@ -191,16 +216,22 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
       _sockets[threadId]?.close();
       _reconnectTimers[threadId]?.cancel();
 
-      final uri = _messagingApi.buildThreadWsUri(threadId: threadId, token: token);
+      final uri = _messagingApi.buildThreadWsUri(
+        threadId: threadId,
+        token: token,
+      );
       final socket = await WebSocket.connect(uri.toString());
 
       _sockets[threadId] = socket;
       _reconnectAttempts[threadId] = 0;
 
       _socketSubs[threadId] = socket.listen(
-        (raw) => _onSocketEvent(threadId: threadId, requestId: requestId, raw: raw),
-        onDone: () => _scheduleReconnect(threadId: threadId, requestId: requestId),
-        onError: (_) => _scheduleReconnect(threadId: threadId, requestId: requestId),
+        (raw) =>
+            _onSocketEvent(threadId: threadId, requestId: requestId, raw: raw),
+        onDone: () =>
+            _scheduleReconnect(threadId: threadId, requestId: requestId),
+        onError: (_) =>
+            _scheduleReconnect(threadId: threadId, requestId: requestId),
       );
     } catch (_) {
       _scheduleReconnect(threadId: threadId, requestId: requestId);
@@ -235,7 +266,9 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
       final senderId = _asInt(payload['sender_id']);
       final isMine = _myUserId != null && senderId == _myUserId;
       final text = (payload['text'] ?? '').toString().trim();
-      final sentAt = DateTime.tryParse((payload['sent_at'] ?? '').toString()) ?? DateTime.now();
+      final sentAt =
+          DateTime.tryParse((payload['sent_at'] ?? '').toString()) ??
+          DateTime.now();
 
       _updateChat(
         threadId: threadId,
@@ -290,8 +323,12 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     setState(() {
       _allChats[idx] = chat;
       _allChats.sort((a, b) {
-        final da = (a['timestamp'] as DateTime?) ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final db = (b['timestamp'] as DateTime?) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final da =
+            (a['timestamp'] as DateTime?) ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final db =
+            (b['timestamp'] as DateTime?) ??
+            DateTime.fromMillisecondsSinceEpoch(0);
         return db.compareTo(da);
       });
     });
@@ -318,7 +355,11 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
 
     if (_searchQuery.trim().isNotEmpty) {
       filtered = filtered
-          .where((c) => c['name'].toString().toLowerCase().contains(_searchQuery.trim().toLowerCase()))
+          .where(
+            (c) => c['name'].toString().toLowerCase().contains(
+              _searchQuery.trim().toLowerCase(),
+            ),
+          )
           .toList();
     }
 
@@ -327,7 +368,11 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     } else if (_selectedFilter == 'مفضلة') {
       filtered = filtered.where((c) => c['favorite'] == true).toList();
     } else if (_selectedFilter == 'الأحدث') {
-      filtered.sort((a, b) => ((b['timestamp'] as DateTime?) ?? DateTime.now()).compareTo((a['timestamp'] as DateTime?) ?? DateTime.now()));
+      filtered.sort(
+        (a, b) => ((b['timestamp'] as DateTime?) ?? DateTime.now()).compareTo(
+          (a['timestamp'] as DateTime?) ?? DateTime.now(),
+        ),
+      );
     }
 
     return filtered;
@@ -381,93 +426,127 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _hasError
-                    ? _StateMessage(
-                        text: 'تعذر تحميل المحادثات.',
-                        action: 'إعادة المحاولة',
-                        onTap: _reload,
-                      )
-                    : chats.isEmpty
-                        ? RefreshIndicator(
-                            onRefresh: _reload,
-                            child: ListView(
-                              children: const [
-                                SizedBox(height: 140),
-                                Center(child: Text('لا توجد محادثات مرتبطة بطلبات حالياً.', style: TextStyle(fontFamily: 'Cairo'))),
-                              ],
+                ? _StateMessage(
+                    text: 'تعذر تحميل المحادثات.',
+                    action: 'إعادة المحاولة',
+                    onTap: _reload,
+                  )
+                : chats.isEmpty
+                ? RefreshIndicator(
+                    onRefresh: _reload,
+                    child: ListView(
+                      children: const [
+                        SizedBox(height: 140),
+                        Center(
+                          child: Text(
+                            'لا توجد محادثات مرتبطة بطلبات حالياً.',
+                            style: TextStyle(fontFamily: 'Cairo'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _reload,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemBuilder: (context, index) {
+                        final chat = chats[index];
+                        final name = chat['name'].toString();
+                        final last = chat['lastMessage'].toString();
+                        final requestId = _asInt(chat['requestId']);
+                        final threadId = _asInt(chat['threadId']);
+                        final unread = _asInt(chat['unread']) ?? 0;
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.deepPurple.shade50,
+                              child: Text(
+                                name.isNotEmpty ? name.substring(0, 1) : '?',
+                                style: const TextStyle(
+                                  color: Colors.deepPurple,
+                                ),
+                              ),
                             ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _reload,
-                            child: ListView.separated(
-                              padding: const EdgeInsets.all(12),
-                              itemBuilder: (context, index) {
-                                final chat = chats[index];
-                                final name = chat['name'].toString();
-                                final last = chat['lastMessage'].toString();
-                                final requestId = _asInt(chat['requestId']);
-                                final threadId = _asInt(chat['threadId']);
-                                final unread = _asInt(chat['unread']) ?? 0;
-                                return Card(
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.deepPurple.shade50,
-                                      child: Text(
-                                        name.isNotEmpty ? name.substring(0, 1) : '?',
-                                        style: const TextStyle(color: Colors.deepPurple),
+                            title: Text(
+                              name,
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              last,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            trailing: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  chat['time'].toString(),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                if (unread > 0) ...[
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade500,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      unread > 99 ? '99+' : unread.toString(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    title: Text(name, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                                    subtitle: Text(last, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontFamily: 'Cairo')),
-                                    trailing: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(chat['time'].toString(), style: const TextStyle(fontSize: 12)),
-                                        if (unread > 0) ...[
-                                          const SizedBox(height: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.red.shade500,
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              unread > 99 ? '99+' : unread.toString(),
-                                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    onTap: () {
-                                      if (threadId != null && requestId != null) {
-                                        _updateChat(
-                                          threadId: threadId,
-                                          requestId: requestId,
-                                          clearUnread: true,
-                                        );
-                                      }
-
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => ChatDetailScreen(
-                                            name: name,
-                                            isOnline: false,
-                                            requestId: requestId,
-                                            threadId: threadId,
-                                          ),
-                                        ),
-                                      ).then((_) => _reload());
-                                    },
                                   ),
-                                );
-                              },
-                              separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemCount: chats.length,
+                                ],
+                              ],
                             ),
+                            onTap: () {
+                              if (threadId != null && requestId != null) {
+                                _updateChat(
+                                  threadId: threadId,
+                                  requestId: requestId,
+                                  clearUnread: true,
+                                );
+                              }
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatDetailScreen(
+                                    name: name,
+                                    isOnline: false,
+                                    requestId: requestId,
+                                    threadId: threadId,
+                                    requestCode: (chat['requestCode'] ?? '')
+                                        .toString(),
+                                    requestTitle: (chat['requestTitle'] ?? '')
+                                        .toString(),
+                                  ),
+                                ),
+                              ).then((_) => _reload());
+                            },
                           ),
+                        );
+                      },
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemCount: chats.length,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -518,7 +597,11 @@ class _StateMessage extends StatelessWidget {
   final String action;
   final Future<void> Function() onTap;
 
-  const _StateMessage({required this.text, required this.action, required this.onTap});
+  const _StateMessage({
+    required this.text,
+    required this.action,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -528,7 +611,10 @@ class _StateMessage extends StatelessWidget {
         children: [
           Text(text, style: const TextStyle(fontFamily: 'Cairo')),
           const SizedBox(height: 10),
-          ElevatedButton(onPressed: onTap, child: Text(action, style: const TextStyle(fontFamily: 'Cairo'))),
+          ElevatedButton(
+            onPressed: onTap,
+            child: Text(action, style: const TextStyle(fontFamily: 'Cairo')),
+          ),
         ],
       ),
     );

@@ -2,10 +2,7 @@ class ClientOrderAttachment {
   final String name;
   final String type; // e.g. PDF, DOCX, IMG
 
-  const ClientOrderAttachment({
-    required this.name,
-    required this.type,
-  });
+  const ClientOrderAttachment({required this.name, required this.type});
 }
 
 class ClientOrder {
@@ -27,6 +24,9 @@ class ClientOrder {
   final double? serviceAmountSR;
   final double? receivedAmountSR;
   final double? remainingAmountSR;
+  final bool? providerInputsApproved;
+  final DateTime? providerInputsDecidedAt;
+  final String? providerInputsDecisionNote;
 
   // Completed order fields
   final DateTime? deliveredAt;
@@ -59,6 +59,9 @@ class ClientOrder {
     this.serviceAmountSR,
     this.receivedAmountSR,
     this.remainingAmountSR,
+    this.providerInputsApproved,
+    this.providerInputsDecidedAt,
+    this.providerInputsDecisionNote,
     this.deliveredAt,
     this.actualServiceAmountSR,
     this.ratingResponseSpeed,
@@ -81,6 +84,7 @@ class ClientOrder {
         case 'sent':
           return 'جديد';
         case 'accepted':
+          return 'بانتظار اعتماد العميل';
         case 'in_progress':
           return 'تحت التنفيذ';
         case 'completed':
@@ -100,7 +104,9 @@ class ClientOrder {
       serviceCode: json['subcategory_name'] ?? 'General',
       // If date comes as string, parse it.
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      status: statusLabel.isNotEmpty ? statusLabel : mapStatus(json['status'] ?? 'open'),
+      status: statusLabel.isNotEmpty
+          ? statusLabel
+          : mapStatus(json['status'] ?? 'open'),
       requestType: (json['request_type'] ?? 'normal').toString(),
       city: (json['city'] ?? '').toString(),
       providerName: (json['provider_name'] ?? '').toString().trim().isEmpty
@@ -108,6 +114,39 @@ class ClientOrder {
           : (json['provider_name'] ?? '').toString(),
       title: json['title'] ?? '',
       details: json['description'] ?? '',
+      expectedDeliveryAt: DateTime.tryParse(
+        (json['expected_delivery_at'] ?? '').toString(),
+      ),
+      serviceAmountSR: double.tryParse(
+        (json['estimated_service_amount'] ?? '').toString(),
+      ),
+      receivedAmountSR: double.tryParse(
+        (json['received_amount'] ?? '').toString(),
+      ),
+      remainingAmountSR: double.tryParse(
+        (json['remaining_amount'] ?? '').toString(),
+      ),
+      providerInputsApproved: json['provider_inputs_approved'] is bool
+          ? json['provider_inputs_approved'] as bool
+          : null,
+      providerInputsDecidedAt: DateTime.tryParse(
+        (json['provider_inputs_decided_at'] ?? '').toString(),
+      ),
+      providerInputsDecisionNote:
+          (json['provider_inputs_decision_note'] ?? '')
+              .toString()
+              .trim()
+              .isEmpty
+          ? null
+          : (json['provider_inputs_decision_note'] ?? '').toString(),
+      deliveredAt: DateTime.tryParse((json['delivered_at'] ?? '').toString()),
+      actualServiceAmountSR: double.tryParse(
+        (json['actual_service_amount'] ?? '').toString(),
+      ),
+      canceledAt: DateTime.tryParse((json['canceled_at'] ?? '').toString()),
+      cancelReason: (json['cancel_reason'] ?? '').toString().trim().isEmpty
+          ? null
+          : (json['cancel_reason'] ?? '').toString(),
     );
   }
 
@@ -126,6 +165,9 @@ class ClientOrder {
     double? serviceAmountSR,
     double? receivedAmountSR,
     double? remainingAmountSR,
+    bool? providerInputsApproved,
+    DateTime? providerInputsDecidedAt,
+    String? providerInputsDecisionNote,
     DateTime? deliveredAt,
     double? actualServiceAmountSR,
     double? ratingResponseSpeed,
@@ -153,8 +195,15 @@ class ClientOrder {
       serviceAmountSR: serviceAmountSR ?? this.serviceAmountSR,
       receivedAmountSR: receivedAmountSR ?? this.receivedAmountSR,
       remainingAmountSR: remainingAmountSR ?? this.remainingAmountSR,
+      providerInputsApproved:
+          providerInputsApproved ?? this.providerInputsApproved,
+      providerInputsDecidedAt:
+          providerInputsDecidedAt ?? this.providerInputsDecidedAt,
+      providerInputsDecisionNote:
+          providerInputsDecisionNote ?? this.providerInputsDecisionNote,
       deliveredAt: deliveredAt ?? this.deliveredAt,
-      actualServiceAmountSR: actualServiceAmountSR ?? this.actualServiceAmountSR,
+      actualServiceAmountSR:
+          actualServiceAmountSR ?? this.actualServiceAmountSR,
       ratingResponseSpeed: ratingResponseSpeed ?? this.ratingResponseSpeed,
       ratingCostValue: ratingCostValue ?? this.ratingCostValue,
       ratingQuality: ratingQuality ?? this.ratingQuality,
