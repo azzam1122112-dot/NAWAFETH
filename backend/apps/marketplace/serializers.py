@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import Offer, ServiceRequest, ServiceRequestAttachment
-from apps.providers.models import ProviderProfile
+from apps.providers.models import ProviderCategory, ProviderProfile
 
 
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):
@@ -45,16 +45,32 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         provider = attrs.get("provider")
         request_type = attrs.get("request_type")
+        city = (attrs.get("city") or "").strip()
+        subcategory = attrs.get("subcategory")
+
+        # Competitive/Urgent requests are broadcast to matching providers.
+        # They must NOT be targeted to a single provider.
+        if request_type in ("competitive", "urgent") and provider is not None:
+            raise serializers.ValidationError({
+                "provider": "هذا النوع من الطلبات لا يدعم تحديد مزود خدمة."
+            })
 
         if request_type == "normal" and provider is None:
             raise serializers.ValidationError({
                 "provider": "طلب عادي يتطلب تحديد مزود خدمة"
             })
 
-        if request_type == "urgent" and provider is not None:
-            if not getattr(provider, "accepts_urgent", False):
+        if request_type == "normal" and provider is not None:
+            # Ensure provider is eligible for this request (same city + same subcategory)
+            if city and (getattr(provider, "city", None) or "").strip() and provider.city.strip() != city:
                 raise serializers.ValidationError({
-                    "provider": "هذا المزود لا يقبل الطلبات العاجلة"
+                    "city": "مدينة الطلب لا تطابق مدينة مزود الخدمة"
+                })
+            if subcategory is not None and not ProviderCategory.objects.filter(
+                provider=provider, subcategory=subcategory
+            ).exists():
+                raise serializers.ValidationError({
+                    "subcategory": "مزود الخدمة لا يدعم هذا التصنيف"
                 })
 
         return attrs
@@ -111,6 +127,32 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
     provider_name = serializers.CharField(source="provider.display_name", read_only=True)
     provider_phone = serializers.CharField(source="provider.user.phone", read_only=True)
+    status_group = serializers.SerializerMethodField()
+    status_label = serializers.SerializerMethodField()
+
+    def _status_group_value(self, raw: str) -> str:
+        s = (raw or "").strip().lower()
+        if s in ("new", "sent"):
+            return "new"
+        if s in ("accepted", "in_progress"):
+            return "in_progress"
+        if s == "completed":
+            return "completed"
+        if s in ("cancelled", "canceled", "expired"):
+            return "cancelled"
+        return "new"
+
+    def get_status_group(self, obj):
+        return self._status_group_value(getattr(obj, "status", ""))
+
+    def get_status_label(self, obj):
+        group = self.get_status_group(obj)
+        return {
+            "new": "جديد",
+            "in_progress": "تحت التنفيذ",
+            "completed": "مكتمل",
+            "cancelled": "ملغي",
+        }.get(group, "جديد")
 
     def get_client_name(self, obj):
         first = (getattr(obj.client, "first_name", "") or "").strip()
@@ -126,6 +168,8 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
             "description",
             "request_type",
             "status",
+            "status_group",
+            "status_label",
             "city",
             "created_at",
             "provider",

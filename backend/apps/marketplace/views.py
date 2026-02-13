@@ -1,5 +1,6 @@
 from datetime import timedelta
 import logging
+from typing import Optional
 
 from django.conf import settings
 from django.contrib import messages
@@ -42,6 +43,40 @@ from apps.accounts.permissions import IsAtLeastClient
 
 
 logger = logging.getLogger(__name__)
+
+
+
+def _normalize_status_group(value: str) -> Optional[str]:
+	v = (value or "").strip().lower()
+	if not v:
+		return None
+
+	# English codes
+	if v in {"new", "in_progress", "completed", "cancelled"}:
+		return v
+
+	# Common variants
+	if v in {"canceled", "cancel", "cancelled"}:
+		return "cancelled"
+
+	# Arabic labels (mobile/UI)
+	ar_map = {
+		"جديد": "new",
+		"تحت التنفيذ": "in_progress",
+		"مكتمل": "completed",
+		"ملغي": "cancelled",
+	}
+	return ar_map.get(value.strip())
+
+
+def _status_group_to_statuses(group: str) -> list[str]:
+	# Map unified user-facing groups to internal statuses.
+	return {
+		"new": [RequestStatus.NEW, RequestStatus.SENT],
+		"in_progress": [RequestStatus.ACCEPTED, RequestStatus.IN_PROGRESS],
+		"completed": [RequestStatus.COMPLETED],
+		"cancelled": [RequestStatus.CANCELLED, RequestStatus.EXPIRED],
+	}[group]
 
 
 def _expire_urgent_requests() -> None:
@@ -142,6 +177,23 @@ class UrgentRequestAcceptView(APIView):
 					status=status.HTTP_409_CONFLICT,
 				)
 
+			# ✅ تأكيد أهلية المزود (أمان/نزاهة): نفس المدينة + نفس التصنيف + يقبل العاجل
+			if not getattr(provider, "accepts_urgent", False):
+				return Response(
+					{"detail": "هذا المزود لا يقبل الطلبات العاجلة"},
+					status=status.HTTP_403_FORBIDDEN,
+				)
+			if (service_request.city or "").strip() and (provider.city or "").strip() and service_request.city.strip() != provider.city.strip():
+				return Response(
+					{"detail": "هذا الطلب خارج نطاق مدينتك"},
+					status=status.HTTP_403_FORBIDDEN,
+				)
+			if not ProviderCategory.objects.filter(provider=provider, subcategory_id=service_request.subcategory_id).exists():
+				return Response(
+					{"detail": "هذا الطلب لا يطابق تخصصاتك"},
+					status=status.HTTP_403_FORBIDDEN,
+				)
+
 			# ✅ قبول الطلب
 			service_request.provider = provider
 			service_request.status = RequestStatus.ACCEPTED
@@ -226,11 +278,17 @@ class MyProviderRequestsView(generics.ListAPIView):
 	def get_queryset(self):
 		_expire_urgent_requests()
 		provider = self.request.user.provider_profile
-		return (
+		qs = (
 			ServiceRequest.objects.select_related("client", "subcategory", "subcategory__category")
 			.filter(provider=provider)
 			.order_by("-created_at")
 		)
+
+		group_value = _normalize_status_group(self.request.query_params.get("status_group") or "")
+		if group_value:
+			qs = qs.filter(status__in=_status_group_to_statuses(group_value))
+
+		return qs
 
 
 class MyClientRequestsView(generics.ListAPIView):
@@ -244,6 +302,10 @@ class MyClientRequestsView(generics.ListAPIView):
 			.filter(client=self.request.user)
 			.order_by("-created_at")
 		)
+
+		group_value = _normalize_status_group(self.request.query_params.get("status_group") or "")
+		if group_value:
+			qs = qs.filter(status__in=_status_group_to_statuses(group_value))
 
 		status_value = (self.request.query_params.get("status") or "").strip()
 		if status_value:
@@ -386,6 +448,18 @@ class CreateOfferView(APIView):
 			return Response(
 				{"detail": "لا يمكن إرسال عرض في هذه الحالة"},
 				status=status.HTTP_400_BAD_REQUEST,
+			)
+
+		# ✅ تأكيد أهلية المزود (أمان/نزاهة): نفس المدينة + نفس التصنيف
+		if (service_request.city or "").strip() and (provider.city or "").strip() and service_request.city.strip() != provider.city.strip():
+			return Response(
+				{"detail": "هذا الطلب خارج نطاق مدينتك"},
+				status=status.HTTP_403_FORBIDDEN,
+			)
+		if not ProviderCategory.objects.filter(provider=provider, subcategory_id=service_request.subcategory_id).exists():
+			return Response(
+				{"detail": "هذا الطلب لا يطابق تخصصاتك"},
+				status=status.HTTP_403_FORBIDDEN,
 			)
 
 		serializer = OfferCreateSerializer(data=request.data)

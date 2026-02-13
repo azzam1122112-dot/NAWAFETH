@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../services/marketplace_api.dart';
 import '../../services/role_controller.dart';
@@ -18,6 +16,8 @@ class ProviderOrdersScreen extends StatefulWidget {
 
 class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with SingleTickerProviderStateMixin {
   static const Color _mainColor = Colors.deepPurple;
+
+  String _selectedAssignedStatus = 'جديد';
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -86,10 +86,29 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (!mounted) return;
     setState(() => _loadingAssigned = true);
     try {
-      final list = await MarketplaceApi().getMyProviderRequests();
+      String statusGroup;
+      switch (_selectedAssignedStatus) {
+        case 'جديد':
+          statusGroup = 'new';
+          break;
+        case 'تحت التنفيذ':
+          statusGroup = 'in_progress';
+          break;
+        case 'مكتمل':
+          statusGroup = 'completed';
+          break;
+        case 'ملغي':
+          statusGroup = 'cancelled';
+          break;
+        default:
+          statusGroup = 'new';
+          break;
+      }
+
+      final list = await MarketplaceApi().getMyProviderRequests(statusGroup: statusGroup);
       if (!mounted) return;
       setState(() {
-        _assigned = (list is List) ? list.cast<Map<String, dynamic>>() : const [];
+        _assigned = list.cast<Map<String, dynamic>>();
       });
     } catch (_) {
       if (!mounted) return;
@@ -108,7 +127,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       final list = await MarketplaceApi().getAvailableUrgentRequestsForProvider();
       if (!mounted) return;
       setState(() {
-        _urgent = (list is List) ? list.cast<Map<String, dynamic>>() : const [];
+        _urgent = list.cast<Map<String, dynamic>>();
       });
     } catch (_) {
       if (!mounted) return;
@@ -127,7 +146,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       final list = await MarketplaceApi().getAvailableCompetitiveRequestsForProvider();
       if (!mounted) return;
       setState(() {
-        _competitive = (list is List) ? list.cast<Map<String, dynamic>>() : const [];
+        _competitive = list.cast<Map<String, dynamic>>();
       });
     } catch (_) {
       if (!mounted) return;
@@ -144,22 +163,19 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       case 'open':
       case 'pending':
       case 'new':
-        return 'جديد';
       case 'sent':
-        return 'أُرسل';
+        return 'جديد';
       case 'accepted':
-        return 'مقبول';
       case 'in_progress':
-        return 'قيد التنفيذ';
+        return 'تحت التنفيذ';
       case 'completed':
         return 'مكتمل';
       case 'cancelled':
       case 'canceled':
-        return 'ملغي';
       case 'expired':
-        return 'منتهي';
+        return 'ملغي';
       default:
-        return status;
+        return 'جديد';
     }
   }
 
@@ -169,11 +185,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         return Colors.green;
       case 'ملغي':
         return Colors.red;
-      case 'قيد التنفيذ':
-      case 'مقبول':
+      case 'تحت التنفيذ':
         return Colors.orange;
-      case 'أُرسل':
-        return Colors.blue;
       case 'جديد':
         return Colors.amber.shade800;
       default:
@@ -201,6 +214,82 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final query = _searchController.text.trim();
     if (query.isEmpty) return src;
     return src.where((e) => _matchesQuery(e, query)).toList();
+  }
+
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? _mainColor.withAlpha(28) : Colors.transparent,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: selected ? _mainColor : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: selected ? _mainColor : Colors.black54,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _assignedStatusChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _chip(
+            label: 'جديد',
+            selected: _selectedAssignedStatus == 'جديد',
+            onTap: () {
+              setState(() => _selectedAssignedStatus = 'جديد');
+              _fetchAssigned();
+            },
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: 'تحت التنفيذ',
+            selected: _selectedAssignedStatus == 'تحت التنفيذ',
+            onTap: () {
+              setState(() => _selectedAssignedStatus = 'تحت التنفيذ');
+              _fetchAssigned();
+            },
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: 'مكتمل',
+            selected: _selectedAssignedStatus == 'مكتمل',
+            onTap: () {
+              setState(() => _selectedAssignedStatus = 'مكتمل');
+              _fetchAssigned();
+            },
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: 'ملغي',
+            selected: _selectedAssignedStatus == 'ملغي',
+            onTap: () {
+              setState(() => _selectedAssignedStatus = 'ملغي');
+              _fetchAssigned();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _acceptUrgent(Map<String, dynamic> req) async {
@@ -231,7 +320,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _requestCard(Map<String, dynamic> req, {required bool urgentTab}) {
-    final statusAr = _mapStatus((req['status'] ?? '').toString());
+    final statusLabel = (req['status_label'] ?? '').toString().trim();
+    final statusAr = statusLabel.isNotEmpty
+        ? statusLabel
+        : _mapStatus((req['status'] ?? '').toString());
     final statusColor = _statusColor(statusAr);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isUrgent = type == 'urgent';
@@ -240,7 +332,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final typeColor = isUrgent ? Colors.redAccent : (isCompetitive ? Colors.blueGrey : _mainColor);
 
     final canAcceptRejectAssigned =
-        !urgentTab && !isCompetitive && (statusAr == 'أُرسل' || statusAr == 'جديد');
+      !urgentTab && !isCompetitive && statusAr == 'جديد';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -388,7 +480,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           content: const Text('هل تريد قبول هذا الطلب؟', style: TextStyle(fontFamily: 'Cairo')),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('قبول')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: _mainColor, foregroundColor: Colors.white),
+              child: const Text('قبول'),
+            ),
           ],
         ),
       ),
@@ -617,6 +713,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         children: [
           if (!widget.embedded) _searchBar(),
           if (!widget.embedded) const SizedBox(height: 12),
+          if (isAssigned) _assignedStatusChips(),
+          if (isAssigned) const SizedBox(height: 12),
           if (filtered.isEmpty)
             _emptyState(
               isUrgent

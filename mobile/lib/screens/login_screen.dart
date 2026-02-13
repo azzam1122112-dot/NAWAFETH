@@ -29,6 +29,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneCtrl = TextEditingController();
   bool _loading = false;
 
+  static const String _brandLogoAsset = 'assets/images/p.png';
+
   Future<bool> _autoVerifyAndNavigateIfEnabled({required String phone, String? devCode}) async {
     // Disabled by default (including debug). Enable only explicitly via build flag.
     // Example:
@@ -210,10 +212,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       drawer: const CustomDrawer(),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: Navigator.canPop(context)
@@ -223,109 +230,212 @@ class _LoginScreenState extends State<LoginScreen> {
               )
             : null,
         title: const Text(
-          "تسجيل الدخول",
+          'الدخول',
           style: TextStyle(
             fontFamily: 'Cairo',
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
         ),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            constraints: const BoxConstraints(maxWidth: 400),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha((0.05 * 255).toInt()),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+              colors: [AppColors.deepPurple, Colors.deepPurple],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  "أدخل رقم الجوال لتسجيل الدخول",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Cairo',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  maxLength: 10,
-                  decoration: InputDecoration(
-                    labelText: "رقم الجوال",
-                    hintText: '05xxxxxxxx',
-                    prefixIcon: const Icon(Icons.phone_android),
-                    counterText: '',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : () => _onLoginPressed(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.deepPurple,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            "تسجيل الدخول",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+          ),
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.deepPurple,
+              AppColors.deepPurple.withAlpha((0.82 * 255).toInt()),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight - 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 6),
+                      Center(
+                        child: Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withAlpha((0.14 * 255).toInt()),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withAlpha((0.20 * 255).toInt()),
+                              width: 1,
                             ),
                           ),
+                          child: ClipOval(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Image.asset(
+                                _brandLogoAsset,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.widgets,
+                                  color: Colors.white,
+                                  size: 38,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Center(
+                        child: Text(
+                          'مرحباً بك في نوافذ',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Center(
+                        child: Text(
+                          'أدخل رقم جوالك للمتابعة. إذا لم يكن لديك حساب، سيتم إنشاء حساب تلقائياً بعد التحقق.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
+                            height: 1.5,
+                            color: Colors.white.withAlpha((0.88 * 255).toInt()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        decoration: BoxDecoration(
+                          color: cs.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(((isDark ? 0.25 : 0.10) * 255).toInt()),
+                              blurRadius: 18,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'الدخول / التسجيل',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _phoneCtrl,
+                              keyboardType: TextInputType.phone,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(10),
+                              ],
+                              maxLength: 10,
+                              decoration: InputDecoration(
+                                labelText: 'رقم الجوال',
+                                hintText: '05xxxxxxxx',
+                                prefixIcon: const Icon(Icons.phone_android),
+                                counterText: '',
+                                filled: true,
+                                fillColor: cs.surface,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _loading ? null : () => _onLoginPressed(context),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.deepPurple,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: _loading
+                                    ? const SizedBox(
+                                        height: 18,
+                                        width: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'متابعة',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontFamily: 'Cairo',
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'سيتم إرسال رمز تحقق (OTP) لتأكيد رقم الجوال.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                color: cs.onSurface.withAlpha((0.65 * 255).toInt()),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            TextButton(
+                              onPressed: () => _onGuestPressed(context),
+                              child: Text(
+                                'الدخول كزائر',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 14,
+                                  color: cs.onSurface.withAlpha((0.75 * 255).toInt()),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => _onGuestPressed(context),
-                  child: const Text(
-                    "الدخول كزائر",
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      color: Colors.black54,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                // إنشاء حساب جديد يتم بعد OTP تلقائياً عند عدم وجود المستخدم.
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),

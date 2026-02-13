@@ -36,7 +36,39 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   Future<void> _fetchOrders() async {
     setState(() => _isLoading = true);
     try {
-      final jsonList = await MarketplaceApi().getMyRequests();
+      String? statusGroup;
+      switch (_selectedFilter) {
+        case 'جديد':
+          statusGroup = 'new';
+          break;
+        case 'تحت التنفيذ':
+          statusGroup = 'in_progress';
+          break;
+        case 'مكتمل':
+          statusGroup = 'completed';
+          break;
+        case 'ملغي':
+          statusGroup = 'cancelled';
+          break;
+      }
+
+      String? type;
+      switch (_selectedType) {
+        case 'عاجل':
+          type = 'urgent';
+          break;
+        case 'عروض':
+          type = 'competitive';
+          break;
+        case 'عادي':
+          type = 'normal';
+          break;
+      }
+
+      final jsonList = await MarketplaceApi().getMyRequests(
+        statusGroup: statusGroup,
+        type: type,
+      );
       if (mounted) {
         setState(() {
           _orders = jsonList.map((e) => ClientOrder.fromJson(e)).toList();
@@ -124,7 +156,6 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       case 'تحت التنفيذ':
         return Colors.orange;
       case 'جديد':
-      case 'أُرسل':
         return Colors.amber.shade800;
       default:
         return Colors.grey;
@@ -312,25 +343,37 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                     _filterChip(
                       label: 'الكل',
                       selected: _selectedType == 'الكل',
-                      onTap: () => setState(() => _selectedType = 'الكل'),
+                        onTap: () {
+                          setState(() => _selectedType = 'الكل');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'عادي',
                       selected: _selectedType == 'عادي',
-                      onTap: () => setState(() => _selectedType = 'عادي'),
+                        onTap: () {
+                          setState(() => _selectedType = 'عادي');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'عاجل',
                       selected: _selectedType == 'عاجل',
-                      onTap: () => setState(() => _selectedType = 'عاجل'),
+                        onTap: () {
+                          setState(() => _selectedType = 'عاجل');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'عروض',
                       selected: _selectedType == 'عروض',
-                      onTap: () => setState(() => _selectedType = 'عروض'),
+                        onTap: () {
+                          setState(() => _selectedType = 'عروض');
+                          _fetchOrders();
+                        },
                     ),
                   ],
                 ),
@@ -343,49 +386,46 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                     _filterChip(
                       label: 'الكل',
                       selected: _selectedFilter == 'الكل',
-                      onTap: () => setState(() => _selectedFilter = 'الكل'),
+                        onTap: () {
+                          setState(() => _selectedFilter = 'الكل');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'جديد',
                       selected: _selectedFilter == 'جديد',
-                      onTap: () => setState(() => _selectedFilter = 'جديد'),
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'أُرسل',
-                      selected: _selectedFilter == 'أُرسل',
-                      onTap: () => setState(() => _selectedFilter = 'أُرسل'),
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'مقبول',
-                      selected: _selectedFilter == 'مقبول',
-                      onTap: () => setState(() => _selectedFilter = 'مقبول'),
+                        onTap: () {
+                          setState(() => _selectedFilter = 'جديد');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'تحت التنفيذ',
                       selected: _selectedFilter == 'تحت التنفيذ',
-                      onTap: () => setState(() => _selectedFilter = 'تحت التنفيذ'),
+                        onTap: () {
+                          setState(() => _selectedFilter = 'تحت التنفيذ');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'مكتمل',
                       selected: _selectedFilter == 'مكتمل',
-                      onTap: () => setState(() => _selectedFilter = 'مكتمل'),
+                        onTap: () {
+                          setState(() => _selectedFilter = 'مكتمل');
+                          _fetchOrders();
+                        },
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'ملغي',
                       selected: _selectedFilter == 'ملغي',
-                      onTap: () => setState(() => _selectedFilter = 'ملغي'),
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'منتهي',
-                      selected: _selectedFilter == 'منتهي',
-                      onTap: () => setState(() => _selectedFilter = 'منتهي'),
+                        onTap: () {
+                          setState(() => _selectedFilter = 'ملغي');
+                          _fetchOrders();
+                        },
                     ),
                   ],
                 ),

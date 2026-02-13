@@ -1,10 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
-import 'my_profile_screen.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
 import '../models/category.dart';
@@ -25,8 +20,6 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
   Category? _selectedCategory;
   SubCategory? _selectedSubCategory;
   String? _selectedCity;
-
-  bool _loadingCats = false;
   bool _submitting = false;
   bool showSuccessCard = false;
 
@@ -101,11 +94,8 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     }
   }
 
-  void _goToMyProfile() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const MyProfileScreen()),
-    );
+  void _goToOrders() {
+    Navigator.pushNamedAndRemoveUntil(context, '/orders', (r) => false);
   }
 
   @override
@@ -122,12 +112,10 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
   }
 
   Future<void> _loadCategories() async {
-    setState(() => _loadingCats = true);
     final cats = await ProvidersApi().getCategories();
     if (!mounted) return;
     setState(() {
       _categories = cats;
-      _loadingCats = false;
     });
   }
 
@@ -241,7 +229,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        "ستصلك الردود في قسم نافذتي > الطلبات العاجلة أو عبر الإشعارات المباشرة.",
+                        "ستصلك الردود في قسم طلباتي أو عبر الإشعارات المباشرة.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -251,10 +239,10 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                       ),
                       const SizedBox(height: 24),
                       ElevatedButton.icon(
-                        onPressed: _goToMyProfile,
+                        onPressed: _goToOrders,
                         icon: const Icon(Icons.arrow_forward_rounded),
                         label: const Text(
-                          "اذهب إلى نافذتي",
+                          "اذهب إلى طلباتي",
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

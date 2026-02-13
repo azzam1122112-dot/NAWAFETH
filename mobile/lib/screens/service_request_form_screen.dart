@@ -355,6 +355,7 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
       }
 
       if (mounted) {
+        final navigator = Navigator.of(context);
         showDialog(
           context: context,
           builder: (context) => Directionality(
@@ -374,8 +375,15 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
               actions: [
                 TextButton(
                   onPressed: () {
-                    Navigator.pop(context); 
-                    Navigator.pop(context); 
+                    navigator.pop();
+                    navigator.pushNamedAndRemoveUntil('/orders', (r) => false);
+                  },
+                  child: const Text("اذهب إلى طلباتي"),
+                ),
+                TextButton(
+                  onPressed: () {
+                    navigator.pop();
+                    navigator.pop();
                   },
                   child: const Text("حسناً"),
                 ),

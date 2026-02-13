@@ -74,35 +74,33 @@ class ClientOrder {
 
   factory ClientOrder.fromJson(Map<String, dynamic> json) {
     String mapStatus(String status) {
-      switch (status) {
+      switch ((status).toString().trim().toLowerCase()) {
         case 'open':
         case 'pending':
         case 'new':
-          return 'جديد';
         case 'sent':
-          return 'أُرسل';
+          return 'جديد';
         case 'accepted':
-          return 'مقبول';
         case 'in_progress':
           return 'تحت التنفيذ';
         case 'completed':
           return 'مكتمل';
         case 'cancelled':
         case 'canceled':
-          return 'ملغي';
         case 'expired':
-          return 'منتهي';
+          return 'ملغي';
         default:
-          return status;
+          return 'جديد';
       }
     }
 
+    final statusLabel = (json['status_label'] ?? '').toString().trim();
     return ClientOrder(
       id: json['id'].toString(),
       serviceCode: json['subcategory_name'] ?? 'General',
       // If date comes as string, parse it.
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-      status: mapStatus(json['status'] ?? 'open'),
+      status: statusLabel.isNotEmpty ? statusLabel : mapStatus(json['status'] ?? 'open'),
       requestType: (json['request_type'] ?? 'normal').toString(),
       city: (json['city'] ?? '').toString(),
       providerName: (json['provider_name'] ?? '').toString().trim().isEmpty

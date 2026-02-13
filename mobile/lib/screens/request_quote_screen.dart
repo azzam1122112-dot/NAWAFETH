@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../widgets/bottom_nav.dart';
 import '../constants/colors.dart';
-import 'my_profile_screen.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
 import '../models/category.dart';
@@ -161,7 +160,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      "ستتلقى العروض قريبًا في قسم\nنافذتي > طلباتي > طلبات العروض",
+                      "ستتلقى العروض قريبًا في قسم\nطلباتي > طلبات العروض",
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, height: 1.6),
                     ),
@@ -169,15 +168,10 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                     ElevatedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const MyProfileScreen(),
-                          ),
-                        );
+                        Navigator.pushNamedAndRemoveUntil(context, '/orders', (r) => false);
                       },
                       icon: const Icon(Icons.arrow_forward),
-                      label: const Text("اذهب إلى نافذتي"),
+                      label: const Text("اذهب إلى طلباتي"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.deepPurple,
                         foregroundColor: Colors.white,

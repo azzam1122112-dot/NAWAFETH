@@ -97,13 +97,19 @@ class MarketplaceApi {
     }
   }
 
-  Future<List<dynamic>> getMyRequests() async {
+  Future<List<dynamic>> getMyRequests({String? statusGroup, String? type}) async {
     final token = await _session.readAccessToken();
     if (token == null) return [];
 
     try {
+      final queryParameters = <String, dynamic>{
+        if ((statusGroup ?? '').trim().isNotEmpty) 'status_group': statusGroup!.trim(),
+        if ((type ?? '').trim().isNotEmpty) 'type': type!.trim(),
+      };
+
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/client/requests/',
+        queryParameters: queryParameters.isEmpty ? null : queryParameters,
         options: Options(
           headers: {
             'Authorization': 'Bearer $token',
@@ -116,13 +122,18 @@ class MarketplaceApi {
     }
   }
 
-  Future<List<dynamic>> getMyProviderRequests() async {
+  Future<List<dynamic>> getMyProviderRequests({String? statusGroup}) async {
     final token = await _session.readAccessToken();
     if (token == null) return [];
 
     try {
+      final queryParameters = <String, dynamic>{
+        if ((statusGroup ?? '').trim().isNotEmpty) 'status_group': statusGroup!.trim(),
+      };
+
       final response = await _dio.get(
         '${ApiConfig.apiPrefix}/marketplace/provider/requests/',
+        queryParameters: queryParameters.isEmpty ? null : queryParameters,
         options: Options(
           headers: {
             'Authorization': 'Bearer $token',

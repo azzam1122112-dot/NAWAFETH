@@ -17,7 +17,7 @@ class RequestStatus(models.TextChoices):
 	NEW = "new", "جديد"
 	SENT = "sent", "أُرسل"
 	ACCEPTED = "accepted", "مقبول"
-	IN_PROGRESS = "in_progress", "قيد التنفيذ"
+	IN_PROGRESS = "in_progress", "تحت التنفيذ"
 	COMPLETED = "completed", "مكتمل"
 	CANCELLED = "cancelled", "ملغي"
 	EXPIRED = "expired", "منتهي"

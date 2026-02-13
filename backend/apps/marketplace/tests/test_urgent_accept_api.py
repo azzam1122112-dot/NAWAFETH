@@ -3,7 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import OTP
 from apps.marketplace.models import RequestStatus, RequestType, ServiceRequest
-from apps.providers.models import Category, ProviderProfile, SubCategory
+from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
 
 
 @pytest.mark.django_db
@@ -77,6 +77,8 @@ def test_urgent_accept_locks_and_accepts_once_happy_path():
         is_urgent=True,
         status=RequestStatus.NEW,
     )
+
+    ProviderCategory.objects.get_or_create(provider=provider, subcategory=sub)
 
     # Act: accept
     res = client.post(
@@ -162,6 +164,8 @@ def test_urgent_accept_conflict_when_already_assigned():
         status=RequestStatus.NEW,
         provider=provider,
     )
+
+    ProviderCategory.objects.get_or_create(provider=provider, subcategory=sub)
 
     res = client.post(
         "/api/marketplace/requests/urgent/accept/",

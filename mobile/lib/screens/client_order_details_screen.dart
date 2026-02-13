@@ -488,9 +488,9 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                       const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator())),
                     
                     if (!_isLoadingOffers && (widget.order.status == 'جديد' || widget.order.status == 'أُرسل') && _offers.isNotEmpty) ...[
-                      const Text(
-                        "العروض المقدمة",
-                        style: TextStyle(
+                      Text(
+                        'العروض المستلمة (${_offers.length})',
+                        style: const TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

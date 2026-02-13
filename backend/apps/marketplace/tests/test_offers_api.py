@@ -3,7 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import OTP
 from apps.marketplace.models import Offer, OfferStatus, RequestStatus, RequestType, ServiceRequest
-from apps.providers.models import Category, ProviderProfile, SubCategory
+from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
 
 
 def _login_via_otp(client: APIClient, phone: str) -> str:
@@ -94,6 +94,7 @@ def test_provider_can_create_offer_once_for_competitive_sent_request():
     provider_phone = "0500000404"
     provider_access = _login_via_otp(provider_api, provider_phone)
     provider_profile = _ensure_provider_profile(provider_api, provider_access, provider_phone, city="Riyadh")
+    ProviderCategory.objects.get_or_create(provider=provider_profile, subcategory=sub)
 
     res1 = provider_api.post(
         f"/api/marketplace/requests/{service_request.id}/offers/create/",
@@ -145,11 +146,13 @@ def test_client_can_list_offers_and_accept_one_updates_statuses():
     p1_phone = "0500000606"
     p1_access = _login_via_otp(p1_api, p1_phone)
     p1 = _ensure_provider_profile(p1_api, p1_access, p1_phone)
+    ProviderCategory.objects.get_or_create(provider=p1, subcategory=sub)
 
     p2_api = APIClient()
     p2_phone = "0500000707"
     p2_access = _login_via_otp(p2_api, p2_phone)
     p2 = _ensure_provider_profile(p2_api, p2_access, p2_phone)
+    ProviderCategory.objects.get_or_create(provider=p2, subcategory=sub)
 
     o1 = p1_api.post(
         f"/api/marketplace/requests/{service_request.id}/offers/create/",
@@ -218,6 +221,10 @@ def test_accept_offer_forbidden_for_non_owner():
     provider_phone = "0500000909"
     provider_access = _login_via_otp(provider_api, provider_phone)
     _ensure_provider_profile(provider_api, provider_access, provider_phone)
+    ProviderCategory.objects.get_or_create(
+        provider=ProviderProfile.objects.get(user__phone=provider_phone),
+        subcategory=sub,
+    )
 
     created = provider_api.post(
         f"/api/marketplace/requests/{service_request.id}/offers/create/",

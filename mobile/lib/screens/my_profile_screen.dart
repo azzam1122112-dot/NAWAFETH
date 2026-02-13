@@ -26,7 +26,6 @@ class MyProfileScreen extends StatefulWidget {
 
 class _MyProfileScreenState extends State<MyProfileScreen>
     with SingleTickerProviderStateMixin {
-  final Color mainColor = AppColors.deepPurple;
   File? _profileImage;
   File? _coverImage;
   bool isProvider = false;
@@ -35,7 +34,6 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   String? _fullName;
   String? _username;
   String? _phone;
-  String? _email;
   int? _followingCount;
   int? _likesCount;
   int? _userId;
@@ -121,7 +119,6 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         _userId = asInt(me['id']);
         _fullName = fullName;
         _username = username;
-        _email = email;
         _phone = phone;
         _followingCount = asInt(me['following_count']);
         _likesCount = asInt(me['likes_count']);
@@ -135,13 +132,11 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     const storage = SessionStorage();
     final fullName = (await storage.readFullName())?.trim();
     final username = (await storage.readUsername())?.trim();
-    final email = (await storage.readEmail())?.trim();
     final phone = (await storage.readPhone())?.trim();
     if (!mounted) return;
     setState(() {
       _fullName = (fullName == null || fullName.isEmpty) ? null : fullName;
       _username = (username == null || username.isEmpty) ? null : username;
-      _email = (email == null || email.isEmpty) ? null : email;
       _phone = (phone == null || phone.isEmpty) ? null : phone;
     });
   }
@@ -301,7 +296,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FD), // Slightly off-white very clean background
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).scaffoldBackgroundColor
+            : AppColors.primaryLight,
         drawer: const CustomDrawer(),
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
@@ -335,7 +332,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                           : Container(
                               decoration: const BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: [AppColors.deepPurple, Color(0xFF8E44AD)],
+                                  colors: [AppColors.deepPurple, AppColors.primaryDark],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
@@ -450,7 +447,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                   child: Container(
                     height: 30,
                     decoration: const BoxDecoration(
-                      color: Color(0xFFF8F9FD),
+                      color: AppColors.primaryLight,
                       borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
                     ),
                   ),
@@ -489,26 +486,34 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   }
 
   Widget _buildAccountTypeBadge() {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.grey.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withAlpha(((isDark ? 0.22 : 0.06) * 255).toInt()),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-           Icon(Icons.verified_user_outlined, color: Colors.grey[600], size: 20),
+           Icon(Icons.verified_user_outlined, color: cs.onSurface.withAlpha((0.70 * 255).toInt()), size: 20),
            const SizedBox(width: 8),
            Text(
              'حساب عميل',
              style: TextStyle(
                fontFamily: 'Cairo',
                fontWeight: FontWeight.bold,
-               color: Colors.grey[800],
+               color: cs.onSurface,
                fontSize: 14
              ),
            ),
@@ -517,13 +522,13 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                margin: const EdgeInsets.symmetric(horizontal: 12),
                height: 16,
                width: 1,
-               color: Colors.grey[300],
+               color: cs.onSurface.withAlpha((0.18 * 255).toInt()),
              ),
              Text(
                _asLocalSaudiPhone(_phone!),
                style: TextStyle(
                  fontFamily: 'Cairo',
-                 color: Colors.grey[600],
+                 color: cs.onSurface.withAlpha((0.70 * 255).toInt()),
                  fontSize: 14
                ),
              ),
@@ -592,6 +597,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   }
 
   Widget _statItem({required String value, required String label, required IconData icon, VoidCallback? onTap}) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -602,7 +610,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.deepPurple.withValues(alpha: 0.05),
+                color: AppColors.deepPurple.withValues(alpha: theme.brightness == Brightness.dark ? 0.14 : 0.07),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: AppColors.deepPurple, size: 20),
@@ -622,7 +630,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 12,
-                color: Colors.grey[600],
+                color: cs.onSurface.withAlpha((0.60 * 255).toInt()),
               ),
             ),
           ],
@@ -651,15 +659,19 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     required IconData icon,
     VoidCallback? onTap,
   }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: Colors.black.withAlpha(((isDark ? 0.22 : 0.07) * 255).toInt()),
+            blurRadius: 16,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -709,13 +721,13 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 12,
-                          color: Colors.grey[600],
+                          color: cs.onSurface.withAlpha((0.65 * 255).toInt()),
                         ),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_left_rounded, color: Colors.grey[500]),
+                Icon(Icons.chevron_left_rounded, color: cs.onSurface.withAlpha((0.55 * 255).toInt())),
               ],
             ),
           ),
