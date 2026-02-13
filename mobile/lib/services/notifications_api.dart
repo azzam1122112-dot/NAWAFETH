@@ -44,4 +44,17 @@ class NotificationsApi {
   Future<void> markAllRead() async {
     await _dio.post('${ApiConfig.apiPrefix}/notifications/mark-all-read/');
   }
+
+  Future<void> registerDeviceToken({
+    required String token,
+    required String platform,
+  }) async {
+    await _dio.post(
+      '${ApiConfig.apiPrefix}/notifications/device/register/',
+      data: {
+        'token': token,
+        'platform': platform,
+      },
+    );
+  }
 }

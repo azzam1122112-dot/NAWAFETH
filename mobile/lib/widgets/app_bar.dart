@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../services/chat_nav.dart';
 import '../services/notifications_badge_controller.dart';
 
 class NotificationsIconButton extends StatefulWidget {
@@ -215,7 +216,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               IconButton(
                 icon: Icon(Icons.chat_bubble_outline, color: iconColor),
                 onPressed: () {
-                  Navigator.pushNamed(context, '/chats');
+                  ChatNav.openInbox(context);
                 },
               ),
             ],

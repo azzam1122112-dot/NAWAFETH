@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../models/provider_order.dart';
+import '../../services/chat_nav.dart';
 import '../../services/marketplace_api.dart';
 
 class ProviderOrderDetailsScreen extends StatefulWidget {
@@ -160,7 +161,12 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   }
 
   void _openChat() {
-    Navigator.pushNamed(context, '/chats');
+    ChatNav.openThread(
+      context,
+      requestId: widget.requestId,
+      name: widget.order.clientName,
+      isOnline: false,
+    );
   }
 
   String _statusToRaw(String statusAr) {

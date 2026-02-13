@@ -27,7 +27,14 @@ class MessageCreateSerializer(serializers.ModelSerializer):
 
 class MessageListSerializer(serializers.ModelSerializer):
     sender_phone = serializers.CharField(source="sender.phone", read_only=True)
+    read_by_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ("id", "sender", "sender_phone", "body", "created_at")
+        fields = ("id", "sender", "sender_phone", "body", "created_at", "read_by_ids")
+
+    def get_read_by_ids(self, obj):
+        try:
+            return list(obj.reads.values_list("user_id", flat=True))
+        except Exception:
+            return []

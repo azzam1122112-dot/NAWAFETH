@@ -95,6 +95,11 @@ async def test_thread_ws_connect_and_send_message_as_participant(mocker):
     )
 
     thread = await database_sync_to_async(Thread.objects.create)(request=sr)
+    initial_msg = await database_sync_to_async(Message.objects.create)(
+        thread=thread,
+        sender=provider_user,
+        body="رسالة قديمة",
+    )
 
     from apps.messaging import jwt_auth
 
@@ -113,6 +118,13 @@ async def test_thread_ws_connect_and_send_message_as_participant(mocker):
     assert evt["type"] == "message"
     assert evt["text"] == "مرحبا"
     assert evt["sender_id"] == client_user.id
+
+    # mark-read should broadcast message_ids for precise receipts
+    await communicator.send_json_to({"type": "read"})
+    read_evt = await communicator.receive_json_from()
+    assert read_evt["type"] == "read"
+    assert read_evt["marked"] >= 1
+    assert initial_msg.id in read_evt.get("message_ids", [])
 
     await communicator.disconnect()
 

@@ -46,8 +46,9 @@ class DeviceFeaturesApi {
 
   final Dio _dio;
   int? _cachedSupportTicketId;
+  int? _cachedMaxUploadMb;
 
-  static const int maxUploadBytes = 10 * 1024 * 1024; // 10MB
+  static const int defaultMaxUploadBytes = 10 * 1024 * 1024; // 10MB fallback
 
   static const Set<String> _imageExtensions = {
     'jpg',
@@ -84,7 +85,7 @@ class DeviceFeaturesApi {
     required File file,
     UploadProgress? onProgress,
   }) async {
-    final error = validateUploadFile(file, _imageExtensions);
+    final error = await _validateByType(file, _imageExtensions);
     if (error != null) {
       return FeatureUploadResult(ok: false, messageAr: error);
     }
@@ -95,7 +96,7 @@ class DeviceFeaturesApi {
     required File file,
     UploadProgress? onProgress,
   }) async {
-    final error = validateUploadFile(file, _audioExtensions);
+    final error = await _validateByType(file, _audioExtensions);
     if (error != null) {
       return FeatureUploadResult(ok: false, messageAr: error);
     }
@@ -106,7 +107,7 @@ class DeviceFeaturesApi {
     required File file,
     UploadProgress? onProgress,
   }) async {
-    final error = validateUploadFile(file, _docExtensions);
+    final error = await _validateByType(file, _docExtensions);
     if (error != null) {
       return FeatureUploadResult(ok: false, messageAr: error);
     }
@@ -195,6 +196,35 @@ class DeviceFeaturesApi {
     }
   }
 
+  Future<String?> _validateByType(File file, Set<String> allowedExtensions) async {
+    final maxBytes = await _resolveMaxUploadBytes();
+    return validateUploadFile(
+      file,
+      allowedExtensions,
+      maxBytes: maxBytes,
+    );
+  }
+
+  Future<int> _resolveMaxUploadBytes() async {
+    if (_cachedMaxUploadMb != null && _cachedMaxUploadMb! > 0) {
+      return _cachedMaxUploadMb! * 1024 * 1024;
+    }
+
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/features/my/');
+      final data = _asMap(res.data);
+      final mb = _asInt(data?['max_upload_mb']);
+      if (mb != null && mb > 0) {
+        _cachedMaxUploadMb = mb;
+        return mb * 1024 * 1024;
+      }
+    } catch (_) {
+      // fallback only
+    }
+
+    return defaultMaxUploadBytes;
+  }
+
   Future<int> _ensureSupportTicket() async {
     if (_cachedSupportTicketId != null) {
       return _cachedSupportTicketId!;
@@ -241,12 +271,21 @@ class DeviceFeaturesApi {
     return name;
   }
 
-  static String? validateUploadFile(File file, Set<String> allowedExtensions) {
+  static String? validateUploadFile(
+    File file,
+    Set<String> allowedExtensions, {
+    int? maxBytes,
+  }) {
     if (!file.existsSync()) return 'الملف غير موجود.';
 
     final size = file.lengthSync();
     if (size <= 0) return 'الملف فارغ.';
-    if (size > maxUploadBytes) return 'حجم الملف أكبر من 10MB.';
+
+    final limit = maxBytes ?? defaultMaxUploadBytes;
+    if (size > limit) {
+      final mb = (limit / (1024 * 1024)).round();
+      return 'حجم الملف أكبر من ${mb}MB.';
+    }
 
     final ext = _fileExtension(file.path);
     if (ext == null || !allowedExtensions.contains(ext)) {
@@ -254,6 +293,11 @@ class DeviceFeaturesApi {
     }
 
     return null;
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
   }
 
   static String? _fileExtension(String path) {

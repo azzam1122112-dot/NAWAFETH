@@ -4,6 +4,7 @@ import '../models/provider.dart';
 import '../models/provider_portfolio_item.dart';
 import '../models/user_summary.dart';
 import '../services/account_api.dart';
+import '../services/chat_nav.dart';
 import '../services/providers_api.dart';
 import '../constants/colors.dart';
 import '../widgets/app_bar.dart';
@@ -190,7 +191,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                    const NotificationsIconButton(iconColor: Colors.white),
                    IconButton(
                     icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
-                    onPressed: () => Navigator.pushNamed(context, '/chats'),
+                    onPressed: () => ChatNav.openInbox(context),
                   ),
                 ],
                 flexibleSpace: FlexibleSpaceBar(

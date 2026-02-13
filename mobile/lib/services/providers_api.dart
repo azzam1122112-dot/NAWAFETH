@@ -302,6 +302,24 @@ class ProvidersApi {
     }
   }
 
+  Future<bool> likeProvider(int providerId) async {
+    try {
+      await _dio.post('${ApiConfig.apiPrefix}/providers/$providerId/like/');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> unlikeProvider(int providerId) async {
+    try {
+      await _dio.post('${ApiConfig.apiPrefix}/providers/$providerId/unlike/');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> registerProvider({
     required String providerType,
     required String displayName,

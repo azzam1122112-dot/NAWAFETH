@@ -126,6 +126,7 @@ class ThreadMessagesListView(generics.ListAPIView):
 		thread = get_object_or_404(Thread, request_id=request_id)
 		return (
 			Message.objects.select_related("sender")
+			.prefetch_related("reads")
 			.filter(thread=thread)
 			.order_by("-id")
 		)
@@ -175,6 +176,11 @@ class MarkThreadReadView(APIView):
 		)
 
 		return Response(
-			{"ok": True, "thread_id": thread.id, "marked": len(message_ids)},
+			{
+				"ok": True,
+				"thread_id": thread.id,
+				"marked": len(message_ids),
+				"message_ids": message_ids,
+			},
 			status=status.HTTP_200_OK,
 		)

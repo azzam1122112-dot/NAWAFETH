@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 // 🟣 الشاشات الرئيسية
 import 'screens/home_screen.dart';
 import 'screens/my_chats_screen.dart';
+import 'screens/chat_detail_screen.dart';
 import 'screens/interactive_screen.dart';
 import 'screens/my_profile_screen.dart';
 import 'screens/add_service_screen.dart';
@@ -22,6 +24,8 @@ import 'screens/onboarding_screen.dart';
 import 'screens/entry_screen.dart';
 
 import 'services/app_snackbar.dart';
+import 'services/app_navigation.dart';
+import 'services/fcm_notification_service.dart';
 import 'services/notifications_badge_controller.dart';
 import 'services/role_controller.dart';
 
@@ -51,7 +55,11 @@ class MyThemeController extends InheritedWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
   await RoleController.instance.initialize();
+  await FcmNotificationService.instance.initialize();
   NotificationsBadgeController.instance.initialize();
   runApp(const NawafethApp());
 }
@@ -91,6 +99,7 @@ class _NawafethAppState extends State<NawafethApp> {
       child: MaterialApp(
         title: 'Nawafeth App',
         debugShowCheckedModeBanner: false,
+        navigatorKey: rootNavigatorKey,
         scaffoldMessengerKey: rootScaffoldMessengerKey,
 
         // ✅ إعدادات الثيم
@@ -130,13 +139,36 @@ class _NawafethAppState extends State<NawafethApp> {
           GlobalCupertinoLocalizations.delegate,
         ],
 
+        onGenerateRoute: (settings) {
+          if (settings.name == '/chats') {
+            final args = settings.arguments;
+            if (args is Map) {
+              final requestId = _asInt(args['requestId']);
+              final threadId = _asInt(args['threadId']);
+              final name = (args['name'] ?? '').toString().trim();
+              final isOnline = args['isOnline'] == true;
+              if (requestId != null || threadId != null) {
+                return MaterialPageRoute(
+                  builder: (_) => ChatDetailScreen(
+                    name: name.isEmpty ? 'محادثة الطلب' : name,
+                    isOnline: isOnline,
+                    requestId: requestId,
+                    threadId: threadId,
+                  ),
+                );
+              }
+            }
+            return MaterialPageRoute(builder: (_) => const MyChatsScreen());
+          }
+          return null;
+        },
+
         // ✅ المسارات
         initialRoute: '/entry', // شاشة البداية (تحدد الوجهة حسب حالة تسجيل الدخول)
         routes: {
           '/entry': (context) => const EntryScreen(),
           '/onboarding': (context) => const OnboardingScreen(),
           '/home': (context) => const HomeScreen(),
-          '/chats': (context) => const MyChatsScreen(),
           '/orders': (context) => const OrdersHubScreen(),
           '/interactive': (context) => ValueListenableBuilder<RoleState>(
             valueListenable: RoleController.instance.notifier,
@@ -161,5 +193,10 @@ class _NawafethAppState extends State<NawafethApp> {
         },
       ),
     );
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse((value ?? '').toString());
   }
 }

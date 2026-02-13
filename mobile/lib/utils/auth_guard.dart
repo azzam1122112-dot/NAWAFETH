@@ -1,5 +1,6 @@
 // auth_guard.dart
 import 'package:flutter/material.dart';
+import '../services/account_api.dart';
 import '../services/session_storage.dart';
 import '../screens/signup_screen.dart';
 
@@ -41,10 +42,18 @@ Future<bool> checkFullClient(BuildContext context) async {
   // First ensure logged in
   if (!await checkAuth(context)) return false;
 
-  // Then check profile completion
-  final username = await const SessionStorage().readUsername();
-  // If username is null/empty, we assume profile is incomplete (Phone Only)
-  if (username == null || username.trim().isEmpty) {
+  bool isCompleted = false;
+  try {
+    final me = await AccountApi().me();
+    final role = (me['role_state'] ?? '').toString().trim().toLowerCase();
+    isCompleted = role == 'client' || role == 'provider' || role == 'staff';
+  } catch (_) {
+    // Fallback local check when backend is temporarily unavailable.
+    final username = await const SessionStorage().readUsername();
+    isCompleted = username != null && username.trim().isNotEmpty;
+  }
+
+  if (!isCompleted) {
     if (!context.mounted) return false;
     showDialog(
       context: context,

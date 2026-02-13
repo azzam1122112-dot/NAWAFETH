@@ -5,6 +5,11 @@ from apps.providers.models import ProviderCategory, ProviderProfile
 
 
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):
+    dispatch_mode = serializers.ChoiceField(
+        choices=("all", "nearest"),
+        required=False,
+        write_only=True,
+    )
     provider = serializers.PrimaryKeyRelatedField(
         queryset=ProviderProfile.objects.all(),
         required=False,
@@ -31,6 +36,7 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
             "description",
             "request_type",
             "city",
+            "dispatch_mode",
             "images",
             "videos",
             "files",
@@ -76,6 +82,10 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        # Currently used as a routing hint for urgent requests.
+        # Matching strategy is still controlled by server rules.
+        validated_data.pop("dispatch_mode", None)
+
         images = validated_data.pop("images", [])
         videos = validated_data.pop("videos", [])
         files = validated_data.pop("files", [])

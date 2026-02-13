@@ -56,12 +56,28 @@ def test_messaging_flow_participants_only():
         format="json",
     )
     assert r2.status_code == 201
+    sent_message_id = r2.data.get("message_id")
+    assert sent_message_id is not None
 
     # مزود يقرأ الرسائل
     api.force_authenticate(user=provider_user)
     r3 = api.get(f"/api/messaging/requests/{sr.id}/messages/")
     assert r3.status_code == 200
-    assert len(r3.data) >= 1
+    results = r3.data.get("results", []) if isinstance(r3.data, dict) else r3.data
+    assert len(results) >= 1
+    first = results[0]
+    assert "read_by_ids" in first
+    assert provider_user.id not in first.get("read_by_ids", [])
 
     r4 = api.post(f"/api/messaging/requests/{sr.id}/messages/read/", {}, format="json")
     assert r4.status_code == 200
+    assert r4.data.get("marked", 0) >= 1
+    assert sent_message_id in r4.data.get("message_ids", [])
+
+    # بعد التعليم كمقروء يجب أن يظهر provider ضمن read_by_ids
+    r5 = api.get(f"/api/messaging/requests/{sr.id}/messages/")
+    assert r5.status_code == 200
+    results_after = r5.data.get("results", []) if isinstance(r5.data, dict) else r5.data
+    target = next((m for m in results_after if m.get("id") == sent_message_id), None)
+    assert target is not None
+    assert provider_user.id in target.get("read_by_ids", [])

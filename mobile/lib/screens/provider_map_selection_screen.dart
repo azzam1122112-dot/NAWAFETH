@@ -6,8 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../utils/auth_guard.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
-import 'chat_detail_screen.dart';
 import 'provider_profile_screen.dart';
+import 'service_request_form_screen.dart';
 
 class ProviderMapSelectionScreen extends StatefulWidget {
   final int subcategoryId;
@@ -121,15 +121,46 @@ class _ProviderMapSelectionScreenState
     );
   }
 
-  Future<void> _openInAppChat(String providerName) async {
+  Future<void> _openInAppChat({
+    required String providerName,
+    required String providerId,
+  }) async {
     if (!await checkAuth(context)) return;
 
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatDetailScreen(
-          name: providerName,
-          isOnline: true,
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('المحادثة تتطلب طلب خدمة'),
+          content: const Text(
+            'لضمان صلاحيات صحيحة وربط المحادثة بالطلب، أنشئ طلب خدمة أولاً.',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceRequestFormScreen(
+                      providerName: providerName,
+                      providerId: providerId,
+                      initialTitle: widget.title,
+                      initialDetails: widget.description,
+                      initialSubcategoryId: widget.subcategoryId,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('إنشاء طلب'),
+            ),
+          ],
         ),
       ),
     );
@@ -660,6 +691,7 @@ class _ProviderMapSelectionScreenState
                                       final canCall = phone != null;
                                       final canWhatsApp =
                                           (whatsapp ?? phone)?.trim().isNotEmpty == true;
+                                      final chatPhone = whatsapp ?? phone;
                                       final isBusy = _busyProviderId == providerId;
 
                                       final avatar = CircleAvatar(
@@ -774,7 +806,7 @@ class _ProviderMapSelectionScreenState
                                                     onTap: canWhatsApp
                                                         ? () => _openWhatsApp(
                                                               providerName: name,
-                                                              rawPhone: (whatsapp ?? phone!)!,
+                                                              rawPhone: chatPhone!,
                                                             )
                                                         : null,
                                                   ),
@@ -783,14 +815,19 @@ class _ProviderMapSelectionScreenState
                                                     label: 'اتصال',
                                                     color: Colors.blue,
                                                     onTap: canCall
-                                                        ? () => _openPhoneCall(phone!)
+                                                        ? () => _openPhoneCall(phone)
                                                         : null,
                                                   ),
                                                   _actionChip(
                                                     icon: Icons.chat_bubble_outline,
                                                     label: 'محادثة',
                                                     color: Colors.deepPurple,
-                                                    onTap: () => _openInAppChat(name),
+                                                    onTap: providerId > 0
+                                                        ? () => _openInAppChat(
+                                                              providerName: name,
+                                                              providerId: providerId.toString(),
+                                                            )
+                                                        : null,
                                                   ),
                                                   _actionChip(
                                                     icon: Icons.send_rounded,

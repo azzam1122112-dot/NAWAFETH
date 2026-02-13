@@ -30,6 +30,7 @@ class MarketplaceApi {
     required String description,
     required String requestType,
     required String city,
+    String? dispatchMode,
     int? providerId,
     List<File>? images,
     List<File>? videos,
@@ -47,6 +48,7 @@ class MarketplaceApi {
         'description': description,
         'request_type': requestType,
         'city': city,
+        if ((dispatchMode ?? '').trim().isNotEmpty) 'dispatch_mode': dispatchMode!.trim(),
       });
 
       // Add Images

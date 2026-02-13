@@ -14,7 +14,9 @@ import '../utils/local_user_state.dart';
 import '../services/account_api.dart';
 import '../services/app_snackbar.dart';
 import '../services/account_switcher.dart';
+import '../services/api_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class _SessionInfo {
   final bool loggedIn;
@@ -84,6 +86,14 @@ class _CustomDrawerState extends State<CustomDrawer> {
     }
 
     await _logout();
+  }
+
+  Future<void> _openWebDashboard() async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}/dashboard/');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      AppSnackBar.error('تعذر فتح لوحة التحكم حالياً.');
+    }
   }
 
   @override
@@ -238,6 +248,16 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   },
                   isDark: isDark,
                 ),
+                if (info.loggedIn)
+                  _buildDrawerItem(
+                    icon: Icons.dashboard_customize_outlined,
+                    label: 'لوحة التحكم (Web)',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openWebDashboard();
+                    },
+                    isDark: isDark,
+                  ),
                 _buildDrawerItem(
                   icon: Icons.language,
                   label: AppTexts.getText(context, "language"),

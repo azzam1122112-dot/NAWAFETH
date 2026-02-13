@@ -5,6 +5,7 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 
 import '../models/client_order.dart';
 import '../models/offer.dart';
+import '../services/chat_nav.dart';
 import '../services/marketplace_api.dart';
 import '../services/reviews_api.dart';
 
@@ -256,13 +257,26 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   }
 
   void _openChat() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'سيتم فتح المحادثة مع مقدم الخدمة قريباً',
-          style: TextStyle(fontFamily: 'Cairo'),
+    final requestId = int.tryParse(_order.id);
+    if (requestId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'رقم الطلب غير صالح لفتح المحادثة',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
         ),
-      ),
+      );
+      return;
+    }
+
+    ChatNav.openThread(
+      context,
+      requestId: requestId,
+      name: (_order.providerName ?? '').trim().isEmpty
+          ? 'مقدم الخدمة'
+          : _order.providerName!.trim(),
+      isOnline: false,
     );
   }
 

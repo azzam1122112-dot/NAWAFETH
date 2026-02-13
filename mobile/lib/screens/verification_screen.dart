@@ -1,8 +1,12 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../constants/colors.dart';
+import '../services/billing_api.dart';
+import '../services/payment_checkout.dart';
+import '../services/verification_api.dart';
 
 class VerificationScreen extends StatefulWidget {
   const VerificationScreen({super.key});
@@ -13,7 +17,10 @@ class VerificationScreen extends StatefulWidget {
 
 class _VerificationScreenState extends State<VerificationScreen> {
   final PageController _pageController = PageController();
+  final VerificationApi _verificationApi = VerificationApi();
+  final BillingApi _billingApi = BillingApi();
   int _currentStep = 0;
+  bool _submitting = false;
 
   // الحالة
   String? selectedType; // "blue" أو "green"
@@ -115,7 +122,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return true;
   }
 
-  void _nextStep() {
+  Future<void> _nextStep() async {
     // تحقق حقول الشارة الزرقاء قبل الانتقال
     if (_currentStep == 1 && selectedType == "blue") {
       _formKeyBlue.currentState?.save();
@@ -129,8 +136,96 @@ class _VerificationScreenState extends State<VerificationScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      _showSuccess();
+      await _submitVerificationRequest();
     }
+  }
+
+  Future<void> _submitVerificationRequest() async {
+    if (_submitting || selectedType == null) return;
+
+    setState(() => _submitting = true);
+    try {
+      final req = await _verificationApi.createRequest(badgeType: selectedType!);
+      final requestId = _asInt(req['id']);
+
+      if (requestId == null) {
+        throw Exception('verification_request_missing_id');
+      }
+
+      final docType = _resolveDocType();
+      for (var i = 0; i < uploadedFiles.length; i++) {
+        final f = uploadedFiles[i];
+        await _verificationApi.addDocument(
+          requestId: requestId,
+          filePath: f.path,
+          docType: docType,
+          title: 'document_${i + 1}',
+        );
+      }
+
+      var paymentInitialized = false;
+
+      // في حال أنشأ الباكند فاتورة مباشرة نبدأ تهيئة الدفع، وإلا ننتظر مراجعة فريق التوثيق.
+      final detail = await _verificationApi.getRequestDetail(requestId);
+      final invoiceId = _asInt(detail['invoice']);
+      if (invoiceId != null) {
+        if (!mounted) return;
+        paymentInitialized = await PaymentCheckout.initAndOpen(
+          context: context,
+          billingApi: _billingApi,
+          invoiceId: invoiceId,
+          idempotencyKey: 'verification-$requestId-${DateTime.now().millisecondsSinceEpoch}',
+          successMessage: 'تم إنشاء طلب التوثيق وفتح صفحة الدفع.',
+        );
+      }
+
+      if (!mounted) return;
+      _showSuccess(paymentInitialized: paymentInitialized);
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_extractDioMessage(e))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال طلب التوثيق حالياً.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  String _resolveDocType() {
+    if (selectedType == 'blue') {
+      if (blueOption == 'person') return 'id';
+      if (blueOption == 'company') return 'cr';
+      return 'other';
+    }
+    return greenOptions.contains('التراخيص المهنية') ? 'license' : 'other';
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  String _extractDioMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final detail = data['detail'];
+      if (detail is String && detail.trim().isNotEmpty) return detail.trim();
+      for (final v in data.values) {
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+        if (v is List && v.isNotEmpty && v.first is String) {
+          final first = (v.first as String).trim();
+          if (first.isNotEmpty) return first;
+        }
+      }
+    }
+    return 'تعذر إرسال طلب التوثيق حالياً.';
   }
 
   void _prevStep() {
@@ -144,7 +239,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
-  void _showSuccess() {
+  void _showSuccess({required bool paymentInitialized}) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -186,8 +281,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    "سيتم مراجعة الطلب من فريق التوثيق وإشعارك خلال وقت قصير.",
+                  Text(
+                    paymentInitialized
+                        ? "تم إرسال الطلب وتهيئة الدفع بنجاح."
+                        : "تم إرسال الطلب بنجاح. ستصلك حالة المراجعة ثم الفاتورة عند الاعتماد.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: "Cairo",
@@ -310,7 +407,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         children: [
           if (_currentStep > 0)
             OutlinedButton.icon(
-              onPressed: _prevStep,
+              onPressed: _submitting ? null : _prevStep,
               icon: const Icon(Icons.arrow_back_ios, size: 16),
               label: const Text("السابق"),
               style: OutlinedButton.styleFrom(
@@ -325,7 +422,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           if (_currentStep > 0) const SizedBox(width: 12),
           Expanded(
             child: ElevatedButton(
-              onPressed: canNext ? _nextStep : null,
+              onPressed: (canNext && !_submitting) ? _nextStep : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.deepPurple,
                 disabledBackgroundColor: AppColors.deepPurple.withOpacity(0.25),
@@ -337,23 +434,34 @@ class _VerificationScreenState extends State<VerificationScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    _currentStep == 2 ? "تأكيد الدفع" : "التالي",
-                    style: const TextStyle(
-                      fontFamily: "Cairo",
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                  if (_submitting)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else ...[
+                    Text(
+                      _currentStep == 2 ? "تأكيد الدفع" : "التالي",
+                      style: const TextStyle(
+                        fontFamily: "Cairo",
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      _currentStep == 2
+                          ? Icons.check_circle_outline
+                          : Icons.arrow_forward_ios_rounded,
+                      size: 18,
                       color: Colors.white,
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    _currentStep == 2
-                        ? Icons.check_circle_outline
-                        : Icons.arrow_forward_ios_rounded,
-                    size: 18,
-                    color: Colors.white,
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -974,7 +1082,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           const SizedBox(height: 18),
           if (_selectedPaymentMethod == "apple") ...[
             ElevatedButton.icon(
-              onPressed: _showSuccess,
+              onPressed: null,
               icon: const Icon(Icons.phone_iphone),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
@@ -984,7 +1092,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ),
               ),
               label: const Text(
-                "الدفع عبر Apple Pay",
+                "يتم التفعيل بعد إنشاء الفاتورة",
                 style: TextStyle(
                   fontFamily: "Cairo",
                   fontSize: 15,
@@ -994,7 +1102,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
           ] else ...[
             OutlinedButton.icon(
-              onPressed: _showSuccess,
+              onPressed: null,
               icon: const Icon(Icons.credit_card_outlined),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 55),
@@ -1004,7 +1112,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ),
               ),
               label: const Text(
-                "الدفع ببطاقة مدى / فيزا",
+                "يتم التفعيل بعد إنشاء الفاتورة",
                 style: TextStyle(fontFamily: "Cairo", fontSize: 15),
               ),
             ),

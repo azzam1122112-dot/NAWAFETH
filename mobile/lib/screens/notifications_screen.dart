@@ -3,6 +3,8 @@ import 'notification_settings_screen.dart'; // ✅ صفحة الإعدادات
 import '../utils/auth_guard.dart';
 import '../models/app_notification.dart';
 import '../services/notifications_api.dart';
+import '../services/notifications_badge_controller.dart';
+import '../services/notification_link_handler.dart';
 import '../services/role_controller.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -83,10 +85,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _error = 'تعذر تحميل الإشعارات';
       });
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -113,10 +116,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (_) {
       // Ignore load-more errors; user can pull-to-refresh.
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _loadingMore = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+        });
+      }
     }
   }
 
@@ -163,12 +167,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           }
         }
       });
+      NotificationsBadgeController.instance.refresh();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تعذر تعليم الكل كمقروء')),
       );
     }
+  }
+
+  Future<void> _markReadIfNeeded(AppNotification notification) async {
+    if (notification.isRead) return;
+    await _api.markRead(notification.id);
+    if (!mounted) return;
+    setState(() {
+      final idx = _items.indexWhere((n) => n.id == notification.id);
+      if (idx >= 0) {
+        final n = _items[idx];
+        _items[idx] = AppNotification(
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          kind: n.kind,
+          url: n.url,
+          isRead: true,
+          createdAt: n.createdAt,
+        );
+      }
+    });
+    NotificationsBadgeController.instance.refresh();
   }
 
   Widget _notificationCard(AppNotification notification) {
@@ -178,25 +205,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return InkWell(
       onTap: () async {
-        if (!isUnread) return;
         try {
-          await _api.markRead(notification.id);
+          await _markReadIfNeeded(notification);
           if (!mounted) return;
-          setState(() {
-            final idx = _items.indexWhere((n) => n.id == notification.id);
-            if (idx >= 0) {
-              final n = _items[idx];
-              _items[idx] = AppNotification(
-                id: n.id,
-                title: n.title,
-                body: n.body,
-                kind: n.kind,
-                url: n.url,
-                isRead: true,
-                createdAt: n.createdAt,
-              );
-            }
-          });
+
+          final opened = await NotificationLinkHandler.openFromNotification(context, notification);
+          if (!mounted) return;
+          if (!opened && notification.url != null && notification.url!.trim().isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم فتح الإشعار كمقروء، لكن لا يوجد مسار مدعوم حالياً.')),
+            );
+          }
         } catch (_) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -323,6 +342,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               icon: const Icon(Icons.settings, color: Colors.white),
               onPressed: () async {
                 if (!await checkFullClient(context)) return;
+                if (!context.mounted) return;
                 Navigator.push(
                   context,
                   MaterialPageRoute(

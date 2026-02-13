@@ -8,8 +8,8 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/service_provider_location.dart';
 import '../constants/colors.dart';
-import 'chat_detail_screen.dart';
 import 'provider_profile_screen.dart';
+import 'service_request_form_screen.dart';
 
 class ProvidersMapScreen extends StatefulWidget {
   final String category;
@@ -125,12 +125,36 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
   }
 
   void _openChat(ServiceProviderLocation provider) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatDetailScreen(
-          name: provider.name,
-          isOnline: true,
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('المحادثة تتطلب طلب خدمة'),
+          content: const Text(
+            'لبدء محادثة مباشرة مع المزود، أنشئ طلب خدمة أولاً.',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceRequestFormScreen(
+                      providerName: provider.name,
+                      providerId: provider.id,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('إنشاء طلب'),
+            ),
+          ],
         ),
       ),
     );

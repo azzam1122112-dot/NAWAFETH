@@ -11,7 +11,6 @@ import '../widgets/auto_scrolling_reels_row.dart';
 import '../widgets/platform_report_dialog.dart';
 import '../widgets/video_reels.dart';
 import '../widgets/video_full_screen.dart';
-import 'chat_detail_screen.dart';
 import 'provider_dashboard/reviews_tab.dart';
 import 'service_request_form_screen.dart';
 import 'provider_service_detail_screen.dart';
@@ -19,6 +18,7 @@ import '../services/providers_api.dart'; // Added
 import '../models/provider.dart'; // Added
 import '../models/provider_portfolio_item.dart';
 import '../models/provider_service.dart';
+import '../services/chat_nav.dart';
 import '../utils/auth_guard.dart'; // Added
 
 class ProviderProfileScreen extends StatefulWidget {
@@ -421,12 +421,45 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   Future<void> _openInAppChat() async {
     if (!await checkAuth(context)) return;
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatDetailScreen(
-          name: providerName,
-          isOnline: true,
+    final providerId = (widget.providerId ?? '').trim();
+    if (providerId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح المحادثة: لا يوجد مزود مرتبط.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('المحادثة تتطلب طلب خدمة'),
+          content: const Text(
+            'لبدء محادثة حقيقية يجب إنشاء طلب خدمة أولاً، ثم ستفتح المحادثة تلقائياً داخل الطلب.',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceRequestFormScreen(
+                      providerName: providerName,
+                      providerId: providerId,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('إنشاء طلب'),
+            ),
+          ],
         ),
       ),
     );
@@ -1324,14 +1357,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           embedded: true,
           onOpenChat: (customerName) async {
             if (!context.mounted) return;
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ChatDetailScreen(
-                  name: customerName,
-                  isOnline: true,
-                ),
-              ),
-            );
+            await ChatNav.openInbox(context);
           },
         );
       default:

@@ -3,7 +3,6 @@ import '../widgets/bottom_nav.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
 import '../models/category.dart';
-import 'provider_map_selection_screen.dart';
 import '../utils/auth_guard.dart';
 
 class UrgentRequestScreen extends StatefulWidget {
@@ -22,6 +21,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
   String? _selectedCity;
   bool _submitting = false;
   bool showSuccessCard = false;
+  String _dispatchMode = 'all'; // all | nearest
 
   List<Category> _categories = [];
   
@@ -79,6 +79,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       description: desc,
       requestType: 'urgent',
       city: _selectedCity!,
+      dispatchMode: _dispatchMode,
     );
 
     if (!mounted) return;
@@ -435,6 +436,11 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               _buildSectionHeader("المدينة", Icons.location_city_rounded, isDark),
               const SizedBox(height: 12),
               _buildCityDropdown(isDark),
+              const SizedBox(height: 24),
+
+              _buildSectionHeader("طريقة الإرسال", Icons.send_rounded, isDark),
+              const SizedBox(height: 12),
+              _buildDispatchModeCard(isDark),
             ],
           ),
         ),
@@ -442,9 +448,42 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
         
         // Action Buttons
         _buildSubmitButton(isDark),
-        const SizedBox(height: 12),
-        _buildMapButton(isDark),
       ],
+    );
+  }
+
+  Widget _buildDispatchModeCard(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[800] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.grey.shade300,
+        ),
+      ),
+      child: Column(
+        children: [
+          RadioListTile<String>(
+            value: 'all',
+            groupValue: _dispatchMode,
+            onChanged: (v) => setState(() => _dispatchMode = v ?? 'all'),
+            title: const Text(
+              'إرسال لجميع مزودي الخدمة العاجلة',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 13),
+            ),
+          ),
+          RadioListTile<String>(
+            value: 'nearest',
+            groupValue: _dispatchMode,
+            onChanged: (v) => setState(() => _dispatchMode = v ?? 'nearest'),
+            title: const Text(
+              'إرسال للأقرب (حسب نظام المطابقة)',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 13),
+            ),
+          ),
+        ],
+      ),
     );
   }
   
@@ -600,88 +639,6 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     );
   }
   
-  Widget _buildMapButton(bool isDark) {
-    return OutlinedButton.icon(
-      onPressed: _openMapSelection,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: isDark ? Colors.white : const Color(0xFFFF6B6B),
-        side: BorderSide(
-          color: isDark
-              ? Colors.white.withOpacity(0.3)
-              : const Color(0xFFFF6B6B).withOpacity(0.5),
-          width: 2,
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-      icon: const Icon(Icons.map_rounded, size: 22),
-      label: const Text(
-        "🧭 اختر المزودين من الخريطة",
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          fontFamily: 'Cairo',
-        ),
-      ),
-    );
-  }
-  
-  Future<void> _openMapSelection() async {
-    // التحقق من البيانات المطلوبة
-    if (_selectedSubCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('اختر التصنيف الفرعي أولاً'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    
-    final title = _titleController.text.trim();
-    final desc = _descriptionController.text.trim();
-    if (title.isEmpty || desc.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('أكمل عنوان الطلب والوصف أولاً'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    
-    if (_selectedCity == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('اختر المدينة أولاً'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    
-    // فتح صفحة الخريطة
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProviderMapSelectionScreen(
-          subcategoryId: _selectedSubCategory!.id,
-          title: title,
-          description: desc,
-          city: _selectedCity!,
-        ),
-      ),
-    );
-    
-    if (result == true && mounted) {
-      setState(() {
-        showSuccessCard = true;
-      });
-    }
-  }
-
   Widget _buildCategoryDropdown(ThemeData theme, bool isDark) {
     return DropdownButtonFormField<Category>(
       value: _selectedCategory,

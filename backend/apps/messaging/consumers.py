@@ -63,7 +63,7 @@ def mark_thread_read(thread: Thread, reader_id: int):
     rows = [MessageRead(message_id=mid, user_id=reader_id, read_at=now) for mid in unread_ids]
     if rows:
         MessageRead.objects.bulk_create(rows, ignore_conflicts=True)
-    return len(rows)
+    return list(unread_ids)
 
 
 class RequestChatConsumer(AsyncWebsocketConsumer):
@@ -151,12 +151,17 @@ class RequestChatConsumer(AsyncWebsocketConsumer):
         if action == "read":
             try:
                 thread, _ = await get_or_create_thread(self.sr)
-                marked = await mark_thread_read(thread, user.id)
+                marked_ids = await mark_thread_read(thread, user.id)
             except Exception:
                 await self.send_json({"type": "error", "code": "server_error"})
                 return
 
-            event = {"type": "read", "user_id": user.id, "marked": marked}
+            event = {
+                "type": "read",
+                "user_id": user.id,
+                "marked": len(marked_ids),
+                "message_ids": marked_ids,
+            }
             await self.channel_layer.group_send(
                 self.group_name, {"type": "broadcast", "event": event}
             )
@@ -223,7 +228,7 @@ def _create_message_for_thread(thread_id: int, sender_id: int, body: str) -> Mes
 
 
 @database_sync_to_async
-def _mark_thread_read_by_thread_id(thread_id: int, reader_id: int) -> int:
+def _mark_thread_read_by_thread_id(thread_id: int, reader_id: int):
     thread = Thread.objects.get(id=thread_id)
     unread_ids = (
         Message.objects.filter(thread=thread)
@@ -235,7 +240,7 @@ def _mark_thread_read_by_thread_id(thread_id: int, reader_id: int) -> int:
     rows = [MessageRead(message_id=mid, user_id=reader_id, read_at=now) for mid in unread_ids]
     if rows:
         MessageRead.objects.bulk_create(rows, ignore_conflicts=True)
-    return len(rows)
+    return list(unread_ids)
 
 
 class ThreadConsumer(AsyncJsonWebsocketConsumer):
@@ -307,14 +312,15 @@ class ThreadConsumer(AsyncJsonWebsocketConsumer):
 
     async def _handle_read(self, content):
         await _assert_thread_access(self.thread_id, self.user)
-        marked = await _mark_thread_read_by_thread_id(self.thread_id, self.user.id)
+        marked_ids = await _mark_thread_read_by_thread_id(self.thread_id, self.user.id)
         await self.channel_layer.group_send(
             self.group_name,
             {
                 "type": "broadcast.read",
                 "user_id": self.user.id,
                 "read_at": timezone.now().isoformat(),
-                "marked": marked,
+                "marked": len(marked_ids),
+                "message_ids": marked_ids,
             },
         )
 
@@ -387,5 +393,6 @@ class ThreadConsumer(AsyncJsonWebsocketConsumer):
                 "user_id": event["user_id"],
                 "read_at": event.get("read_at"),
                 "marked": event.get("marked", 0),
+                "message_ids": event.get("message_ids", []),
             }
         )
