@@ -39,6 +39,24 @@ function Get-AdbDeviceId {
     }
 }
 
+function Assert-AdbDeviceOnline {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Id
+    )
+
+    $state = $null
+    try {
+        $state = (& adb -s $Id get-state 2>$null | Select-Object -First 1)
+    } catch {
+        $state = $null
+    }
+
+    if ($state -ne 'device') {
+        throw "Android device '$Id' is not online (adb state: '$state'). Unplug/replug USB, unlock phone, and accept the USB debugging prompt, then retry."
+    }
+}
+
 $mobilePath = Join-Path $PSScriptRoot 'mobile'
 if (-not (Test-Path $mobilePath)) {
     throw "Could not find 'mobile' directory at: $mobilePath"
@@ -75,19 +93,37 @@ try {
         Write-Host "Using detected Android device via flutter: $DeviceId" -ForegroundColor Cyan
     }
 
+    Assert-AdbDeviceOnline -Id $DeviceId
+
     Write-Host "Uninstalling old app '$PackageName' from device '$DeviceId'..." -ForegroundColor Cyan
-    try {
-        & adb -s $DeviceId uninstall $PackageName | Out-Host
-    } catch {
-        Write-Warning "Uninstall step failed (app may not be installed). Continuing..."
+    & adb -s $DeviceId uninstall $PackageName | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Uninstall step failed (exit code $LASTEXITCODE). App may not be installed or device had a transient issue. Continuing..."
     }
 
     Write-Host "Running flutter pub get..." -ForegroundColor Cyan
     flutter pub get
 
     $modeFlag = "--$Mode"
-    Write-Host "Installing ($Mode) to device '$DeviceId'..." -ForegroundColor Cyan
-    flutter install -d $DeviceId $modeFlag
+    Write-Host "Building APK ($Mode)..." -ForegroundColor Cyan
+    flutter build apk $modeFlag
+
+    $apkName = switch ($Mode) {
+        'debug' { 'app-debug.apk' }
+        'profile' { 'app-profile.apk' }
+        'release' { 'app-release.apk' }
+        default { throw "Unsupported Mode: $Mode" }
+    }
+    $apkPath = Join-Path (Join-Path (Join-Path (Join-Path 'build' 'app') 'outputs') 'flutter-apk') $apkName
+    if (-not (Test-Path $apkPath)) {
+        throw "Built APK not found at: $apkPath"
+    }
+
+    Write-Host "Installing APK to device '$DeviceId'..." -ForegroundColor Cyan
+    & adb -s $DeviceId install -r $apkPath | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "adb install failed (exit code $LASTEXITCODE)."
+    }
 } finally {
     Pop-Location
 }

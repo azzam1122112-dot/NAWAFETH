@@ -12,6 +12,32 @@ urlpatterns = [
     path("providers/<int:provider_id>/", views.provider_detail, name="provider_detail"),
 
     path("services/", views.services_list, name="services_list"),
+    path("billing/", views.billing_invoices_list, name="billing_invoices_list"),
+    path("support/", views.support_tickets_list, name="support_tickets_list"),
+    path("support/<int:ticket_id>/", views.support_ticket_detail, name="support_ticket_detail"),
+    path("support/<int:ticket_id>/actions/assign/", views.support_ticket_assign_action, name="support_ticket_assign_action"),
+    path("support/<int:ticket_id>/actions/status/", views.support_ticket_status_action, name="support_ticket_status_action"),
+
+    path("verification/", views.verification_requests_list, name="verification_requests_list"),
+    path("verification/<int:verification_id>/", views.verification_request_detail, name="verification_request_detail"),
+    path("verification/<int:verification_id>/actions/finalize/", views.verification_finalize_action, name="verification_finalize_action"),
+    path("verification/<int:verification_id>/actions/activate/", views.verification_activate_action, name="verification_activate_action"),
+
+    path("promo/", views.promo_requests_list, name="promo_requests_list"),
+    path("promo/<int:promo_id>/", views.promo_request_detail, name="promo_request_detail"),
+    path("promo/<int:promo_id>/actions/quote/", views.promo_quote_action, name="promo_quote_action"),
+    path("promo/<int:promo_id>/actions/reject/", views.promo_reject_action, name="promo_reject_action"),
+    path("promo/<int:promo_id>/actions/activate/", views.promo_activate_action, name="promo_activate_action"),
+
+    path("subscriptions/", views.subscriptions_list, name="subscriptions_list"),
+    path("subscriptions/<int:subscription_id>/actions/refresh/", views.subscription_refresh_action, name="subscription_refresh_action"),
+    path("subscriptions/<int:subscription_id>/actions/activate/", views.subscription_activate_action, name="subscription_activate_action"),
+
+    path("extras/", views.extras_list, name="extras_list"),
+    path("extras/<int:extra_id>/actions/activate/", views.extra_activate_action, name="extra_activate_action"),
+
+    path("features/", views.features_overview, name="features_overview"),
+    path("access-profiles/", views.access_profiles_list, name="access_profiles_list"),
 
     # Categories & Subcategories
     path("categories/", views.categories_list, name="categories_list"),

@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+
+import '../constants/colors.dart';
+import '../models/provider_portfolio_item.dart';
+import '../services/home_feed_service.dart';
 
 class BannerWidget extends StatefulWidget {
   const BannerWidget({super.key});
@@ -8,80 +13,168 @@ class BannerWidget extends StatefulWidget {
   State<BannerWidget> createState() => _BannerWidgetState();
 }
 
-class _BannerWidgetState extends State<BannerWidget>
-    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  late VideoPlayerController _controller;
-  bool _isInitialized = false;
+class _BannerWidgetState extends State<BannerWidget> {
+  final HomeFeedService _feed = HomeFeedService.instance;
+  final PageController _controller = PageController();
+  Timer? _timer;
+
+  bool _loading = true;
+  int _index = 0;
+  List<ProviderPortfolioItem> _banners = const [];
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-
-    _controller =
-        VideoPlayerController.asset('assets/videos/V16.mp4')
-          ..setLooping(true)
-          ..setVolume(0)
-          ..initialize().then((_) {
-            if (mounted) {
-              setState(() {
-                _isInitialized = true;
-              });
-              _controller.play(); // ✅ تشغيل الفيديو تلقائياً
-            }
-          });
-  }
-
-  /// 🔄 التحكم في حالة التطبيق (الخلفية / الأمام)
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!_isInitialized) return;
-
-    if (state == AppLifecycleState.resumed) {
-      if (!_controller.value.isPlaying) {
-        _controller.play(); // ✅ استئناف عند الرجوع
-      }
-    } else if (state == AppLifecycleState.paused) {
-      _controller.pause(); // ⏸ إيقاف عند الذهاب للخلفية (لتوفير موارد)
-    }
-    super.didChangeAppLifecycleState(state);
+    _load();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose(); // ✅ إغلاق الكنترولر لتفادي التسريب
+    _timer?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
-  @override
-  bool get wantKeepAlive => true;
+  Future<void> _load() async {
+    try {
+      final banners = await _feed.getBannerItems(limit: 6);
+
+      if (!mounted) return;
+      setState(() {
+        _banners = banners;
+        _loading = false;
+      });
+      _startAutoSlide();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _banners = const [];
+        _loading = false;
+      });
+    }
+  }
+
+  void _startAutoSlide() {
+    _timer?.cancel();
+    if (_banners.length < 2) return;
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!_controller.hasClients || !mounted) return;
+      _index = (_index + 1) % _banners.length;
+      _controller.animateToPage(
+        _index,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // لدعم keepAlive
-
-    if (!_isInitialized || !_controller.value.isInitialized) {
+    if (_loading) {
       return const SizedBox(
         height: 320,
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
+    if (_banners.isEmpty) {
+      return Container(
         height: 320,
-        width: MediaQuery.of(context).size.width,
-        child: FittedBox(
-          fit: BoxFit.cover,
-          clipBehavior: Clip.hardEdge,
-          child: SizedBox(
-            width: _controller.value.size.width,
-            height: _controller.value.size.height,
-            child: VideoPlayer(_controller),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: const LinearGradient(
+            colors: [AppColors.deepPurple, AppColors.primaryDark],
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
           ),
         ),
+        child: const Center(
+          child: Text(
+            'مرحباً بك في نوافذ',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: _banners.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) {
+              final item = _banners[i];
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    item.fileUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(color: Colors.grey.shade300),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.45),
+                          Colors.black.withValues(alpha: 0.10),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 14,
+                    left: 14,
+                    bottom: 16,
+                    child: Text(
+                      item.caption.trim().isEmpty ? item.providerDisplayName : item.caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          Positioned(
+            bottom: 10,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_banners.length, (i) {
+                final active = i == _index;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: active ? 16 : 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: active ? Colors.white : Colors.white.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
       ),
     );
   }

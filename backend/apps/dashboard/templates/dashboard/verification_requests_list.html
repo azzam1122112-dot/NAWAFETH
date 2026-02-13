@@ -1,0 +1,55 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block title %}إدارة التوثيق{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">إدارة التوثيق</h1>
+    <p class="text-gray-500 mt-1">متابعة طلبات التوثيق وربط الفاتورة والتفعيل.</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="?q={{ q }}&status={{ status_val }}&export=csv" class="px-4 py-2 rounded-lg bg-white border border-gray-200 font-semibold">تصدير CSV</a>
+    <a href="{% url 'admin:verification_verificationrequest_changelist' %}" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold">فتح Admin</a>
+  </div>
+</div>
+
+<form method="get" class="bg-white rounded-2xl shadow-lg border border-gray-100 p-5 mb-6">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <input name="q" value="{{ q }}" placeholder="كود/جوال" class="rounded-lg border-gray-200 px-3 py-2">
+    <select name="status" class="rounded-lg border-gray-200 px-3 py-2">
+      <option value="">كل الحالات</option>
+      {% for v, l in status_choices %}<option value="{{ v }}" {% if status_val == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    <button class="rounded-lg bg-indigo-600 text-white px-4 py-2 font-semibold">تطبيق</button>
+  </div>
+</form>
+
+<div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-x-auto">
+  <table class="min-w-full text-sm">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="text-right px-4 py-3">الكود</th>
+        <th class="text-right px-4 py-3">المستخدم</th>
+        <th class="text-right px-4 py-3">نوع الشارة</th>
+        <th class="text-right px-4 py-3">الحالة</th>
+        <th class="text-right px-4 py-3">فاتورة</th>
+        <th class="text-right px-4 py-3">إجراءات</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for vr in page_obj.object_list %}
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-3 font-bold text-indigo-700">{{ vr.code|default:vr.id }}</td>
+        <td class="px-4 py-3">{{ vr.requester.phone|default:"—" }}</td>
+        <td class="px-4 py-3">{{ vr.get_badge_type_display }}</td>
+        <td class="px-4 py-3">{{ vr.get_status_display }}</td>
+        <td class="px-4 py-3">{{ vr.invoice.code|default:"—" }}</td>
+        <td class="px-4 py-3"><a href="{% url 'dashboard:verification_request_detail' vr.id %}" class="text-indigo-700 font-semibold">تفاصيل</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">لا توجد طلبات توثيق.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import 'provider_profile_screen.dart';
 import '../widgets/custom_drawer.dart';
@@ -8,7 +7,20 @@ import '../models/category.dart';
 import '../models/provider.dart';
 
 class SearchProviderScreen extends StatefulWidget {
-  const SearchProviderScreen({super.key});
+  final int? initialCategoryId;
+  final String? initialQuery;
+  final String? initialCity;
+
+  const SearchProviderScreen({super.key})
+      : initialCategoryId = null,
+        initialQuery = null,
+        initialCity = null;
+  const SearchProviderScreen.withFilters({
+    super.key,
+    this.initialCategoryId,
+    this.initialQuery,
+    this.initialCity,
+  });
 
   @override
   State<SearchProviderScreen> createState() => _SearchProviderScreenState();
@@ -25,7 +37,6 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   List<Category> _categories = [];
   List<ProviderProfile> _providers = [];
   bool _loading = false;
-  bool _loadingCategories = false;
   bool _filtersExpanded = false;
 
   final List<String> _saudiCities = [
@@ -54,6 +65,14 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialQuery != null && widget.initialQuery!.trim().isNotEmpty) {
+      _searchController.text = widget.initialQuery!.trim();
+    }
+    _selectedCategoryId = widget.initialCategoryId;
+    _selectedCity = widget.initialCity;
+    if (_selectedCity != null) {
+      _cityController.text = _selectedCity!;
+    }
     _bootstrap();
   }
 
@@ -63,24 +82,16 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   }
 
   Future<void> _loadCategories() async {
-    setState(() => _loadingCategories = true);
     final cats = await _providersApi.getCategories();
     if (!mounted) return;
     setState(() {
       _categories = cats;
-      _loadingCategories = false;
     });
   }
 
   Future<void> _loadProviders() async {
     setState(() => _loading = true);
     try {
-      print('🔄 Loading providers...');
-      print('  Search text: ${_searchController.text.trim()}');
-      print('  City: $_selectedCity');
-      print('  Category ID: $_selectedCategoryId');
-      print('  Subcategory ID: $_selectedSubcategoryId');
-      
       // إذا لم يتم إدخال أي فلاتر، نستخدم getProviders() لعرض الجميع
       final hasFilters = _searchController.text.trim().isNotEmpty ||
                         _selectedCity != null ||
@@ -100,15 +111,12 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
         list = await _providersApi.getProviders();
       }
       
-      print('✅ Loaded ${list.length} providers');
-      
       if (!mounted) return;
       setState(() {
         _providers = list;
         _loading = false;
       });
-    } catch (e) {
-      print('❌ Error loading providers: $e');
+    } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
@@ -212,7 +220,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.3),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -225,11 +233,11 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.95),
+                        color: Colors.white.withValues(alpha: 0.95),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -284,10 +292,10 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                           vertical: 14,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.25),
+                          color: Colors.white.withValues(alpha: 0.25),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.4),
+                            color: Colors.white.withValues(alpha: 0.4),
                             width: 2,
                           ),
                         ),
@@ -351,7 +359,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: const BorderRadius.only(
                           bottomLeft: Radius.circular(20),
                           bottomRight: Radius.circular(20),
@@ -402,7 +410,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                                   ),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor:
-                                        Colors.white.withOpacity(0.25),
+                                        Colors.white.withValues(alpha: 0.25),
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 14,
@@ -410,7 +418,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                       side: BorderSide(
-                                        color: Colors.white.withOpacity(0.4),
+                                        color: Colors.white.withValues(alpha: 0.4),
                                         width: 2,
                                       ),
                                     ),
@@ -510,18 +518,18 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   Widget _buildCategoryDropdown(bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: DropdownButtonFormField<int>(
-        value: _selectedCategoryId,
+        initialValue: _selectedCategoryId,
         decoration: InputDecoration(
           hintText: 'اختر التصنيف الرئيسي',
           hintStyle: TextStyle(
@@ -565,18 +573,18 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   Widget _buildSubcategoryDropdown(Category category, bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: DropdownButtonFormField<int>(
-        value: _selectedSubcategoryId,
+        initialValue: _selectedSubcategoryId,
         decoration: InputDecoration(
           hintText: 'اختر التصنيف الفرعي',
           hintStyle: TextStyle(
@@ -617,18 +625,18 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   Widget _buildCityDropdown(bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: DropdownButtonFormField<String>(
-        value: _selectedCity,
+        initialValue: _selectedCity,
         decoration: InputDecoration(
           hintText: 'اختر المدينة',
           hintStyle: TextStyle(
@@ -675,7 +683,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
             width: 120,
             height: 120,
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
+              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -756,8 +764,8 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
           boxShadow: [
             BoxShadow(
               color: isDark
-                  ? Colors.black.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.15),
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.15),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -765,7 +773,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
           border: Border.all(
             color: isDark
                 ? Colors.grey[700]!
-                : const Color(0xFF6366F1).withOpacity(0.1),
+                : const Color(0xFF6366F1).withValues(alpha: 0.1),
             width: 1,
           ),
         ),
@@ -783,8 +791,8 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: [
-                          const Color(0xFF6366F1).withOpacity(0.2),
-                          const Color(0xFFA855F7).withOpacity(0.2),
+                          const Color(0xFF6366F1).withValues(alpha: 0.2),
+                          const Color(0xFFA855F7).withValues(alpha: 0.2),
                         ],
                       ),
                       border: Border.all(
@@ -883,7 +891,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFF59E0B).withOpacity(0.3),
+                                color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -918,10 +926,10 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1).withOpacity(0.1),
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: const Color(0xFF6366F1).withOpacity(0.3),
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
@@ -961,3 +969,4 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
+

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../screens/provider_profile_screen.dart';
-import '../services/providers_api.dart';
+import '../services/home_feed_service.dart';
 import '../models/provider.dart';
 
 class ProfilesSlider extends StatefulWidget {
@@ -26,7 +26,7 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
   }
 
   Future<void> _fetchProviders() async {
-    final list = await ProvidersApi().getProviders();
+    final list = await HomeFeedService.instance.getTopProviders(limit: 20);
     if (mounted) {
       if (list.isEmpty) {
         setState(() => _loading = false);
@@ -81,6 +81,15 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
     );
   }
 
+  ImageProvider _providerImage(ProviderProfile provider) {
+    final raw = (provider.imageUrl ?? '').trim();
+    if (raw.isEmpty) return AssetImage(provider.placeholderImage);
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return NetworkImage(raw);
+    }
+    return AssetImage(provider.placeholderImage);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const SizedBox(height: 140, child: Center(child: CircularProgressIndicator()));
@@ -109,7 +118,7 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
                         backgroundColor: AppColors.softBlue,
                         child: CircleAvatar(
                           radius: 32,
-                          backgroundImage: AssetImage(profile.placeholderImage),
+                          backgroundImage: _providerImage(profile),
                         ),
                       ),
                       if (profile.isVerifiedBlue)

@@ -22,8 +22,7 @@ class ProviderOrderDetailsScreen extends StatefulWidget {
   });
 
   @override
-  State<ProviderOrderDetailsScreen> createState() =>
-      _ProviderOrderDetailsScreenState();
+  State<ProviderOrderDetailsScreen> createState() => _ProviderOrderDetailsScreenState();
 }
 
 class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen> {
@@ -31,26 +30,27 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
 
   late final TextEditingController _titleController;
   late final TextEditingController _detailsController;
+  late final TextEditingController _estimatedAmountController;
+  late final TextEditingController _receivedAmountController;
+  late final TextEditingController _remainingAmountController;
+  late final TextEditingController _actualAmountController;
+  late final TextEditingController _cancelReasonController;
+  final TextEditingController _executionUpdateController = TextEditingController();
 
   late String _status;
+  late String _initialRawStatus;
+  DateTime? _createdAt;
   DateTime? _expectedDeliveryAt;
   DateTime? _deliveredAt;
   DateTime? _canceledAt;
 
-  final TextEditingController _estimatedAmountController =
-      TextEditingController();
-  final TextEditingController _receivedAmountController =
-      TextEditingController();
-  final TextEditingController _remainingAmountController =
-      TextEditingController();
-
-  final TextEditingController _actualAmountController = TextEditingController();
-  final TextEditingController _cancelReasonController = TextEditingController();
+  List<ProviderOrderAttachment> _attachments = const [];
+  List<Map<String, dynamic>> _statusLogs = const [];
 
   bool _accountChecked = false;
   bool _isProviderAccount = false;
   bool _isSaving = false;
-  late String _initialRawStatus;
+  bool _isLoadingDetail = false;
 
   bool get _isUrgentRequest => widget.requestType.trim().toLowerCase() == 'urgent';
   bool get _isCompetitiveRequest => widget.requestType.trim().toLowerCase() == 'competitive';
@@ -63,33 +63,27 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   void initState() {
     super.initState();
     _ensureProviderAccount();
+
     _titleController = TextEditingController(text: widget.order.title);
     _detailsController = TextEditingController(text: widget.order.details);
+    _estimatedAmountController = TextEditingController(text: _formatNumber(widget.order.estimatedServiceAmountSR));
+    _receivedAmountController = TextEditingController(text: _formatNumber(widget.order.receivedAmountSR));
+    _remainingAmountController = TextEditingController(text: _formatNumber(widget.order.remainingAmountSR));
+    _actualAmountController = TextEditingController(text: _formatNumber(widget.order.actualServiceAmountSR));
+    _cancelReasonController = TextEditingController(text: widget.order.cancelReason ?? '');
 
     _status = widget.order.status;
     _initialRawStatus = widget.rawStatus.trim().toLowerCase();
-
+    _createdAt = widget.order.createdAt;
     _expectedDeliveryAt = widget.order.expectedDeliveryAt;
     _deliveredAt = widget.order.deliveredAt;
     _canceledAt = widget.order.canceledAt;
 
-    _estimatedAmountController.text =
-        _formatNumber(widget.order.estimatedServiceAmountSR);
-    _receivedAmountController.text = _formatNumber(widget.order.receivedAmountSR);
-    _remainingAmountController.text =
-        _formatNumber(widget.order.remainingAmountSR);
+    _attachments = widget.order.attachments;
+    _statusLogs = widget.statusLogs;
+    _executionUpdateController.text = _latestStatusNote();
 
-    _actualAmountController.text = _formatNumber(widget.order.actualServiceAmountSR);
-    _cancelReasonController.text = widget.order.cancelReason ?? '';
-  }
-
-  Future<void> _ensureProviderAccount() async {
-    if (!mounted) return;
-    setState(() {
-      // This screen is only opened from provider orders flow.
-      _isProviderAccount = true;
-      _accountChecked = true;
-    });
+    _loadRequestDetail();
   }
 
   @override
@@ -101,11 +95,79 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
     _remainingAmountController.dispose();
     _actualAmountController.dispose();
     _cancelReasonController.dispose();
+    _executionUpdateController.dispose();
     super.dispose();
   }
 
-  String _formatDate(DateTime date) {
-    return DateFormat('HH:mm  dd/MM/yyyy', 'ar').format(date);
+  Future<void> _ensureProviderAccount() async {
+    if (!mounted) return;
+    setState(() {
+      _isProviderAccount = true;
+      _accountChecked = true;
+    });
+  }
+
+  Future<void> _loadRequestDetail() async {
+    if (_isLoadingDetail) return;
+    setState(() => _isLoadingDetail = true);
+    try {
+      final data = await MarketplaceApi().getProviderRequestDetail(requestId: widget.requestId);
+      if (data == null || !mounted) return;
+
+      final raw = (data['status'] ?? '').toString().trim().toLowerCase();
+      final statusLabel = (data['status_label'] ?? '').toString().trim();
+      final mappedStatus = statusLabel.isNotEmpty ? statusLabel : _mapRawToStatusAr(raw);
+
+      final attachments = <ProviderOrderAttachment>[];
+      final attachmentsRaw = data['attachments'];
+      if (attachmentsRaw is List) {
+        for (final item in attachmentsRaw) {
+          if (item is! Map) continue;
+          final map = Map<String, dynamic>.from(item);
+          final url = (map['file_url'] ?? '').toString();
+          final type = (map['file_type'] ?? 'file').toString();
+          attachments.add(
+            ProviderOrderAttachment(
+              name: url.isEmpty ? 'مرفق' : url,
+              type: type,
+            ),
+          );
+        }
+      }
+
+      List<Map<String, dynamic>> logs = const [];
+      if (data['status_logs'] is List) {
+        logs = (data['status_logs'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+
+      setState(() {
+        _titleController.text = (data['title'] ?? '').toString();
+        _detailsController.text = (data['description'] ?? '').toString();
+        _status = mappedStatus;
+        if (raw.isNotEmpty) {
+          _initialRawStatus = raw;
+        }
+        _createdAt = DateTime.tryParse((data['created_at'] ?? '').toString()) ?? _createdAt;
+        _attachments = attachments;
+        _statusLogs = logs;
+        final latest = _latestStatusNote();
+        if (latest.isNotEmpty) {
+          _executionUpdateController.text = latest;
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingDetail = false);
+      }
+    }
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '-';
+    return DateFormat('HH:mm dd/MM/yyyy', 'ar').format(date);
   }
 
   String _formatDateOnly(DateTime date) {
@@ -118,19 +180,55 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
     return value.toString();
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'مكتمل':
-        return Colors.green;
-      case 'ملغي':
-        return Colors.red;
-      case 'تحت التنفيذ':
-        return Colors.orange;
-      case 'جديد':
-        return Colors.amber.shade800;
+  String _mapRawToStatusAr(String raw) {
+    switch (raw) {
+      case 'accepted':
+      case 'in_progress':
+        return 'تحت التنفيذ';
+      case 'completed':
+        return 'مكتمل';
+      case 'cancelled':
+      case 'canceled':
+      case 'expired':
+        return 'ملغي';
+      case 'new':
+      case 'open':
+      case 'pending':
+      case 'sent':
       default:
-        return Colors.grey;
+        return 'جديد';
     }
+  }
+
+  String _statusToRaw(String statusAr) {
+    switch (statusAr) {
+      case 'جديد':
+        return 'new';
+      case 'تحت التنفيذ':
+        return 'in_progress';
+      case 'مكتمل':
+        return 'completed';
+      case 'ملغي':
+        return 'cancelled';
+      default:
+        return '';
+    }
+  }
+
+  List<String> _availableStatuses() {
+    if (_isUrgentRequest || _isCompetitiveRequest) return [_status];
+
+    if (_isNewLikeStatus) return const ['جديد', 'تحت التنفيذ', 'ملغي'];
+    if (_initialRawStatus == 'accepted') return const ['تحت التنفيذ'];
+    if (_initialRawStatus == 'in_progress') return const ['تحت التنفيذ', 'مكتمل'];
+    if (_initialRawStatus == 'completed') return const ['مكتمل'];
+    if (_initialRawStatus == 'cancelled') return const ['ملغي'];
+    return const ['جديد', 'تحت التنفيذ', 'مكتمل', 'ملغي'];
+  }
+
+  String _extractActionMessage(MarketplaceActionResult result, String fallback) {
+    final msg = (result.message ?? '').trim();
+    return msg.isEmpty ? fallback : msg;
   }
 
   Future<DateTime?> _pickDateTime(DateTime initial) async {
@@ -151,13 +249,7 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
     );
 
     final pickedTime = time ?? TimeOfDay.fromDateTime(initial);
-    return DateTime(
-      date.year,
-      date.month,
-      date.day,
-      pickedTime.hour,
-      pickedTime.minute,
-    );
+    return DateTime(date.year, date.month, date.day, pickedTime.hour, pickedTime.minute);
   }
 
   void _openChat() {
@@ -168,35 +260,11 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
       isOnline: false,
     );
   }
-
-  String _statusToRaw(String statusAr) {
-    switch (statusAr) {
-      case 'جديد':
-        return 'new';
-      case 'تحت التنفيذ':
-        return 'in_progress';
-      case 'مكتمل':
-        return 'completed';
-      case 'ملغي':
-        return 'cancelled';
-      default:
-        return '';
-    }
-  }
-
-  String _extractActionMessage(MarketplaceActionResult result, String fallback) {
-    final msg = (result.message ?? '').trim();
-    return msg.isEmpty ? fallback : msg;
-  }
-
   Future<void> _save() async {
     if (_isSaving) return;
-
     if (_isUrgentRequest || _isCompetitiveRequest) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('استخدم زر الإجراء الأساسي لهذه النوعية من الطلبات.', style: TextStyle(fontFamily: 'Cairo')),
-        ),
+        const SnackBar(content: Text('استخدم زر الإجراء الأساسي لهذا الطلب.', style: TextStyle(fontFamily: 'Cairo'))),
       );
       return;
     }
@@ -214,13 +282,11 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
       final api = MarketplaceApi();
       bool ok = false;
       String message = 'تم حفظ التحديث';
-
       final initial = _initialRawStatus;
-      final isNewLike = initial == 'new' || initial == 'sent' || initial == 'open' || initial == 'pending';
 
       if (targetRaw == initial) {
         ok = true;
-      } else if (isNewLike && targetRaw == 'in_progress') {
+      } else if (_isNewLikeStatus && targetRaw == 'in_progress') {
         final acceptRes = await api.acceptAssignedRequestDetailed(requestId: widget.requestId);
         if (!acceptRes.ok) {
           ok = false;
@@ -228,29 +294,27 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
         } else {
           final startOk = await api.startAssignedRequest(
             requestId: widget.requestId,
-            note: 'بدء التنفيذ من صفحة تفاصيل الطلب',
+            note: _executionUpdateController.text.trim().isEmpty ? 'بدء التنفيذ' : _executionUpdateController.text.trim(),
           );
           ok = startOk;
           message = startOk ? 'تم قبول الطلب وبدء التنفيذ.' : 'تم القبول ولكن تعذر بدء التنفيذ.';
         }
-      } else if (isNewLike && targetRaw == 'cancelled') {
+      } else if (_isNewLikeStatus && targetRaw == 'cancelled') {
         ok = await api.rejectAssignedRequest(
           requestId: widget.requestId,
-          note: _cancelReasonController.text.trim(),
+          note: _cancelReasonController.text.trim().isEmpty ? 'رفض من المزود' : _cancelReasonController.text.trim(),
         );
         message = ok ? 'تم رفض الطلب.' : 'تعذر رفض الطلب حالياً.';
-      } else if (isNewLike && targetRaw == 'new') {
-        ok = true;
       } else if (initial == 'accepted' && targetRaw == 'in_progress') {
         ok = await api.startAssignedRequest(
           requestId: widget.requestId,
-          note: 'بدء التنفيذ من صفحة تفاصيل الطلب',
+          note: _executionUpdateController.text.trim().isEmpty ? 'بدء التنفيذ' : _executionUpdateController.text.trim(),
         );
         message = ok ? 'تم بدء التنفيذ.' : 'تعذر بدء التنفيذ حالياً.';
       } else if (initial == 'in_progress' && targetRaw == 'completed') {
         ok = await api.completeAssignedRequest(
           requestId: widget.requestId,
-          note: 'تم الإنجاز من صفحة تفاصيل الطلب',
+          note: _executionUpdateController.text.trim().isEmpty ? 'تم الإنجاز' : _executionUpdateController.text.trim(),
         );
         message = ok ? 'تم تحديث الطلب إلى مكتمل.' : 'تعذر إكمال الطلب حالياً.';
       } else {
@@ -271,25 +335,33 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
     }
   }
 
-  Future<void> _acceptUrgentFromDetails() async {
+  Future<void> _primaryActionForSpecialRequest() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     try {
-      final ok = await MarketplaceApi().acceptUrgentRequest(requestId: widget.requestId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok ? 'تم قبول الطلب العاجل.' : 'تعذر قبول الطلب العاجل حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
-          backgroundColor: ok ? Colors.green : null,
-        ),
-      );
-      if (ok) Navigator.pop(context, true);
+      if (_isUrgentRequest) {
+        final ok = await MarketplaceApi().acceptUrgentRequest(requestId: widget.requestId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok ? 'تم قبول الطلب العاجل.' : 'تعذر قبول الطلب العاجل حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
+            backgroundColor: ok ? Colors.green : null,
+          ),
+        );
+        if (ok) Navigator.pop(context, true);
+        return;
+      }
+
+      if (_isCompetitiveRequest) {
+        final ok = await _showOfferDialogAndSubmit();
+        if (ok && mounted) Navigator.pop(context, true);
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  Future<void> _sendOfferFromDetails() async {
+  Future<bool> _showOfferDialogAndSubmit() async {
     final priceController = TextEditingController();
     final daysController = TextEditingController(text: '3');
     final noteController = TextEditingController();
@@ -306,28 +378,19 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
               TextField(
                 controller: priceController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'السعر (ريال)',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: 'السعر (ريال)', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: daysController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'المدة (بالأيام)',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: 'المدة (أيام)', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: noteController,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'ملاحظة (اختياري)',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: 'ملاحظة', border: OutlineInputBorder()),
               ),
             ],
           ),
@@ -339,200 +402,460 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
     final price = double.tryParse(priceController.text.trim());
     final days = int.tryParse(daysController.text.trim());
     if (price == null || price <= 0 || days == null || days <= 0) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تحقق من السعر والمدة', style: TextStyle(fontFamily: 'Cairo'))),
       );
-      return;
+      return false;
     }
 
-    setState(() => _isSaving = true);
-    try {
-      final ok = await MarketplaceApi().createOffer(
-        requestId: widget.requestId,
-        price: price,
-        durationDays: days,
-        note: noteController.text,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok ? 'تم إرسال العرض.' : 'تعذر إرسال العرض.', style: const TextStyle(fontFamily: 'Cairo')),
-          backgroundColor: ok ? Colors.green : null,
-        ),
-      );
-      if (ok) Navigator.pop(context, true);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontFamily: 'Cairo',
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
+    final ok = await MarketplaceApi().createOffer(
+      requestId: widget.requestId,
+      price: price,
+      durationDays: days,
+      note: noteController.text.trim(),
+    );
+    if (!mounted) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'تم إرسال العرض.' : 'تعذر إرسال العرض.', style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: ok ? Colors.green : null,
       ),
     );
+    return ok;
   }
 
-  Widget _pill(String text, Color color) {
+  String _latestStatusNote() {
+    for (var i = _statusLogs.length - 1; i >= 0; i--) {
+      final note = (_statusLogs[i]['note'] ?? '').toString().trim();
+      if (note.isNotEmpty) return note;
+    }
+    return '';
+  }
+
+  String _statusLabelFromRaw(String raw) {
+    switch (raw.trim().toLowerCase()) {
+      case 'new':
+      case 'open':
+      case 'pending':
+      case 'sent':
+        return 'جديد (تحت التقييم والمناقشة)';
+      case 'accepted':
+      case 'in_progress':
+        return 'تحت التنفيذ';
+      case 'completed':
+        return 'مكتمل (تم التسليم وسداد المستحقات)';
+      case 'cancelled':
+      case 'canceled':
+      case 'expired':
+        return 'ملغي';
+      default:
+        return raw;
+    }
+  }
+
+  Widget _headerCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withAlpha(35),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: color.withAlpha(90)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _mainColor.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'R${widget.requestId.toString().padLeft(6, '0')}',
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _mainColor,
+                  ),
+                ),
+              ),
+              _statusPill(_status),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${widget.order.serviceCode}  @${widget.order.clientName}',
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black87),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatDate(_createdAt ?? widget.order.createdAt),
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12.5, color: Colors.black.withValues(alpha: 0.65)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusPill(String statusAr) {
+    final color = switch (statusAr) {
+      'مكتمل' => Colors.green,
+      'ملغي' => Colors.red,
+      'تحت التنفيذ' => Colors.orange,
+      _ => Colors.amber.shade800,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
       ),
       child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontFamily: 'Cairo',
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
+        statusAr,
+        style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: color),
       ),
     );
   }
-
-  Widget _infoLine({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: _mainColor),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.black54,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _readOnlyBox({required String label, required String value, int maxLines = 3}) {
+  Widget _readonlyField({required String title, required String value, int minLines = 1}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Cairo',
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-          ),
-        ),
-        const SizedBox(height: 8),
+        Text(title, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 6),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          constraints: BoxConstraints(minHeight: minLines == 1 ? 48 : 96),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _mainColor.withAlpha(50)),
+            border: Border.all(color: _mainColor.withValues(alpha: 0.22)),
           ),
           child: Text(
             value.trim().isEmpty ? '-' : value,
-            maxLines: maxLines,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.35),
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, height: 1.45),
           ),
         ),
       ],
     );
   }
 
-  Widget _textField({
-    required TextEditingController controller,
-    required bool enabled,
-    int maxLines = 1,
-    String? hint,
-    TextInputType? keyboardType,
-  }) {
-    return TextField(
-      controller: controller,
-      enabled: enabled,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _mainColor.withAlpha(70)),
+  Widget _attachmentsBox() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.attach_file, color: _mainColor, size: 18),
+            SizedBox(width: 6),
+            Text('المرفقات', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14)),
+          ],
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _mainColor.withAlpha(170), width: 1.3),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _mainColor.withValues(alpha: 0.22)),
+          ),
+          child: _attachments.isEmpty
+              ? Text(
+                  'لا توجد مرفقات',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black.withValues(alpha: 0.6)),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _attachments
+                      .map(
+                        (a) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _mainColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            a.type,
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: _mainColor),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
         ),
-        disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _mainColor.withAlpha(35)),
+      ],
+    );
+  }
+
+  Widget _statusDropdown() {
+    final options = _availableStatuses();
+    final current = options.contains(_status) ? _status : options.first;
+    if (current != _status) {
+      _status = current;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _mainColor.withValues(alpha: 0.55), width: 1.4),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: current,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _mainColor),
+          items: options
+              .map(
+                (s) => DropdownMenuItem<String>(
+                  value: s,
+                  child: Text(s, style: const TextStyle(fontFamily: 'Cairo', fontSize: 14)),
+                ),
+              )
+              .toList(),
+          onChanged: (_isUrgentRequest || _isCompetitiveRequest)
+              ? null
+              : (value) {
+                  if (value == null) return;
+                  setState(() => _status = value);
+                },
         ),
       ),
     );
   }
 
-  Widget _dateLine({
+  Widget _executionUpdateBox() {
+    return TextField(
+      controller: _executionUpdateController,
+      minLines: 5,
+      maxLines: 7,
+      style: const TextStyle(fontFamily: 'Cairo', fontSize: 14),
+      decoration: InputDecoration(
+        hintText: 'اكتب تحديث حالة التنفيذ هنا...',
+        hintStyle: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black.withValues(alpha: 0.45)),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: _mainColor.withValues(alpha: 0.22)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: _mainColor.withValues(alpha: 0.22)),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusTimelineSection() {
+    final logs = _statusLogs;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _mainColor.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'قائمة منسدلة:',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: _mainColor),
+          ),
+          const SizedBox(height: 8),
+          if (logs.isEmpty)
+            const Text('لا توجد سجلات حالة حتى الآن', style: TextStyle(fontFamily: 'Cairo', fontSize: 13))
+          else
+            ...logs.map((log) {
+              final toStatus = _statusLabelFromRaw((log['to_status'] ?? '').toString());
+              final at = DateTime.tryParse((log['created_at'] ?? '').toString());
+              final actor = (log['actor_name'] ?? '-').toString();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 7),
+                      child: Icon(Icons.circle, size: 6, color: _mainColor),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$toStatus${at != null ? ' - ${DateFormat('dd/MM/yyyy HH:mm', 'ar').format(at)}' : ''}${actor.trim().isEmpty ? '' : ' - $actor'}',
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusSpecificCard() {
+    if (_status == 'تحت التنفيذ') {
+      return _boxCard(
+        title: 'تحت التنفيذ',
+        child: Column(
+          children: [
+            _dateField(
+              label: 'موعد التسليم المتوقع',
+              value: _expectedDeliveryAt,
+              onTap: () async {
+                final initial = _expectedDeliveryAt ?? DateTime.now();
+                final picked = await _pickDateTime(initial);
+                if (picked != null && mounted) setState(() => _expectedDeliveryAt = picked);
+              },
+            ),
+            const SizedBox(height: 8),
+            _moneyField('قيمة الخدمة المقدرة (SR)', _estimatedAmountController),
+            const SizedBox(height: 8),
+            _moneyField('المبلغ المستلم (SR)', _receivedAmountController),
+            const SizedBox(height: 8),
+            _moneyField('المبلغ المتبقي (SR)', _remainingAmountController),
+          ],
+        ),
+      );
+    }
+
+    if (_status == 'مكتمل') {
+      return _boxCard(
+        title: 'مكتمل',
+        child: Column(
+          children: [
+            _dateField(
+              label: 'موعد التسليم الفعلي',
+              value: _deliveredAt,
+              onTap: () async {
+                final initial = _deliveredAt ?? DateTime.now();
+                final picked = await _pickDateTime(initial);
+                if (picked != null && mounted) setState(() => _deliveredAt = picked);
+              },
+            ),
+            const SizedBox(height: 8),
+            _moneyField('قيمة الخدمة الفعلية (SR)', _actualAmountController),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _mainColor.withValues(alpha: 0.20)),
+              ),
+              child: const Text(
+                'مرفقات: صور - تقارير - فواتير - إيصالات - مقطع فيديو',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 12.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_status == 'ملغي') {
+      return _boxCard(
+        title: 'ملغي',
+        child: Column(
+          children: [
+            _dateField(
+              label: 'تاريخ الإلغاء',
+              value: _canceledAt,
+              onTap: () async {
+                final initial = _canceledAt ?? DateTime.now();
+                final picked = await _pickDateTime(initial);
+                if (picked != null && mounted) setState(() => _canceledAt = picked);
+              },
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _cancelReasonController,
+              minLines: 2,
+              maxLines: 3,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'سبب الإلغاء',
+                labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12.5),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _mainColor.withValues(alpha: 0.25)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  Widget _boxCard({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _mainColor.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: _mainColor, width: 1.2),
+              ),
+              child: Text(title, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _mainColor)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+  Widget _dateField({
     required String label,
     required DateTime? value,
-    required VoidCallback onPick,
+    required VoidCallback onTap,
   }) {
     return InkWell(
-      onTap: onPick,
-      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _mainColor.withAlpha(70)),
-          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _mainColor.withValues(alpha: 0.20)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.calendar_month, size: 18, color: _mainColor),
+            const Icon(Icons.calendar_month, color: _mainColor, size: 18),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 value == null ? label : '$label: ${_formatDateOnly(value)}',
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12.5),
               ),
             ),
-            const Icon(Icons.expand_more, color: Colors.black45),
           ],
         ),
       ),
@@ -540,591 +863,157 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   }
 
   Widget _moneyField(String label, TextEditingController controller) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
-        const SizedBox(height: 6),
-        _textField(
-          controller: controller,
-          enabled: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          hint: '0',
-        ),
-      ],
-    );
-  }
-
-  Widget _statusSpecificSection() {
-    switch (_status) {
-      case 'تحت التنفيذ':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _dateLine(
-              label: 'موعد التسليم المتوقع',
-              value: _expectedDeliveryAt,
-              onPick: () async {
-                final initial = _expectedDeliveryAt ?? DateTime.now();
-                final picked = await _pickDateTime(initial);
-                if (picked != null && mounted) {
-                  setState(() => _expectedDeliveryAt = picked);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _moneyField('قيمة الخدمة المقدرة (SR)', _estimatedAmountController),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _moneyField('المبلغ المستلم (SR)', _receivedAmountController),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _moneyField('المبلغ المتبقي (SR)', _remainingAmountController),
-          ],
-        );
-
-      case 'مكتمل':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _dateLine(
-              label: 'موعد التسليم الفعلي',
-              value: _deliveredAt,
-              onPick: () async {
-                final initial = _deliveredAt ?? DateTime.now();
-                final picked = await _pickDateTime(initial);
-                if (picked != null && mounted) {
-                  setState(() => _deliveredAt = picked);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            _moneyField('قيمة الخدمة الفعلية (SR)', _actualAmountController),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _mainColor.withAlpha(70)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.attach_file, color: _mainColor, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'مرفقات (صور - تقارير - فواتير...)',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'إيصالات - مقطع فيديو',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 11.5,
-                            color: Colors.black.withAlpha(160),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (widget.order.attachments.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              ...widget.order.attachments.map(
-                (a) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.circle, size: 6, color: Colors.black45),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          a.name,
-                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                        ),
-                      ),
-                      Text(
-                        a.type,
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          color: Colors.black.withAlpha(140),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
-        );
-
-      case 'ملغي':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _dateLine(
-              label: 'تاريخ الإلغاء',
-              value: _canceledAt,
-              onPick: () async {
-                final initial = _canceledAt ?? DateTime.now();
-                final picked = await _pickDateTime(initial);
-                if (picked != null && mounted) {
-                  setState(() => _canceledAt = picked);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            Text('سبب الإلغاء', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
-            const SizedBox(height: 6),
-            _textField(
-              controller: _cancelReasonController,
-              enabled: true,
-              maxLines: 2,
-              hint: 'اكتب سبب الإلغاء...',
-            ),
-          ],
-        );
-
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_accountChecked) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (!_isProviderAccount) {
-      return const Scaffold(body: SizedBox.shrink());
-    }
-
-    final statusColor = _statusColor(_status);
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: Colors.grey[50],
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: _mainColor),
-          centerTitle: true,
-          title: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            decoration: BoxDecoration(
-              color: _mainColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(25),
-              border: Border.all(color: _mainColor.withOpacity(0.3)),
-            ),
-            child: const Text(
-              'تفاصيل الطلب',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: _mainColor,
-              ),
-            ),
-          ),
-          actions: [
-            IconButton(
-              onPressed: _openChat,
-              icon: const Icon(Icons.chat_bubble_outline, color: _mainColor, size: 24),
-              tooltip: 'فتح محادثة مع العميل',
-            ),
-          ],
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // معلومات الطلب الأساسية
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _mainColor.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _mainColor.withOpacity(0.2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'R${widget.requestId.toString().padLeft(6, '0')}',
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _mainColor,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.build_circle,
-                          color: Colors.orange.shade700,
-                          size: 24,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatDateTime(widget.order.createdAt),
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 13,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Text(
-                        '@',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: _mainColor,
-                        ),
-                      ),
-                      Text(
-                        widget.order.clientName,
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const Spacer(),
-                      if ((widget.order.clientPhone ?? '').isNotEmpty)
-                        Text(
-                          widget.order.clientPhone!,
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // عنوان الطلب
-            const Text(
-              'عنوان الطلب',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                widget.order.title,
-                style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // تفاصيل الطلب
-            const Text(
-              'تفاصيل الطلب',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                widget.order.details,
-                style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  color: Colors.black87,
-                  height: 1.6,
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // المرفقات
-            Row(
-              children: [
-                Icon(Icons.attach_file, size: 20, color: Colors.grey[700]),
-                const SizedBox(width: 4),
-                const Text(
-                  'المرفقات',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (widget.order.attachments.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: Text(
-                  'لا توجد مرفقات',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 13,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              )
-            else
-              Container(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: widget.order.attachments.length,
-                  itemBuilder: (context, index) {
-                    return Container(
-                      margin: const EdgeInsets.only(left: 8),
-                      width: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade400),
-                      ),
-                      child: const Icon(Icons.image, color: Colors.grey),
-                    );
-                  },
-                ),
-              ),
-            
-            const SizedBox(height: 16),
-            
-            // تحديث عن حالة تنفيذ العمل
-            const Text(
-              'تحديث عن حالة تنفيذ العمل',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid, width: 1.5),
-              ),
-              height: 120,
-              child: const SizedBox(),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // حالة الطلب
-            Row(
-              children: [
-                Icon(Icons.check_box_outlined, size: 20, color: Colors.grey[700]),
-                const SizedBox(width: 4),
-                const Text(
-                  'حالة الطلب',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (!_isUrgentRequest && !_isCompetitiveRequest)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _mainColor.withOpacity(0.3)),
-                ),
-                child: DropdownButton<String>(
-                  value: _status,
-                  isExpanded: true,
-                  underline: const SizedBox(),
-                  icon: const Icon(Icons.arrow_drop_down, color: _mainColor),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'جديد',
-                      child: Text(
-                        'جديد (تحت التقييم والمناقشة)',
-                        style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'تحت التنفيذ',
-                      child: Text(
-                        'تحت التنفيذ',
-                        style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'مكتمل',
-                      child: Text(
-                        'مكتمل (تم التسليم وسداد المستحقات)',
-                        style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'ملغي',
-                      child: Text(
-                        'ملغي',
-                        style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _status = value);
-                    }
-                  },
-                ),
-              ),
-            
-            const SizedBox(height: 24),
-            
-            // أزرار الحفظ والإلغاء
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_isSaving || _isUrgentRequest || _isCompetitiveRequest) ? null : _save,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: _mainColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text(
-                            'حفظ',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text(
-                      'إلغاء',
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12.5),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: _mainColor.withValues(alpha: 0.20)),
         ),
       ),
     );
   }
 
-  String _formatDateTime(DateTime? dt) {
-    if (dt == null) return '-';
-    try {
-      return DateFormat('HH:mm dd/MM/yyyy', 'ar').format(dt);
-    } catch (_) {
-      return dt.toString();
+  @override
+  Widget build(BuildContext context) {
+    if (!_accountChecked) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    if (!_isProviderAccount) {
+      return const Scaffold(body: SizedBox.shrink());
+    }
+
+    final specialActionTitle = _isUrgentRequest
+        ? 'قبول الطلب العاجل'
+        : (_isCompetitiveRequest ? 'تقديم عرض' : '');
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F4F8),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: _mainColor,
+          elevation: 0,
+          title: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: _mainColor.withValues(alpha: 0.14),
+            ),
+            child: const Text(
+              'تفاصيل الطلب',
+              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _mainColor),
+            ),
+          ),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              onPressed: _openChat,
+              tooltip: 'فتح محادثة مع العميل',
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+            ),
+          ],
+        ),
+        body: Stack(
+          children: [
+            RefreshIndicator(
+              color: _mainColor,
+              onRefresh: _loadRequestDetail,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
+                children: [
+                  _headerCard(),
+                  const SizedBox(height: 12),
+                  _readonlyField(title: 'عنوان الطلب', value: _titleController.text),
+                  const SizedBox(height: 12),
+                  _readonlyField(title: 'تفاصيل الطلب', value: _detailsController.text, minLines: 3),
+                  const SizedBox(height: 12),
+                  _attachmentsBox(),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'تحديث عن حالة تنفيذ العمل',
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold, color: _mainColor),
+                  ),
+                  const SizedBox(height: 6),
+                  _executionUpdateBox(),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_box_outline_blank_rounded, color: _mainColor, size: 18),
+                      SizedBox(width: 6),
+                      Text('حالة الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14, color: _mainColor)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  _statusDropdown(),
+                  _statusSpecificCard(),
+                  const SizedBox(height: 12),
+                  _statusTimelineSection(),
+                ],
+              ),
+            ),
+            if (_isLoadingDetail)
+              const Positioned(
+                top: 8,
+                left: 0,
+                right: 0,
+                child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+              ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _isSaving
+                      ? null
+                      : (_isUrgentRequest || _isCompetitiveRequest ? _primaryActionForSpecialRequest : _save),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _mainColor,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(
+                          (_isUrgentRequest || _isCompetitiveRequest) ? specialActionTitle : 'حفظ',
+                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    side: BorderSide(color: _mainColor.withValues(alpha: 0.55)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  ),
+                  child: const Text(
+                    'إلغاء',
+                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16, color: _mainColor),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

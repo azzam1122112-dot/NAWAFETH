@@ -1,0 +1,61 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block title %}إدارة الترويج{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-fuchsia-600 to-pink-600 bg-clip-text text-transparent">إدارة الترويج</h1>
+    <p class="text-gray-500 mt-1">تشغيل حملات الترويج من التسعير حتى التفعيل.</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="?q={{ q }}&status={{ status_val }}&ad_type={{ ad_type }}&export=csv" class="px-4 py-2 rounded-lg bg-white border border-gray-200 font-semibold">تصدير CSV</a>
+    <a href="{% url 'admin:promo_promorequest_changelist' %}" class="px-4 py-2 rounded-lg bg-fuchsia-600 text-white font-semibold">فتح Admin</a>
+  </div>
+</div>
+
+<form method="get" class="bg-white rounded-2xl shadow-lg border border-gray-100 p-5 mb-6">
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+    <input name="q" value="{{ q }}" placeholder="كود/عنوان/جوال" class="rounded-lg border-gray-200 px-3 py-2">
+    <select name="status" class="rounded-lg border-gray-200 px-3 py-2">
+      <option value="">كل الحالات</option>
+      {% for v, l in status_choices %}<option value="{{ v }}" {% if status_val == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    <select name="ad_type" class="rounded-lg border-gray-200 px-3 py-2">
+      <option value="">كل الأنواع</option>
+      {% for v, l in ad_type_choices %}<option value="{{ v }}" {% if ad_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    <button class="rounded-lg bg-fuchsia-600 text-white px-4 py-2 font-semibold">تطبيق</button>
+  </div>
+</form>
+
+<div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-x-auto">
+  <table class="min-w-full text-sm">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="text-right px-4 py-3">الكود</th>
+        <th class="text-right px-4 py-3">العميل</th>
+        <th class="text-right px-4 py-3">العنوان</th>
+        <th class="text-right px-4 py-3">النوع</th>
+        <th class="text-right px-4 py-3">الحالة</th>
+        <th class="text-right px-4 py-3">الفاتورة</th>
+        <th class="text-right px-4 py-3">إجراءات</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for pr in page_obj.object_list %}
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-3 font-bold text-fuchsia-700">{{ pr.code|default:pr.id }}</td>
+        <td class="px-4 py-3">{{ pr.requester.phone|default:"—" }}</td>
+        <td class="px-4 py-3">{{ pr.title }}</td>
+        <td class="px-4 py-3">{{ pr.get_ad_type_display }}</td>
+        <td class="px-4 py-3">{{ pr.get_status_display }}</td>
+        <td class="px-4 py-3">{{ pr.invoice.code|default:"—" }}</td>
+        <td class="px-4 py-3"><a href="{% url 'dashboard:promo_request_detail' pr.id %}" class="text-fuchsia-700 font-semibold">تفاصيل</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">لا توجد حملات.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

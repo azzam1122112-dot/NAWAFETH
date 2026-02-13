@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/providers_api.dart';
 import '../models/category.dart';
+import '../screens/search_provider_screen.dart';
 
 class ServiceGrid extends StatefulWidget {
   const ServiceGrid({super.key});
@@ -66,37 +67,50 @@ class _ServiceGridState extends State<ServiceGrid> {
               spacing: 12,
               runSpacing: 12,
               children: visibleServices.map((cat) {
-                return Container(
-                  width: (MediaQuery.of(context).size.width - 48) / 2,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
-                    ],
-                    border: Border.all(color: AppColors.primaryDark.withAlpha(26)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _getIconFor(cat.name),
-                        size: 36,
-                        color: AppColors.primaryDark,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        cat.name,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.deepPurple,
+                return InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SearchProviderScreen.withFilters(
+                          initialCategoryId: cat.id,
                         ),
                       ),
-                    ],
+                    );
+                  },
+                  child: Container(
+                    width: (MediaQuery.of(context).size.width - 48) / 2,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+                      ],
+                      border: Border.all(color: AppColors.primaryDark.withAlpha(26)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _getIconFor(cat.name),
+                          size: 36,
+                          color: AppColors.primaryDark,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          cat.name,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.deepPurple,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }).toList(),

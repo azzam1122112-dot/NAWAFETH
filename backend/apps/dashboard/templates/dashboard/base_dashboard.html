@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
   <style>
     * { font-family: 'Tajawal', sans-serif; }
-    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .gradient-bg { background: linear-gradient(135deg, #8f2e8a 0%, #5e35b1 100%); }
     .card-hover { transition: all 0.3s ease; }
     .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
     .shimmer { 
@@ -41,43 +41,110 @@
 
       <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
         <a href="{% url 'dashboard:home' %}"
-           class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50 transition-all group">
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'home' %}bg-gradient-to-r from-purple-50 to-indigo-50{% else %}hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50{% endif %}">
           <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
             🏠
           </div>
-          <span class="font-semibold text-gray-700 group-hover:text-purple-700">الرئيسية</span>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'home' %}text-purple-700{% else %}text-gray-700 group-hover:text-purple-700{% endif %}">الرئيسية</span>
         </a>
 
         <a href="{% url 'dashboard:requests_list' %}"
-           class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-blue-50 hover:to-cyan-50 transition-all group">
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'requests_list' or request.resolver_match.url_name == 'request_detail' %}bg-gradient-to-r from-blue-50 to-cyan-50{% else %}hover:bg-gradient-to-r hover:from-blue-50 hover:to-cyan-50{% endif %}">
           <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
             📋
           </div>
-          <span class="font-semibold text-gray-700 group-hover:text-blue-700">الطلبات</span>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'requests_list' or request.resolver_match.url_name == 'request_detail' %}text-blue-700{% else %}text-gray-700 group-hover:text-blue-700{% endif %}">الطلبات</span>
         </a>
 
         <a href="{% url 'dashboard:providers_list' %}"
-           class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 transition-all group">
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'providers_list' or request.resolver_match.url_name == 'provider_detail' %}bg-gradient-to-r from-emerald-50 to-teal-50{% else %}hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50{% endif %}">
           <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
             👥
           </div>
-          <span class="font-semibold text-gray-700 group-hover:text-emerald-700">المزوّدون</span>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'providers_list' or request.resolver_match.url_name == 'provider_detail' %}text-emerald-700{% else %}text-gray-700 group-hover:text-emerald-700{% endif %}">المزوّدون</span>
         </a>
 
         <a href="{% url 'dashboard:services_list' %}"
-           class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-amber-50 hover:to-orange-50 transition-all group">
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'services_list' %}bg-gradient-to-r from-amber-50 to-orange-50{% else %}hover:bg-gradient-to-r hover:from-amber-50 hover:to-orange-50{% endif %}">
           <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
             🛠️
           </div>
-          <span class="font-semibold text-gray-700 group-hover:text-amber-700">خدمات المزوّدين</span>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'services_list' %}text-amber-700{% else %}text-gray-700 group-hover:text-amber-700{% endif %}">خدمات المزوّدين</span>
         </a>
 
         <a href="{% url 'dashboard:categories_list' %}"
-           class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-violet-50 hover:to-purple-50 transition-all group">
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'categories_list' or request.resolver_match.url_name == 'category_create' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_edit' or request.resolver_match.url_name == 'subcategory_create' or request.resolver_match.url_name == 'subcategory_edit' %}bg-gradient-to-r from-violet-50 to-purple-50{% else %}hover:bg-gradient-to-r hover:from-violet-50 hover:to-purple-50{% endif %}">
           <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
             📂
           </div>
-          <span class="font-semibold text-gray-700 group-hover:text-violet-700">التصنيفات</span>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'categories_list' or request.resolver_match.url_name == 'category_create' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_edit' or request.resolver_match.url_name == 'subcategory_create' or request.resolver_match.url_name == 'subcategory_edit' %}text-violet-700{% else %}text-gray-700 group-hover:text-violet-700{% endif %}">التصنيفات</span>
+        </a>
+
+        <div class="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent my-4"></div>
+        <div class="px-4 py-1 text-xs text-gray-500 font-bold">تشغيل المنصة</div>
+
+        <a href="{% url 'dashboard:billing_invoices_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'billing_invoices_list' %}bg-gradient-to-r from-sky-50 to-blue-50{% else %}hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            💳
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'billing_invoices_list' %}text-sky-700{% else %}text-gray-700 group-hover:text-sky-700{% endif %}">الفوترة</span>
+        </a>
+
+        <a href="{% url 'dashboard:support_tickets_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'support_tickets_list' or request.resolver_match.url_name == 'support_ticket_detail' %}bg-gradient-to-r from-cyan-50 to-teal-50{% else %}hover:bg-gradient-to-r hover:from-cyan-50 hover:to-teal-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            🎫
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'support_tickets_list' or request.resolver_match.url_name == 'support_ticket_detail' %}text-cyan-700{% else %}text-gray-700 group-hover:text-cyan-700{% endif %}">الدعم</span>
+        </a>
+
+        <a href="{% url 'dashboard:verification_requests_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'verification_requests_list' or request.resolver_match.url_name == 'verification_request_detail' %}bg-gradient-to-r from-indigo-50 to-violet-50{% else %}hover:bg-gradient-to-r hover:from-indigo-50 hover:to-violet-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            ✅
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'verification_requests_list' or request.resolver_match.url_name == 'verification_request_detail' %}text-indigo-700{% else %}text-gray-700 group-hover:text-indigo-700{% endif %}">التوثيق</span>
+        </a>
+
+        <a href="{% url 'dashboard:promo_requests_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'promo_requests_list' or request.resolver_match.url_name == 'promo_request_detail' %}bg-gradient-to-r from-fuchsia-50 to-pink-50{% else %}hover:bg-gradient-to-r hover:from-fuchsia-50 hover:to-pink-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-fuchsia-500 to-pink-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            📢
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'promo_requests_list' or request.resolver_match.url_name == 'promo_request_detail' %}text-fuchsia-700{% else %}text-gray-700 group-hover:text-fuchsia-700{% endif %}">الترويج</span>
+        </a>
+
+        <a href="{% url 'dashboard:subscriptions_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'subscriptions_list' %}bg-gradient-to-r from-violet-50 to-indigo-50{% else %}hover:bg-gradient-to-r hover:from-violet-50 hover:to-indigo-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            📦
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'subscriptions_list' %}text-violet-700{% else %}text-gray-700 group-hover:text-violet-700{% endif %}">الاشتراكات</span>
+        </a>
+
+        <a href="{% url 'dashboard:extras_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'extras_list' %}bg-gradient-to-r from-orange-50 to-amber-50{% else %}hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            ➕
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'extras_list' %}text-orange-700{% else %}text-gray-700 group-hover:text-orange-700{% endif %}">الإضافات</span>
+        </a>
+
+        <a href="{% url 'dashboard:features_overview' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'features_overview' %}bg-gradient-to-r from-teal-50 to-emerald-50{% else %}hover:bg-gradient-to-r hover:from-teal-50 hover:to-emerald-50{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            🧩
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'features_overview' %}text-teal-700{% else %}text-gray-700 group-hover:text-teal-700{% endif %}">الميزات</span>
+        </a>
+
+        <a href="{% url 'dashboard:access_profiles_list' %}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group {% if request.resolver_match.url_name == 'access_profiles_list' %}bg-gradient-to-r from-slate-50 to-gray-100{% else %}hover:bg-gradient-to-r hover:from-slate-50 hover:to-gray-100{% endif %}">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-600 to-gray-800 flex items-center justify-center text-white text-lg group-hover:scale-110 transition-transform">
+            🔐
+          </div>
+          <span class="font-semibold {% if request.resolver_match.url_name == 'access_profiles_list' %}text-slate-800{% else %}text-gray-700 group-hover:text-slate-800{% endif %}">صلاحيات التشغيل</span>
         </a>
 
         <div class="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent my-4"></div>
@@ -130,6 +197,7 @@
                 ✓ Staff
               </span>
             {% endif %}
+            <span class="hidden lg:inline text-sm text-gray-500">{% now "Y-m-d H:i" %}</span>
           </div>
         </div>
       </div>

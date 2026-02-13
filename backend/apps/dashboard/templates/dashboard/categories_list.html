@@ -10,9 +10,12 @@
       </div>
       <p class="text-gray-500 text-sm">إدارة التصنيفات الرئيسية والفرعية للخدمات</p>
     </div>
-    <a href="{% url 'dashboard:category_create' %}" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:shadow-xl transition-all font-semibold">
-      ➕ إضافة تصنيف جديد
-    </a>
+    <div class="flex items-center gap-2">
+      <a href="?q={{ q }}&active={{ active }}&export=csv" class="px-4 py-2.5 rounded-xl bg-white border border-gray-200 font-semibold">تصدير CSV</a>
+      <a href="{% url 'dashboard:category_create' %}" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:shadow-xl transition-all font-semibold">
+        ➕ إضافة تصنيف جديد
+      </a>
+    </div>
   </div>
 
   <form method="get" class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-8">

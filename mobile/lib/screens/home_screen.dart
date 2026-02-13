@@ -8,9 +8,33 @@ import '../widgets/provider_media_grid.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
 import '../widgets/profiles_slider.dart' as profiles;
+import '../services/home_feed_service.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _warmupHomeFeed();
+  }
+
+  void _warmupHomeFeed() {
+    final feed = HomeFeedService.instance;
+    Future(() async {
+      await Future.wait([
+        feed.getTopProviders(limit: 20),
+        feed.getBannerItems(limit: 6),
+        feed.getMediaItems(limit: 12),
+        feed.getTestimonials(limit: 8),
+      ]);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

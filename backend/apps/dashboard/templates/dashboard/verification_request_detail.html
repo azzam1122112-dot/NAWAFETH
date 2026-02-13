@@ -1,0 +1,51 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block title %}تفاصيل طلب التوثيق{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-indigo-700">طلب {{ vr.code|default:vr.id }}</h1>
+    <p class="text-gray-500 mt-1">{{ vr.requester.phone|default:"—" }} - {{ vr.get_badge_type_display }}</p>
+  </div>
+  <a href="{% url 'dashboard:verification_requests_list' %}" class="px-4 py-2 rounded-lg bg-gray-100 font-semibold">رجوع</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+    <h2 class="font-bold text-lg mb-3">بيانات الطلب</h2>
+    <div class="space-y-2 text-sm">
+      <div>الحالة: <b>{{ vr.get_status_display }}</b></div>
+      <div>الفاتورة: <b>{{ vr.invoice.code|default:"—" }}</b></div>
+      <div>سبب الرفض: <b>{{ vr.reject_reason|default:"—" }}</b></div>
+      <div>آخر تحديث: <b>{{ vr.updated_at|date:"Y-m-d H:i" }}</b></div>
+    </div>
+
+    <div class="mt-5 flex flex-wrap gap-2">
+      <form method="post" action="{% url 'dashboard:verification_finalize_action' vr.id %}">
+        {% csrf_token %}
+        <button class="rounded-lg bg-indigo-600 text-white px-4 py-2 font-semibold">Finalize + Invoice</button>
+      </form>
+      <form method="post" action="{% url 'dashboard:verification_activate_action' vr.id %}">
+        {% csrf_token %}
+        <button class="rounded-lg bg-emerald-600 text-white px-4 py-2 font-semibold">تفعيل بعد الدفع</button>
+      </form>
+      <a class="rounded-lg bg-gray-100 px-4 py-2 font-semibold" href="{% url 'admin:verification_verificationrequest_change' vr.id %}">تعديل Admin</a>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+    <h2 class="font-bold text-lg mb-3">المستندات</h2>
+    <div class="space-y-2">
+      {% for d in docs %}
+        <div class="rounded-lg bg-gray-50 p-3 text-sm">
+          <div class="font-semibold">{{ d.get_doc_type_display }} - {{ d.title|default:"—" }}</div>
+          <div class="text-gray-500">{{ d.uploaded_at|date:"Y-m-d H:i" }} - قرار: {% if d.is_approved is None %}قيد المراجعة{% elif d.is_approved %}مقبول{% else %}مرفوض{% endif %}</div>
+          {% if d.decision_note %}<div class="mt-1">{{ d.decision_note }}</div>{% endif %}
+        </div>
+      {% empty %}
+        <div class="text-gray-400 text-sm">لا توجد مستندات.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
