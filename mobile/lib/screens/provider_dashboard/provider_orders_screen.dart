@@ -388,174 +388,113 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   Widget _requestCard(Map<String, dynamic> req, {required bool urgentTab}) {
     final statusLabel = (req['status_label'] ?? '').toString().trim();
-    final statusAr = statusLabel.isNotEmpty
-        ? statusLabel
-        : _mapStatus((req['status'] ?? '').toString());
+    final statusAr = statusLabel.isNotEmpty ? statusLabel : _mapStatus((req['status'] ?? '').toString());
     final statusColor = _statusColor(statusAr);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isUrgent = type == 'urgent';
     final isCompetitive = type == 'competitive';
     final typeLabel = isUrgent ? 'عاجل' : (isCompetitive ? 'عروض' : 'عادي');
     final typeColor = isUrgent ? Colors.redAccent : (isCompetitive ? Colors.blueGrey : _mainColor);
-    
-    // تحديد ما إذا كان الطلب جديد ويحتاج "بدء التنفيذ"
     final rawStatus = (req['status'] ?? '').toString().trim().toLowerCase();
     final showStartButton = !urgentTab && (rawStatus == 'new' || rawStatus == 'sent' || rawStatus == 'open' || rawStatus == 'pending');
 
-    return InkWell(
+    return GestureDetector(
       onTap: () => _openRequestDetails(req, urgentTab: urgentTab),
-      borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
-          ],
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          // العنوان والرقم
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  '#${_extractRequestId(req) ?? '-'}  ${(req['title'] ?? '').toString()}',
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // الشارات (عاجل/عروض + الحالة)
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: typeColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: typeColor.withOpacity(0.4), width: 1),
-                ),
-                child: Text(
-                  typeLabel,
-                  style: TextStyle(
-                    color: typeColor,
-                    fontFamily: 'Cairo',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: statusColor.withOpacity(0.4), width: 1),
-                ),
-                child: Text(
-                  statusAr,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontFamily: 'Cairo',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // التصنيف والمدينة
-          Text(
-            '${(req['subcategory_name'] ?? '').toString()} • ${(req['city'] ?? '').toString()}',
-            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black54),
-          ),
-          const SizedBox(height: 6),
-          // التاريخ ورقم الهاتف
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _formatDate(req['created_at']),
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45),
-              ),
-              if ((req['client_phone'] ?? '').toString().trim().isNotEmpty)
-                Text(
-                  (req['client_phone'] ?? '').toString(),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // الوصف
-          Text(
-            (req['description'] ?? '').toString(),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 13,
-              color: Colors.black87,
-              height: 1.5,
+            Text(
+              '#${_extractRequestId(req) ?? '-'}  ${(req['title'] ?? '').toString()}',
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
             ),
-          ),
-          const SizedBox(height: 12),
-          // الأزرار
-          Row(
-            children: [
-              if (showStartButton) ...[
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _startRequest(req),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _mainColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.play_circle_outline, size: 18),
-                    label: const Text(
-                      'بدء التنفيذ',
-                      style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: typeColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: typeColor.withOpacity(0.4)),
                   ),
+                  child: Text(typeLabel, style: TextStyle(color: typeColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                 ),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: statusColor.withOpacity(0.4)),
+                  ),
+                  child: Text(statusAr, style: TextStyle(color: statusColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
               ],
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _openRequestDetails(req, urgentTab: urgentTab),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '${(req['subcategory_name'] ?? '').toString()} • ${(req['city'] ?? '').toString()}',
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black54),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(_formatDate(req['created_at']), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45)),
+                if ((req['client_phone'] ?? '').toString().trim().isNotEmpty)
+                  Text((req['client_phone'] ?? '').toString(), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              (req['description'] ?? '').toString(),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black87, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (showStartButton) ...[
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _startRequest(req),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _mainColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      label: const Text('بدء التنفيذ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
-                    side: BorderSide(color: Colors.grey.shade400),
                   ),
-                  icon: const Icon(Icons.article_outlined, size: 18),
-                  label: const Text(
-                    'شرح الطلب',
-                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openRequestDetails(req, urgentTab: urgentTab),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      side: BorderSide(color: Colors.grey.shade400),
+                    ),
+                    icon: const Icon(Icons.article_outlined, size: 18),
+                    label: const Text('شرح الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
