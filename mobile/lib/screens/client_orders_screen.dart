@@ -6,6 +6,13 @@ import '../models/client_order.dart';
 import '../services/marketplace_api.dart';
 import 'client_order_details_screen.dart';
 
+/// صفحة طلباتي الخاصة بالعميل
+/// ============================
+/// هذه الصفحة مخصصة فقط للعملاء لرؤية طلباتهم الخاصة.
+/// مرتبطة بـ /marketplace/client/requests/ في الـ backend
+/// 
+/// ملاحظة مهمة: هذه الصفحة منفصلة تماماً عن ProviderOrdersScreen (تتبع الطلبات لمزود الخدمة)
+/// 
 class ClientOrdersScreen extends StatefulWidget {
   final bool embedded;
 
