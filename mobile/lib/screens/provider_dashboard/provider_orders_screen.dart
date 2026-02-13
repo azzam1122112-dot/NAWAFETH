@@ -468,18 +468,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black87, height: 1.4),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _openRequestDetails(req, urgentTab: urgentTab),
-                icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                label: const Text(
-                  'فتح الطلب',
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
           ],
         ),
       ),
