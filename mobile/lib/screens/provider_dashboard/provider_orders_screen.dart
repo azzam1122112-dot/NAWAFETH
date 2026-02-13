@@ -588,17 +588,22 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
     if (confirmed != true) return;
 
-    final ok = await MarketplaceApi().acceptAssignedRequest(requestId: id);
+    final result = await MarketplaceApi().acceptAssignedRequestDetailed(requestId: id);
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'تم قبول الطلب.' : 'تعذر قبول الطلب حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
-        backgroundColor: ok ? Colors.green : null,
+        content: Text(
+          result.ok ? 'تم قبول الطلب.' : (result.message ?? 'تعذر قبول الطلب حالياً.'),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        backgroundColor: result.ok ? Colors.green : null,
       ),
     );
 
-    await _fetchAssigned();
+    if (result.ok) {
+      await _fetchAssigned();
+    }
   }
 
   Future<void> _rejectAssigned(Map<String, dynamic> req) async {
@@ -772,9 +777,19 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _openRequestDetails(Map<String, dynamic> req, {required bool urgentTab}) async {
-    final statusGroup = _statusGroup(req);
-    final rawStatus = _rawStatus(req);
-    final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
+    final requestId = _extractRequestId(req);
+    Map<String, dynamic> details = req;
+    if (requestId != null) {
+      final fresh = await MarketplaceApi().getProviderRequestDetail(requestId: requestId);
+      if (fresh != null) {
+        details = {...req, ...fresh};
+      }
+    }
+    if (!mounted) return;
+
+    final statusGroup = _statusGroup(details);
+    final rawStatus = _rawStatus(details);
+    final type = (details['request_type'] ?? '').toString().trim().toLowerCase();
     final isCompetitive = type == 'competitive';
 
     final canAcceptRejectAssigned =
@@ -812,29 +827,36 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     ),
                   ),
                   Text(
-                    (req['title'] ?? '').toString(),
+                    (details['title'] ?? '').toString(),
                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'رقم الطلب: #${(_extractRequestId(req) ?? '').toString()}',
+                    'رقم الطلب: #${(_extractRequestId(details) ?? '').toString()}',
                     style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'التصنيف: ${(req['subcategory_name'] ?? '').toString()}',
+                    'التصنيف: ${(details['subcategory_name'] ?? '').toString()}',
                     style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'المدينة: ${(req['city'] ?? '').toString()}',
+                    'المدينة: ${(details['city'] ?? '').toString()}',
                     style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    (req['description'] ?? '').toString(),
+                    (details['description'] ?? '').toString(),
                     style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.5),
                   ),
+                  const SizedBox(height: 12),
+                  _detailMetaLine('العميل', (details['client_name'] ?? '-').toString()),
+                  _detailMetaLine('الجوال', (details['client_phone'] ?? '-').toString()),
+                  const SizedBox(height: 10),
+                  _detailAttachments(details),
+                  const SizedBox(height: 10),
+                  _detailLogs(details),
                   const SizedBox(height: 16),
                   if (isCompetitive)
                     SizedBox(
@@ -842,7 +864,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       child: ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _sendOffer(req);
+                          _sendOffer(details);
                         },
                         icon: const Icon(Icons.local_offer_outlined),
                         label: const Text('تقديم عرض', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -858,7 +880,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       child: ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _acceptUrgent(req);
+                          _acceptUrgent(details);
                         },
                         icon: const Icon(Icons.check_circle_outline),
                         label: const Text('قبول الطلب العاجل', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -874,7 +896,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       child: ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _acceptAssigned(req);
+                          _acceptAssigned(details);
                         },
                         icon: const Icon(Icons.check_circle_outline),
                         label: const Text('قبول الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -887,7 +909,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _rejectAssigned(req);
+                          _rejectAssigned(details);
                         },
                         icon: const Icon(Icons.close_rounded),
                         label: const Text('رفض الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -901,7 +923,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       child: ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _startAssigned(req);
+                          _startAssigned(details);
                         },
                         icon: const Icon(Icons.play_circle_outline_rounded),
                         label: const Text('بدء التنفيذ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -914,7 +936,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       child: ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _completeAssigned(req);
+                          _completeAssigned(details);
                         },
                         icon: const Icon(Icons.task_alt_rounded),
                         label: const Text('تأكيد إكمال الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -927,6 +949,87 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ),
         );
       },
+    );
+  }
+
+  Widget _detailMetaLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        '$label: ${value.trim().isEmpty ? '-' : value}',
+        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black87),
+      ),
+    );
+  }
+
+  Widget _detailAttachments(Map<String, dynamic> req) {
+    final raw = req['attachments'];
+    final list = raw is List ? raw : const [];
+    if (list.isEmpty) {
+      return const Text(
+        'المرفقات: لا توجد مرفقات',
+        style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'المرفقات',
+          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 6),
+        ...list.map((e) {
+          if (e is! Map) return const SizedBox.shrink();
+          final type = (e['file_type'] ?? '').toString();
+          final url = (e['file_url'] ?? '').toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '- ${type.isEmpty ? 'file' : type}: ${url.isEmpty ? '-' : url}',
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _detailLogs(Map<String, dynamic> req) {
+    final raw = req['status_logs'];
+    final list = raw is List ? raw : const [];
+    if (list.isEmpty) {
+      return const Text(
+        'الرسائل/السجل: لا توجد تحديثات حتى الآن',
+        style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'الرسائل / سجل الحالة',
+          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 6),
+        ...list.take(6).map((e) {
+          if (e is! Map) return const SizedBox.shrink();
+          final note = (e['note'] ?? '').toString();
+          final actor = (e['actor_name'] ?? '-').toString();
+          final at = _formatDate(e['created_at']);
+          final from = (e['from_status'] ?? '').toString();
+          final to = (e['to_status'] ?? '').toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              '- $at | $actor | $from -> $to${note.trim().isNotEmpty ? ' | $note' : ''}',
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: Colors.black54),
+            ),
+          );
+        }),
+      ],
     );
   }
 

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Offer, ServiceRequest, ServiceRequestAttachment
+from .models import Offer, RequestStatusLog, ServiceRequest, ServiceRequestAttachment
 from apps.providers.models import ProviderCategory, ProviderProfile
 
 
@@ -208,3 +208,53 @@ class OfferListSerializer(serializers.ModelSerializer):
 
 class RequestActionSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class ServiceRequestAttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServiceRequestAttachment
+        fields = ("id", "file_type", "file_url", "created_at")
+
+    def get_file_url(self, obj):
+        request = self.context.get("request")
+        try:
+            url = obj.file.url
+        except Exception:
+            return ""
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+
+class RequestStatusLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RequestStatusLog
+        fields = ("id", "from_status", "to_status", "note", "created_at", "actor_name")
+
+    def get_actor_name(self, obj):
+        actor = getattr(obj, "actor", None)
+        if not actor:
+            return "-"
+        full = f"{(getattr(actor, 'first_name', '') or '').strip()} {(getattr(actor, 'last_name', '') or '').strip()}".strip()
+        if full:
+            return full
+        username = (getattr(actor, "username", "") or "").strip()
+        if username:
+            return username
+        phone = (getattr(actor, "phone", "") or "").strip()
+        return phone or "-"
+
+
+class ProviderRequestDetailSerializer(ServiceRequestListSerializer):
+    attachments = ServiceRequestAttachmentSerializer(many=True, read_only=True)
+    status_logs = RequestStatusLogSerializer(many=True, read_only=True)
+
+    class Meta(ServiceRequestListSerializer.Meta):
+        fields = ServiceRequestListSerializer.Meta.fields + (
+            "attachments",
+            "status_logs",
+        )

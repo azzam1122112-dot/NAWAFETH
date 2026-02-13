@@ -31,6 +31,7 @@ from .models import (
 from .serializers import (
 	OfferCreateSerializer,
 	OfferListSerializer,
+	ProviderRequestDetailSerializer,
 	RequestActionSerializer,
 	ServiceRequestCreateSerializer,
 	ServiceRequestListSerializer,
@@ -289,6 +290,54 @@ class MyProviderRequestsView(generics.ListAPIView):
 			qs = qs.filter(status__in=_status_group_to_statuses(group_value))
 
 		return qs
+
+
+class ProviderRequestDetailView(generics.RetrieveAPIView):
+	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
+	serializer_class = ProviderRequestDetailSerializer
+	lookup_url_kwarg = "request_id"
+
+	def get_queryset(self):
+		return ServiceRequest.objects.select_related(
+			"client",
+			"provider",
+			"provider__user",
+			"subcategory",
+			"subcategory__category",
+		).prefetch_related("attachments", "status_logs", "status_logs__actor")
+
+	def get_object(self):
+		obj = super().get_object()
+		provider = self.request.user.provider_profile
+
+		# Assigned request: provider can always view it.
+		if obj.provider_id == provider.id:
+			return obj
+
+		# Requests assigned to another provider are forbidden.
+		if obj.provider_id is not None:
+			raise PermissionDenied("غير مصرح")
+
+		# Unassigned request must still be actionable and relevant to this provider.
+		if obj.status not in (RequestStatus.NEW, RequestStatus.SENT):
+			raise PermissionDenied("غير مصرح")
+
+		if obj.request_type == RequestType.NORMAL:
+			raise PermissionDenied("غير مصرح")
+
+		if obj.request_type == RequestType.URGENT and not provider.accepts_urgent:
+			raise PermissionDenied("غير مصرح")
+
+		if (obj.city or "").strip() and (provider.city or "").strip() and obj.city.strip() != provider.city.strip():
+			raise PermissionDenied("غير مصرح")
+
+		if not ProviderCategory.objects.filter(
+			provider=provider,
+			subcategory_id=obj.subcategory_id,
+		).exists():
+			raise PermissionDenied("غير مصرح")
+
+		return obj
 
 
 class MyClientRequestsView(generics.ListAPIView):

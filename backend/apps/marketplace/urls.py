@@ -8,6 +8,7 @@ from .views import (
     MyClientRequestsView,
     MyClientRequestDetailView,
     MyProviderRequestsView,
+    ProviderRequestDetailView,
     ProviderAssignedRequestAcceptView,
     ProviderAssignedRequestRejectView,
     provider_requests,
@@ -42,6 +43,11 @@ urlpatterns = [
         "provider/requests/",
         MyProviderRequestsView.as_view(),
         name="provider_requests",
+    ),
+    path(
+        "provider/requests/<int:request_id>/detail/",
+        ProviderRequestDetailView.as_view(),
+        name="provider_request_detail",
     ),
     path(
         "provider/requests/<int:request_id>/accept/",

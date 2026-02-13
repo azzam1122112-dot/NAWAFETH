@@ -7,6 +7,13 @@ import '../core/network/api_dio.dart';
 import 'dio_proxy.dart';
 import 'session_storage.dart';
 
+class MarketplaceActionResult {
+  final bool ok;
+  final String? message;
+
+  const MarketplaceActionResult({required this.ok, this.message});
+}
+
 class MarketplaceApi {
   final Dio _dio;
   final SessionStorage _session;
@@ -270,6 +277,32 @@ class MarketplaceApi {
     }
   }
 
+  Future<MarketplaceActionResult> acceptAssignedRequestDetailed({
+    required int requestId,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) {
+      return const MarketplaceActionResult(ok: false, message: 'انتهت الجلسة. فضلاً سجل الدخول مرة أخرى.');
+    }
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/accept/',
+        data: {},
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return const MarketplaceActionResult(ok: true, message: 'تم قبول الطلب.');
+    } on DioException catch (e) {
+      return MarketplaceActionResult(ok: false, message: _extractDioMessage(e));
+    } catch (_) {
+      return const MarketplaceActionResult(ok: false, message: 'تعذر قبول الطلب حالياً.');
+    }
+  }
+
   Future<bool> completeAssignedRequest({required int requestId, String? note}) async {
     final token = await _session.readAccessToken();
     if (token == null) return false;
@@ -321,6 +354,28 @@ class MarketplaceApi {
     }
   }
 
+  Future<Map<String, dynamic>?> getProviderRequestDetail({required int requestId}) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return null;
+
+    try {
+      final response = await _dio.get(
+        '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/detail/',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return Map<String, dynamic>.from(response.data as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Offer>> getRequestOffers(String requestId) async {
     final token = await _session.readAccessToken();
     if (token == null) return [];
@@ -358,5 +413,23 @@ class MarketplaceApi {
     } catch (e) {
       return false;
     }
+  }
+
+  String _extractDioMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final detail = data['detail'];
+      if (detail is String && detail.trim().isNotEmpty) return detail.trim();
+      for (final v in data.values) {
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+        if (v is List && v.isNotEmpty) {
+          final first = v.first;
+          if (first is String && first.trim().isNotEmpty) return first.trim();
+        }
+      }
+    } else if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+    return 'تعذر تنفيذ العملية حالياً.';
   }
 }
