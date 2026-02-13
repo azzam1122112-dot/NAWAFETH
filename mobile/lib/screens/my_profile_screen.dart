@@ -10,12 +10,19 @@ import 'interactive_screen.dart';
 import 'registration/register_service_provider.dart';
 import 'provider_dashboard/provider_home_screen.dart';
 import 'login_settings_screen.dart';
+import 'notification_settings_screen.dart';
+import 'terms_screen.dart';
 import '../widgets/custom_drawer.dart';
 import '../services/account_api.dart';
+import '../services/providers_api.dart';
 import '../services/session_storage.dart';
 import '../services/role_controller.dart';
 import '../services/account_switcher.dart';
 import '../constants/colors.dart';
+import '../widgets/profile_account_modes_panel.dart';
+import '../widgets/account_switch_sheet.dart';
+import '../widgets/profile_action_card.dart';
+import '../widgets/profile_quick_links_panel.dart';
 
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
@@ -37,6 +44,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   int? _followingCount;
   int? _likesCount;
   int? _userId;
+  bool _switchingAccount = false;
 
   @override
   void initState() {
@@ -61,6 +69,11 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   Future<void> _refreshRoleAndUserType() async {
     await _syncRoleFromBackend();
     await _checkUserType();
+  }
+
+  Future<void> _refreshProfile() async {
+    await _loadIdentityFromStorage();
+    await _refreshRoleAndUserType();
   }
 
   Future<void> _syncRoleFromBackend() async {
@@ -114,6 +127,15 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         return int.tryParse(s);
       }
 
+      int? likesCount = asInt(me['likes_count']);
+      if (likesCount == null) {
+        try {
+          likesCount = (await ProvidersApi().getMyLikedProviders()).length;
+        } catch (_) {
+          likesCount = null;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _userId = asInt(me['id']);
@@ -121,7 +143,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         _username = username;
         _phone = phone;
         _followingCount = asInt(me['following_count']);
-        _likesCount = asInt(me['likes_count']);
+        _likesCount = likesCount;
       });
     } catch (_) {
       // Best-effort
@@ -153,11 +175,6 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         _isLoading = false;
       });
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   Future<void> _pickImage({required bool isCover}) async {
@@ -211,7 +228,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                          BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -230,10 +247,11 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                           onPressed: link == null
                               ? null
                               : () async {
+                                  final messenger = ScaffoldMessenger.of(context);
                                   await Clipboard.setData(ClipboardData(text: link));
-                                  if (!context.mounted) return;
+                                  if (!dialogContext.mounted || !context.mounted) return;
                                   Navigator.pop(dialogContext);
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  messenger.showSnackBar(
                                     const SnackBar(content: Text('تم نسخ الرابط')),
                                   );
                                 },
@@ -455,28 +473,47 @@ class _MyProfileScreenState extends State<MyProfileScreen>
               ),
             ];
           },
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              children: [
-                // Quick Stats
-                _buildQuickStats(),
-                const SizedBox(height: 24),
-                
-                // Account Type Badge
-                _buildAccountTypeBadge(),
-                const SizedBox(height: 24),
+          body: RefreshIndicator(
+            color: AppColors.deepPurple,
+            onRefresh: _refreshProfile,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  // Quick Stats
+                  _buildQuickStats(),
+                  const SizedBox(height: 24),
+                  
+                  // Account Type Badge
+                  _buildAccountTypeBadge(),
+                  const SizedBox(height: 24),
 
-                // Main Action Cards
-                _buildActionGrid(),
-                
-                const SizedBox(height: 24),
+                  // Main Action Cards
+                  _buildActionGrid(),
+                  const SizedBox(height: 18),
+                  _buildQuickLinks(),
+                  
+                  const SizedBox(height: 24),
 
-                // Provider Switch / Registration Section
-                _buildProviderSection(),
+                  ProfileAccountModesPanel(
+                    isProviderRegistered: isProviderRegistered,
+                    isProviderActive: RoleController.instance.notifier.value.isProvider,
+                    isSwitching: _switchingAccount,
+                    onSelectMode: _onSelectMode,
+                    onRegisterProvider: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterServiceProviderPage(),
+                        ),
+                      );
+                    },
+                  ),
 
-                const SizedBox(height: 40),
-              ],
+                  const SizedBox(height: 40),
+                ],
+              ),
             ),
           ),
         ),
@@ -640,10 +677,11 @@ class _MyProfileScreenState extends State<MyProfileScreen>
   }
 
   Widget _buildActionGrid() {
-    return _profileEntryCard(
+    return ProfileActionCard(
       title: 'الملف الشخصي',
       subtitle: 'إدارة بياناتك وإعدادات الدخول',
       icon: Icons.person_outline_rounded,
+      accent: AppColors.deepPurple,
       onTap: () {
         Navigator.push(
           context,
@@ -653,335 +691,43 @@ class _MyProfileScreenState extends State<MyProfileScreen>
     );
   }
 
-  Widget _profileEntryCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+  Future<void> _onSelectMode(AccountMode mode) async {
+    if (_switchingAccount) return;
+    setState(() => _switchingAccount = true);
+    try {
+      await AccountSwitcher.switchTo(context, mode);
+    } finally {
+      if (mounted) {
+        setState(() => _switchingAccount = false);
+      }
+    }
+  }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(((isDark ? 0.22 : 0.07) * 255).toInt()),
-            blurRadius: 16,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.deepPurple.withValues(alpha: 0.95),
-                        AppColors.deepPurple.withValues(alpha: 0.70),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.softBlue,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                          color: cs.onSurface.withAlpha((0.65 * 255).toInt()),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_left_rounded, color: cs.onSurface.withAlpha((0.55 * 255).toInt())),
-              ],
-            ),
-          ),
+  Widget _buildQuickLinks() {
+    return ProfileQuickLinksPanel(
+      title: 'إعدادات سريعة',
+      items: [
+        ProfileQuickLinkItem(
+          title: 'إعدادات التنبيهات',
+          icon: Icons.notifications_outlined,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()),
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  Widget _actionCard({required String title, required IconData icon, required Color color, VoidCallback? onTap}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: AppColors.softBlue
-                ),
-              ),
-            ],
-          ),
+        ProfileQuickLinkItem(
+          title: 'الشروط والأحكام',
+          icon: Icons.policy_outlined,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TermsScreen()),
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  Widget _buildProviderSection() {
-    final role = RoleController.instance.notifier.value;
-    final isProviderModeActive = role.isProvider;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.10)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.account_circle_rounded, color: AppColors.deepPurple, size: 22),
-              SizedBox(width: 8),
-              Text(
-                'الحسابات المتاحة',
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.softBlue,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'واجهة موحّدة لحساب العميل ومقدم الخدمة مع تمييز الحساب النشط بوضوح.',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 14),
-          _accountModeCard(
-            title: 'حساب العميل',
-            subtitle: 'تصفح وطلب الخدمات ومتابعة الطلبات',
-            icon: Icons.person_rounded,
-            gradient: const LinearGradient(
-              colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            active: !isProviderModeActive,
-            enabled: true,
-          ),
-          const SizedBox(height: 10),
-          _accountModeCard(
-            title: 'حساب مقدم الخدمة',
-            subtitle: isProviderRegistered
-                ? 'إدارة الخدمات والطلبات والتقييمات'
-                : 'غير مفعل - سجّل كمقدم خدمة أولاً',
-            icon: Icons.storefront_rounded,
-            gradient: const LinearGradient(
-              colors: [Color(0xFF00695C), Color(0xFF00A78E)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            active: isProviderModeActive,
-            enabled: isProviderRegistered,
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                if (isProviderRegistered) {
-                  await AccountSwitcher.show(context);
-                  return;
-                }
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RegisterServiceProviderPage(),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.deepPurple,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: Icon(isProviderRegistered ? Icons.swap_horiz_rounded : Icons.rocket_launch_outlined),
-              label: Text(
-                isProviderRegistered ? 'تبديل الحساب' : 'تفعيل حساب مقدم الخدمة',
-                style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _accountModeCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Gradient gradient,
-    required bool active,
-    required bool enabled,
-  }) {
-    final borderColor = active
-        ? AppColors.deepPurple.withValues(alpha: 0.45)
-        : Colors.grey.withValues(alpha: 0.20);
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: enabled ? Colors.white : Colors.grey.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor, width: active ? 1.4 : 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: active ? 0.07 : 0.03),
-            blurRadius: active ? 14 : 10,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: enabled ? AppColors.softBlue : Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 12,
-                    height: 1.3,
-                    color: enabled ? Colors.grey[600] : Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            decoration: BoxDecoration(
-              color: active
-                  ? AppColors.deepPurple.withValues(alpha: 0.12)
-                  : Colors.grey.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              active ? 'نشط' : 'متاح',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: active ? AppColors.deepPurple : Colors.grey[700],
-              ),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

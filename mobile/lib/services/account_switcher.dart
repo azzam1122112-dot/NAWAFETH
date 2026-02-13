@@ -10,6 +10,7 @@ class AccountSwitcher {
 
   static Future<void> show(BuildContext context) async {
     await RoleController.instance.refreshFromPrefs();
+    if (!context.mounted) return;
 
     final role = RoleController.instance.notifier.value;
     final current = role.isProvider ? AccountMode.provider : AccountMode.client;
@@ -35,12 +36,21 @@ class AccountSwitcher {
     if (!context.mounted) return;
     if (target == null || target == current) return;
 
+    await switchTo(context, target);
+  }
+
+  static Future<void> switchTo(BuildContext context, AccountMode target) async {
+    await RoleController.instance.refreshFromPrefs();
+    if (!context.mounted) return;
+    final role = RoleController.instance.notifier.value;
+    final current = role.isProvider ? AccountMode.provider : AccountMode.client;
+    if (target == current) return;
+
     if (target == AccountMode.client) {
       await _switchToClient(context);
-      return;
+    } else {
+      await _switchToProvider(context);
     }
-
-    await _switchToProvider(context);
   }
 
   static Future<void> _switchToClient(BuildContext context) async {
