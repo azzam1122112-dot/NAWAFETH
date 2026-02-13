@@ -384,41 +384,48 @@ class ProviderAssignedRequestAcceptView(APIView):
 	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
 
 	def post(self, request, request_id: int):
-		_expire_urgent_requests()
-		provider = request.user.provider_profile
+		try:
+			_expire_urgent_requests()
+			provider = request.user.provider_profile
 
-		with transaction.atomic():
-			sr = (
-				ServiceRequest.objects.select_for_update()
-				.select_related("client", "provider")
-				.filter(id=request_id)
-				.first()
-			)
+			with transaction.atomic():
+				sr = (
+					ServiceRequest.objects.select_for_update()
+					.select_related("client", "provider")
+					.filter(id=request_id)
+					.first()
+				)
 
-			if not sr:
-				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+				if not sr:
+					return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
 
-			if sr.provider_id != provider.id:
-				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
+				if sr.provider_id != provider.id:
+					return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
-			if sr.request_type == RequestType.COMPETITIVE:
-				return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
+				if sr.request_type == RequestType.COMPETITIVE:
+					return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
 
-			if sr.status not in (RequestStatus.NEW, RequestStatus.SENT):
-				return Response({"detail": "لا يمكن قبول الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
+				if sr.status not in (RequestStatus.NEW, RequestStatus.SENT):
+					return Response({"detail": "لا يمكن قبول الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
 
-			old = sr.status
-			sr.status = RequestStatus.ACCEPTED
-			sr.save(update_fields=["status"])
-			RequestStatusLog.objects.create(
-				request=sr,
-				actor=request.user,
-				from_status=old,
-				to_status=sr.status,
-				note="قبول من المزود",
-			)
+				old = sr.status
+				sr.status = RequestStatus.ACCEPTED
+				sr.save(update_fields=["status"])
+				RequestStatusLog.objects.create(
+					request=sr,
+					actor=request.user,
+					from_status=old,
+					to_status=sr.status,
+					note="قبول من المزود",
+				)
 
-		return Response({"ok": True, "request_id": sr.id, "status": sr.status}, status=status.HTTP_200_OK)
+			return Response({"ok": True, "request_id": sr.id, "status": sr.status}, status=status.HTTP_200_OK)
+		except Exception as e:
+			logger.exception("provider_request_accept_error request_id=%s user_id=%s", request_id, getattr(request.user, "id", None))
+			detail = "تعذر قبول الطلب حالياً. حاول مرة أخرى."
+			if getattr(settings, "DEBUG", False):
+				detail = f"{detail} ({e})"
+			return Response({"detail": detail}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ProviderAssignedRequestRejectView(APIView):
