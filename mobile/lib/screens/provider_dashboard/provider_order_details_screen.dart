@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/provider_order.dart';
 import '../../services/marketplace_api.dart';
+import '../../services/role_controller.dart';
 
 class ProviderOrderDetailsScreen extends StatefulWidget {
   final ProviderOrder order;
@@ -75,8 +76,12 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   }
 
   Future<void> _ensureProviderAccount() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isProvider = prefs.getBool('isProvider') ?? false;
+    final roleValue = RoleController.instance.notifier.value;
+    bool isProvider = roleValue.isProvider;
+    if (!isProvider) {
+      final prefs = await SharedPreferences.getInstance();
+      isProvider = prefs.getBool('isProvider') ?? false;
+    }
     if (!mounted) return;
     setState(() {
       _isProviderAccount = isProvider;
