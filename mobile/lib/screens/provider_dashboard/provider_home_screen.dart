@@ -210,13 +210,13 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF0F2F5),
+        backgroundColor: const Color(0xFFF4F7F8),
         drawer: const CustomDrawer(),
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               SliverAppBar(
-                expandedHeight: 280.0,
+                expandedHeight: 300.0,
                 floating: false,
                 pinned: true,
                 backgroundColor: providerPrimary,
@@ -227,37 +227,53 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                   ),
                 ),
                 actions: [
-                      IconButton(
-                        icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-                        onPressed: () async => AccountSwitcher.show(context),
-                      ),
-                  IconButton(
-                    icon: const Icon(Icons.qr_code, color: Colors.white),
-                    onPressed: _showQrDialog,
+                  _topActionButton(
+                    icon: Icons.swap_horiz_rounded,
+                    onTap: () async => AccountSwitcher.show(context),
                   ),
+                  const SizedBox(width: 4),
+                  _topActionButton(
+                    icon: Icons.qr_code,
+                    onTap: _showQrDialog,
+                  ),
+                  const SizedBox(width: 8),
                 ],
                 flexibleSpace: FlexibleSpaceBar(
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                       Container(
+                      Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [providerPrimary, providerAccent],
+                            colors: [
+                              providerPrimary,
+                              providerAccent,
+                              const Color(0xFF00BFA5),
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                         ),
                       ),
                       if (_coverImage != null) Image.file(_coverImage!, fit: BoxFit.cover),
-                      Container(color: Colors.black.withOpacity(0.3)),
-                      
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.15),
+                              Colors.black.withValues(alpha: 0.35),
+                            ],
+                          ),
+                        ),
+                      ),
                       Align(
                         alignment: Alignment.center,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const SizedBox(height: 50),
+                            const SizedBox(height: 54),
                             Stack(
                               children: [
                                 Container(
@@ -268,7 +284,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                                     color: Colors.white24,
                                   ),
                                   child: CircleAvatar(
-                                    radius: 45,
+                                    radius: 46,
                                     backgroundColor: Colors.white,
                                     backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
                                     child: _profileImage == null ? Icon(Icons.storefront, size: 40, color: providerPrimary) : null,
@@ -292,10 +308,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                             Text(
                               _providerDisplayName ?? 'مزود خدمة محترف',
                               style: const TextStyle(
-                                fontFamily: 'Cairo', 
-                                color: Colors.white, 
-                                fontSize: 20, 
-                                fontWeight: FontWeight.bold
+                                fontFamily: 'Cairo',
+                                color: Colors.white,
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                             if (_providerCity != null)
@@ -303,6 +319,15 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                                 _providerCity!,
                                 style: const TextStyle(fontFamily: 'Cairo', color: Colors.white70, fontSize: 13),
                               ),
+                            const SizedBox(height: 5),
+                            Text(
+                              'لوحة التحكم الرئيسية لمقدم الخدمة',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -310,12 +335,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                   ),
                 ),
                 bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(20),
+                  preferredSize: const Size.fromHeight(24),
                   child: Container(
-                    height: 20,
+                    height: 24,
                     decoration: const BoxDecoration(
-                      color: Color(0xFFF0F2F5),
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      color: Color(0xFFF4F7F8),
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                     ),
                   ),
                 ),
@@ -323,29 +348,224 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             ];
           },
           body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
             child: Column(
               children: [
-                 // Stats Cards
-                 _buildStatsRow(),
-                 const SizedBox(height: 16),
-                 
-                 // Completion Card
-                 _buildCompletionCard(),
-                 const SizedBox(height: 20),
-
-                 // Main Actions Grid
-                 _buildActionGrid(),
-                 const SizedBox(height: 20),
-                 
-                 // Quick Links
-                 _buildQuickLinks(),
-                 const SizedBox(height: 40),
+                _buildStatsRow(),
+                const SizedBox(height: 14),
+                _buildAccountModesSection(),
+                const SizedBox(height: 14),
+                _buildCompletionCard(),
+                const SizedBox(height: 18),
+                _buildActionGrid(),
+                const SizedBox(height: 18),
+                _buildQuickLinks(),
+                const SizedBox(height: 36),
               ],
             ),
           ),
         ),
         bottomNavigationBar: const CustomBottomNav(currentIndex: 3),
+      ),
+    );
+  }
+
+  Widget _topActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+
+  Widget _buildAccountModesSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: providerPrimary.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.account_circle_rounded, color: providerPrimary, size: 22),
+              const SizedBox(width: 8),
+              const Text(
+                'الحسابات المتاحة',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1C2A39),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'تمييز واضح بين حساب العميل وحساب مقدم الخدمة مع إبراز الحساب النشط.',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _accountModeCard(
+            title: 'حساب العميل',
+            subtitle: 'تصفح الخدمات وطلبها ومتابعة الطلبات',
+            icon: Icons.person_rounded,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            active: false,
+          ),
+          const SizedBox(height: 10),
+          _accountModeCard(
+            title: 'حساب مقدم الخدمة',
+            subtitle: 'إدارة الخدمات والطلبات والتقييمات',
+            icon: Icons.storefront_rounded,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF00695C), Color(0xFF00A78E)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            active: true,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () async => AccountSwitcher.show(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: providerPrimary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.swap_horiz_rounded),
+              label: const Text(
+                'تبديل الحساب',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _accountModeCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Gradient gradient,
+    required bool active,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: active ? providerPrimary.withValues(alpha: 0.45) : Colors.grey.withValues(alpha: 0.20),
+          width: active ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: active ? 0.07 : 0.03),
+            blurRadius: active ? 14 : 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: gradient,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1C2A39),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    height: 1.3,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: active
+                  ? providerPrimary.withValues(alpha: 0.12)
+                  : Colors.grey.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              active ? 'نشط' : 'متاح',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: active ? providerPrimary : Colors.grey[700],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -356,7 +576,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -378,7 +598,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           _statItem(
              label: 'التقييم', 
              value: _ratingCount > 0
-                ? '${_ratingAvg.toStringAsFixed(1)} (${_ratingCount})'
+                ? '${_ratingAvg.toStringAsFixed(1)} ($_ratingCount)'
                 : _ratingAvg.toStringAsFixed(1),
              icon: Icons.star_border,
              color: Colors.amber
@@ -415,7 +635,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           gradient: const LinearGradient(colors: [Color(0xFF26A69A), Color(0xFF00695C)]),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
-             BoxShadow(color: const Color(0xFF00695C).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
+             BoxShadow(color: const Color(0xFF00695C).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4)),
           ],
         ),
         child: Row(
@@ -484,7 +704,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 24),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.withOpacity(0.1)),
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -492,7 +712,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: color, size: 28),

@@ -206,11 +206,17 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final width = MediaQuery.sizeOf(context).width;
+    final bool isCompact = width < 370;
     final orders = _filteredOrders(_orders);
     
     final content = _isLoading 
         ? const Center(child: CircularProgressIndicator()) 
-        : _buildBody(isDark: isDark, orders: orders);
+        : _buildBody(
+            isDark: isDark,
+            orders: orders,
+            isCompact: isCompact,
+          );
 
     if (widget.embedded) {
       return Directionality(
@@ -239,7 +245,14 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     );
   }
 
-  Widget _buildBody({required bool isDark, required List<ClientOrder> orders}) {
+  Widget _buildBody({
+    required bool isDark,
+    required List<ClientOrder> orders,
+    required bool isCompact,
+  }) {
+    final horizontalPadding = isCompact ? 12.0 : 16.0;
+    final cardRadius = isCompact ? 14.0 : 18.0;
+
     final total = _orders.length;
     final inProgress = _orders.where((o) => o.status == 'تحت التنفيذ').length;
     final completed = _orders.where((o) => o.status == 'مكتمل').length;
@@ -248,20 +261,20 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          padding: EdgeInsets.fromLTRB(horizontalPadding, 12, horizontalPadding, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(isCompact ? 12 : 14),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
                     begin: Alignment.topRight,
                     end: Alignment.bottomLeft,
                   ),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(cardRadius),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF5B5BD6).withValues(alpha: 0.22),
@@ -273,7 +286,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
                         Icon(Icons.assignment_rounded, color: Colors.white, size: 20),
                         SizedBox(width: 8),
@@ -281,7 +294,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                           'طلباتي',
                           style: TextStyle(
                             fontFamily: 'Cairo',
-                            fontSize: 16,
+                            fontSize: isCompact ? 14 : 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -293,7 +306,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       'كل طلباتك في مكان واحد مع حالة واضحة لكل طلب.',
                       style: TextStyle(
                         fontFamily: 'Cairo',
-                        fontSize: 12,
+                        fontSize: isCompact ? 11 : 12,
                         color: Colors.white.withValues(alpha: 0.92),
                       ),
                     ),
@@ -302,10 +315,10 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _summaryBadge('الإجمالي', total.toString()),
-                        _summaryBadge('تحت التنفيذ', inProgress.toString()),
-                        _summaryBadge('مكتمل', completed.toString()),
-                        _summaryBadge('ملغي', canceled.toString()),
+                        _summaryBadge('الإجمالي', total.toString(), compact: isCompact),
+                        _summaryBadge('تحت التنفيذ', inProgress.toString(), compact: isCompact),
+                        _summaryBadge('مكتمل', completed.toString(), compact: isCompact),
+                        _summaryBadge('ملغي', canceled.toString(), compact: isCompact),
                       ],
                     ),
                   ],
@@ -317,7 +330,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
                   border: Border.all(
                     color: isDark ? Colors.white10 : Colors.grey.shade200,
                   ),
@@ -329,11 +342,19 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                     Expanded(
                       child: TextField(
                         controller: _searchController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'بحث',
                           border: InputBorder.none,
+                          isDense: true,
+                          hintStyle: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: isCompact ? 12 : 13,
+                          ),
                         ),
-                        style: const TextStyle(fontFamily: 'Cairo'),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: isCompact ? 12 : 13,
+                        ),
                       ),
                     ),
                     if (_searchController.text.trim().isNotEmpty)
@@ -448,25 +469,25 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
         Expanded(
           child: orders.isEmpty
               ? Center(
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    padding: const EdgeInsets.all(22),
+                child: Container(
+                    margin: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 14),
+                    padding: EdgeInsets.all(isCompact ? 16 : 22),
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(cardRadius),
                       border: Border.all(color: isDark ? Colors.white10 : Colors.grey.shade200),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.inbox_outlined, size: 40, color: Colors.grey.shade400),
-                        const SizedBox(height: 10),
-                        const Text(
+                        Icon(Icons.inbox_outlined, size: isCompact ? 34 : 40, color: Colors.grey.shade400),
+                        SizedBox(height: isCompact ? 8 : 10),
+                        Text(
                           'لا توجد طلبات حالياً',
                           style: TextStyle(
                             fontFamily: 'Cairo',
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: isCompact ? 13 : 14,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -475,7 +496,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontFamily: 'Cairo',
-                            fontSize: 12,
+                            fontSize: isCompact ? 11 : 12,
                             color: Colors.grey.shade600,
                           ),
                         ),
@@ -484,12 +505,16 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 14),
                   itemCount: orders.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  separatorBuilder: (context, index) => SizedBox(height: isCompact ? 8 : 10),
                   itemBuilder: (_, index) {
                     final order = orders[index];
-                    return _orderCard(order: order, isDark: isDark);
+                    return _orderCard(
+                      order: order,
+                      isDark: isDark,
+                      isCompact: isCompact,
+                    );
                   },
                 ),
         ),
@@ -497,19 +522,23 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     );
   }
 
-  Widget _orderCard({required ClientOrder order, required bool isDark}) {
+  Widget _orderCard({
+    required ClientOrder order,
+    required bool isDark,
+    required bool isCompact,
+  }) {
     final statusColor = _statusColor(order.status);
     final typeLabel = _typeLabel(order.requestType);
     final typeColor = _typeColor(typeLabel);
 
     return InkWell(
       onTap: () => _openDetails(order),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(isCompact ? 12 : 14),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
           border: Border.all(
             color: isDark ? Colors.white10 : Colors.grey.shade200,
           ),
@@ -524,64 +553,44 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Text(
+              order.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: isCompact ? 14 : 15,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            SizedBox(height: isCompact ? 6 : 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: Text(
-                    order.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                  ),
+                _pill(
+                  text: typeLabel,
+                  textColor: typeColor,
+                  bgColor: typeColor.withAlpha(26),
+                  borderColor: typeColor.withAlpha(90),
+                  compact: isCompact,
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: typeColor.withAlpha(26),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: typeColor.withAlpha(90)),
-                  ),
-                  child: Text(
-                    typeLabel,
-                    style: TextStyle(
-                      color: typeColor,
-                      fontFamily: 'Cairo',
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: statusColor.withAlpha(28),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: statusColor.withAlpha(80)),
-                  ),
-                  child: Text(
-                    order.status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontFamily: 'Cairo',
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                _pill(
+                  text: order.status,
+                  textColor: statusColor,
+                  bgColor: statusColor.withAlpha(28),
+                  borderColor: statusColor.withAlpha(80),
+                  compact: isCompact,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isCompact ? 7 : 8),
             Text(
               'رقم الطلب: ${order.id}',
               style: TextStyle(
                 fontFamily: 'Cairo',
-                fontSize: 12,
+                fontSize: isCompact ? 11 : 12,
                 color: isDark ? Colors.white70 : Colors.black87,
                 fontWeight: FontWeight.w600,
               ),
@@ -593,7 +602,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontFamily: 'Cairo',
-                fontSize: 12,
+                fontSize: isCompact ? 11 : 12,
                 color: isDark ? Colors.white54 : Colors.black54,
               ),
             ),
@@ -602,7 +611,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
               'تاريخ الإنشاء: ${_formatDate(order.createdAt)}',
               style: TextStyle(
                 fontFamily: 'Cairo',
-                fontSize: 12,
+                fontSize: isCompact ? 11 : 12,
                 color: isDark ? Colors.white54 : Colors.black54,
               ),
             ),
@@ -614,19 +623,19 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontFamily: 'Cairo',
-                  fontSize: 12,
+                  fontSize: isCompact ? 11 : 12,
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
               ),
             ],
-            const SizedBox(height: 10),
+            SizedBox(height: isCompact ? 8 : 10),
             Row(
               children: [
                 Text(
                   'عرض التفاصيل',
                   style: TextStyle(
                     fontFamily: 'Cairo',
-                    fontSize: 12,
+                    fontSize: isCompact ? 11 : 12,
                     fontWeight: FontWeight.bold,
                     color: _mainColor.withValues(alpha: 0.9),
                   ),
@@ -636,6 +645,35 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pill({
+    required String text,
+    required Color textColor,
+    required Color bgColor,
+    required Color borderColor,
+    required bool compact,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 11,
+        vertical: compact ? 5 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: textColor,
+          fontFamily: 'Cairo',
+          fontSize: compact ? 10 : 11,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -656,9 +694,12 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     );
   }
 
-  Widget _summaryBadge(String title, String value) {
+  Widget _summaryBadge(String title, String value, {required bool compact}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 10,
+        vertical: compact ? 6 : 7,
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(999),
@@ -671,16 +712,16 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
             title,
             style: TextStyle(
               fontFamily: 'Cairo',
-              fontSize: 11,
+              fontSize: compact ? 10 : 11,
               color: Colors.white.withValues(alpha: 0.92),
             ),
           ),
           const SizedBox(width: 6),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Cairo',
-              fontSize: 12,
+              fontSize: compact ? 11 : 12,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),

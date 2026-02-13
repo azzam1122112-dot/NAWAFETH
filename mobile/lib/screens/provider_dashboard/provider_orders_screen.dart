@@ -179,6 +179,48 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     }
   }
 
+  int? _extractRequestId(Map<String, dynamic> req) {
+    final raw = req['id'] ?? req['request_id'];
+    if (raw is int) return raw;
+    return int.tryParse((raw ?? '').toString());
+  }
+
+  String _statusGroup(Map<String, dynamic> req) {
+    final group = (req['status_group'] ?? '').toString().trim().toLowerCase();
+    if (group.isNotEmpty) return group;
+
+    final raw = (req['status'] ?? '').toString().trim().toLowerCase();
+    if (raw.isNotEmpty) {
+      if (raw == 'open' || raw == 'pending' || raw == 'new' || raw == 'sent') {
+        return 'new';
+      }
+      if (raw == 'accepted' || raw == 'in_progress') {
+        return 'in_progress';
+      }
+      if (raw == 'completed') return 'completed';
+      if (raw == 'cancelled' || raw == 'canceled' || raw == 'expired') return 'cancelled';
+    }
+
+    final label = (req['status_label'] ?? '').toString().trim();
+    if (label == 'جديد') return 'new';
+    if (label == 'تحت التنفيذ') return 'in_progress';
+    if (label == 'مكتمل') return 'completed';
+    if (label == 'ملغي') return 'cancelled';
+
+    return 'new';
+  }
+
+  String _rawStatus(Map<String, dynamic> req) {
+    final raw = (req['status'] ?? '').toString().trim().toLowerCase();
+    if (raw.isNotEmpty) return raw;
+    final group = _statusGroup(req);
+    if (group == 'new') return 'new';
+    if (group == 'in_progress') return 'accepted';
+    if (group == 'completed') return 'completed';
+    if (group == 'cancelled') return 'cancelled';
+    return '';
+  }
+
   Color _statusColor(String statusAr) {
     switch (statusAr) {
       case 'مكتمل':
@@ -293,7 +335,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _acceptUrgent(Map<String, dynamic> req) async {
-    final id = int.tryParse((req['id'] ?? '').toString());
+    final id = _extractRequestId(req);
     if (id == null) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -324,7 +366,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final statusAr = statusLabel.isNotEmpty
         ? statusLabel
         : _mapStatus((req['status'] ?? '').toString());
-    final rawStatus = (req['status'] ?? '').toString().trim().toLowerCase();
+    final statusGroup = _statusGroup(req);
+    final rawStatus = _rawStatus(req);
     final statusColor = _statusColor(statusAr);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isUrgent = type == 'urgent';
@@ -333,9 +376,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final typeColor = isUrgent ? Colors.redAccent : (isCompetitive ? Colors.blueGrey : _mainColor);
 
     final canAcceptRejectAssigned =
-      !urgentTab && !isCompetitive && (rawStatus == 'sent' || rawStatus == 'new');
+      !urgentTab &&
+      !isCompetitive &&
+      (statusGroup == 'new' || rawStatus == 'open' || rawStatus == 'pending');
     final canStartAssigned = !urgentTab && !isCompetitive && rawStatus == 'accepted';
-    final canCompleteAssigned = !urgentTab && !isCompetitive && rawStatus == 'in_progress';
+    final canCompleteAssigned =
+      !urgentTab &&
+      !isCompetitive &&
+      (rawStatus == 'in_progress' || (rawStatus.isEmpty && statusGroup == 'in_progress'));
 
     return InkWell(
       onTap: () => _openRequestDetails(req, urgentTab: urgentTab),
@@ -357,7 +405,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               children: [
                 Expanded(
                   child: Text(
-                    '#${req['id']}  ${(req['title'] ?? '').toString()}',
+                    '#${_extractRequestId(req) ?? '-'}  ${(req['title'] ?? '').toString()}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
@@ -498,20 +546,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               ),
             ],
             const SizedBox(height: 8),
-            const Row(
-              children: [
-                Icon(Icons.open_in_new_rounded, size: 16, color: Colors.black54),
-                SizedBox(width: 4),
-                Text(
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _openRequestDetails(req, urgentTab: urgentTab),
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text(
                   'فتح الطلب',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black54,
-                  ),
+                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-              ],
+              ),
             ),
           ],
         ),
@@ -520,7 +564,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _acceptAssigned(Map<String, dynamic> req) async {
-    final id = int.tryParse((req['id'] ?? '').toString());
+    final id = _extractRequestId(req);
     if (id == null) return;
 
     final confirmed = await showDialog<bool>(
@@ -558,7 +602,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _rejectAssigned(Map<String, dynamic> req) async {
-    final id = int.tryParse((req['id'] ?? '').toString());
+    final id = _extractRequestId(req);
     if (id == null) return;
 
     final noteController = TextEditingController();
@@ -611,7 +655,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _sendOffer(Map<String, dynamic> req) async {
-    final id = int.tryParse((req['id'] ?? '').toString());
+    final id = _extractRequestId(req);
     if (id == null) return;
 
     final priceController = TextEditingController();
@@ -694,7 +738,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _startAssigned(Map<String, dynamic> req) async {
-    final id = int.tryParse((req['id'] ?? '').toString());
+    final id = _extractRequestId(req);
     if (id == null) return;
 
     final ok = await MarketplaceApi().startAssignedRequest(requestId: id, note: 'بدء التنفيذ من التطبيق');
@@ -711,7 +755,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _completeAssigned(Map<String, dynamic> req) async {
-    final id = int.tryParse((req['id'] ?? '').toString());
+    final id = _extractRequestId(req);
     if (id == null) return;
 
     final ok = await MarketplaceApi().completeAssignedRequest(requestId: id, note: 'تم الإنجاز من التطبيق');
@@ -728,14 +772,20 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _openRequestDetails(Map<String, dynamic> req, {required bool urgentTab}) async {
-    final rawStatus = (req['status'] ?? '').toString().trim().toLowerCase();
+    final statusGroup = _statusGroup(req);
+    final rawStatus = _rawStatus(req);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isCompetitive = type == 'competitive';
 
     final canAcceptRejectAssigned =
-        !urgentTab && !isCompetitive && (rawStatus == 'sent' || rawStatus == 'new');
+        !urgentTab &&
+        !isCompetitive &&
+        (statusGroup == 'new' || rawStatus == 'open' || rawStatus == 'pending');
     final canStartAssigned = !urgentTab && !isCompetitive && rawStatus == 'accepted';
-    final canCompleteAssigned = !urgentTab && !isCompetitive && rawStatus == 'in_progress';
+    final canCompleteAssigned =
+        !urgentTab &&
+        !isCompetitive &&
+        (rawStatus == 'in_progress' || (rawStatus.isEmpty && statusGroup == 'in_progress'));
 
     await showModalBottomSheet<void>(
       context: context,
@@ -767,7 +817,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'رقم الطلب: #${(req['id'] ?? '').toString()}',
+                    'رقم الطلب: #${(_extractRequestId(req) ?? '').toString()}',
                     style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
                   ),
                   const SizedBox(height: 4),

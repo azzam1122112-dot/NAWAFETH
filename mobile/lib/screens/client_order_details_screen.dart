@@ -22,6 +22,7 @@ class ClientOrderDetailsScreen extends StatefulWidget {
 
 class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   static const Color _mainColor = Colors.deepPurple;
+  late ClientOrder _order;
 
   late final TextEditingController _titleController;
   late final TextEditingController _detailsController;
@@ -50,17 +51,41 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.order.title);
-    _detailsController = TextEditingController(text: widget.order.details);
+    _order = widget.order;
+    _titleController = TextEditingController(text: _order.title);
+    _detailsController = TextEditingController(text: _order.details);
 
-    _ratingResponseSpeed = widget.order.ratingResponseSpeed ?? 0;
-    _ratingCostValue = widget.order.ratingCostValue ?? 0;
-    _ratingQuality = widget.order.ratingQuality ?? 0;
-    _ratingCredibility = widget.order.ratingCredibility ?? 0;
-    _ratingOnTime = widget.order.ratingOnTime ?? 0;
-    _ratingCommentController.text = widget.order.ratingComment ?? '';
+    _ratingResponseSpeed = _order.ratingResponseSpeed ?? 0;
+    _ratingCostValue = _order.ratingCostValue ?? 0;
+    _ratingQuality = _order.ratingQuality ?? 0;
+    _ratingCredibility = _order.ratingCredibility ?? 0;
+    _ratingOnTime = _order.ratingOnTime ?? 0;
+    _ratingCommentController.text = _order.ratingComment ?? '';
 
     _fetchOffers();
+    _syncOrderFromBackend();
+  }
+
+  Future<void> _syncOrderFromBackend() async {
+    try {
+      final jsonList = await MarketplaceApi().getMyRequests();
+      for (final item in jsonList) {
+        if (item is! Map) continue;
+        final id = (item['id'] ?? '').toString();
+        if (id != _order.id) continue;
+
+        final fresh = ClientOrder.fromJson(Map<String, dynamic>.from(item));
+        if (!mounted) return;
+        setState(() {
+          _order = fresh;
+          if (!_editTitle) _titleController.text = fresh.title;
+          if (!_editDetails) _detailsController.text = fresh.details;
+        });
+        return;
+      }
+    } catch (_) {
+      // Best-effort sync; keep local data if network fails.
+    }
   }
 
   bool _isValidCriterion(double value) => value >= 1 && value <= 5;
@@ -84,14 +109,14 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   Future<void> _submitReview() async {
     if (_isSubmittingReview) return;
 
-    if (widget.order.status != 'مكتمل') {
+    if (_order.status != 'مكتمل') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('لا يمكن إرسال التقييم إلا بعد اكتمال الطلب', style: TextStyle(fontFamily: 'Cairo'))),
       );
       return;
     }
 
-    final requestId = int.tryParse(widget.order.id);
+    final requestId = int.tryParse(_order.id);
     if (requestId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('لا يمكن إرسال التقييم: رقم الطلب غير صالح', style: TextStyle(fontFamily: 'Cairo'))),
@@ -149,10 +174,10 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
 
   Future<void> _fetchOffers() async {
     // Only fetch offers if order is active/new
-    if (widget.order.status == 'جديد' || widget.order.status == 'أُرسل') {
+    if (_order.status == 'جديد' || _order.status == 'أُرسل') {
       setState(() => _isLoadingOffers = true);
       try {
-        final offers = await MarketplaceApi().getRequestOffers(widget.order.id);
+        final offers = await MarketplaceApi().getRequestOffers(_order.id);
         if (mounted) {
           setState(() {
             _offers = offers;
@@ -194,7 +219,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       final success = await MarketplaceApi().acceptOffer(offer.id);
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم قبول العرض بنجاح')));
-        Navigator.pop(context, widget.order.copyWith(status: 'تحت التنفيذ')); // Return updated order
+        Navigator.pop(context, _order.copyWith(status: 'تحت التنفيذ')); // Return updated order
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشل قبول العرض')));
       }
@@ -242,24 +267,24 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   }
 
   void _save() {
-    final bool shouldReopen = widget.order.status == 'ملغي' && _reopenCanceledOrder;
+    final bool shouldReopen = _order.status == 'ملغي' && _reopenCanceledOrder;
 
-    final bool canUpdateRating = widget.order.status == 'مكتمل' && _didSubmitReview;
+    final bool canUpdateRating = _order.status == 'مكتمل' && _didSubmitReview;
 
-    final updated = widget.order.copyWith(
-      status: shouldReopen ? 'جديد' : widget.order.status,
+    final updated = _order.copyWith(
+      status: shouldReopen ? 'جديد' : _order.status,
       title: _titleController.text.trim().isEmpty
-          ? widget.order.title
+          ? _order.title
           : _titleController.text.trim(),
       details: _detailsController.text.trim().isEmpty
-          ? widget.order.details
+          ? _order.details
           : _detailsController.text.trim(),
-      ratingResponseSpeed: canUpdateRating ? _ratingResponseSpeed : widget.order.ratingResponseSpeed,
-      ratingCostValue: canUpdateRating ? _ratingCostValue : widget.order.ratingCostValue,
-      ratingQuality: canUpdateRating ? _ratingQuality : widget.order.ratingQuality,
-      ratingCredibility: canUpdateRating ? _ratingCredibility : widget.order.ratingCredibility,
-      ratingOnTime: canUpdateRating ? _ratingOnTime : widget.order.ratingOnTime,
-      ratingComment: canUpdateRating ? _ratingCommentController.text.trim() : widget.order.ratingComment,
+      ratingResponseSpeed: canUpdateRating ? _ratingResponseSpeed : _order.ratingResponseSpeed,
+      ratingCostValue: canUpdateRating ? _ratingCostValue : _order.ratingCostValue,
+      ratingQuality: canUpdateRating ? _ratingQuality : _order.ratingQuality,
+      ratingCredibility: canUpdateRating ? _ratingCredibility : _order.ratingCredibility,
+      ratingOnTime: canUpdateRating ? _ratingOnTime : _order.ratingOnTime,
+      ratingComment: canUpdateRating ? _ratingCommentController.text.trim() : _order.ratingComment,
     );
 
     Navigator.pop(context, updated);
@@ -279,29 +304,30 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
     required String label,
     required double value,
     required ValueChanged<double> onChanged,
+    required bool compact,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 13,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: compact ? 12 : 13,
+              color: isDark ? Colors.white70 : Colors.black87,
             ),
           ),
+          const SizedBox(height: 6),
           RatingBar.builder(
             initialRating: value,
             minRating: 0,
             allowHalfRating: false,
             itemCount: 5,
-            itemSize: 20,
+            itemSize: compact ? 18 : 20,
             itemPadding: const EdgeInsets.symmetric(horizontal: 1.5),
             itemBuilder: (context, _) => const Icon(Icons.star, color: Colors.amber),
             onRatingUpdate: onChanged,
@@ -381,7 +407,12 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final statusColor = _statusColor(widget.order.status);
+    final width = MediaQuery.sizeOf(context).width;
+    final isCompact = width < 370;
+    final pagePadding = isCompact ? 12.0 : 16.0;
+    final cardPadding = isCompact ? 12.0 : 14.0;
+    final cardRadius = isCompact ? 12.0 : 14.0;
+    final statusColor = _statusColor(_order.status);
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final borderColor = isDark ? Colors.white10 : Colors.grey.shade200;
 
@@ -412,14 +443,14 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
             children: [
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(pagePadding),
                   children: [
                     // Header card
                     Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: EdgeInsets.all(cardPadding),
                       decoration: BoxDecoration(
                         color: cardColor,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(cardRadius),
                         border: Border.all(color: borderColor),
                       ),
                       child: Column(
@@ -429,7 +460,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  widget.order.id,
+                                  _order.id,
                                   style: TextStyle(
                                     fontFamily: 'Cairo',
                                     fontSize: 14,
@@ -449,7 +480,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                   border: Border.all(color: statusColor.withValues(alpha: 0.35)),
                                 ),
                                 child: Text(
-                                  widget.order.status,
+                                  _order.status,
                                   style: TextStyle(
                                     fontFamily: 'Cairo',
                                     fontSize: 12,
@@ -462,7 +493,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${widget.order.title} ${widget.order.serviceCode}',
+                            '${_order.title} ${_order.serviceCode}',
                             style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 13,
@@ -471,7 +502,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            _formatDate(widget.order.createdAt),
+                            _formatDate(_order.createdAt),
                             style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 12,
@@ -487,7 +518,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                     if (_isLoadingOffers)
                       const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator())),
                     
-                    if (!_isLoadingOffers && (widget.order.status == 'جديد' || widget.order.status == 'أُرسل') && _offers.isNotEmpty) ...[
+                    if (!_isLoadingOffers && (_order.status == 'جديد' || _order.status == 'أُرسل') && _offers.isNotEmpty) ...[
                       Text(
                         'العروض المستلمة (${_offers.length})',
                         style: const TextStyle(
@@ -500,27 +531,61 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                       ..._offers.map((offer) {
                         return Container(
                            margin: const EdgeInsets.only(bottom: 10),
-                           padding: const EdgeInsets.all(12),
-                           decoration: BoxDecoration(
-                              color: cardColor,
-                            border: Border.all(color: Colors.green.withValues(alpha: 0.5)),
-                              borderRadius: BorderRadius.circular(12),
-                           ),
-                           child: Column(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
+                           padding: EdgeInsets.all(isCompact ? 10 : 12),
+                            decoration: BoxDecoration(
+                               color: cardColor,
+                             border: Border.all(color: Colors.green.withValues(alpha: 0.5)),
+                               borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(offer.providerName, style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', color: isDark ? Colors.white : Colors.black)),
-                                    Text('${offer.price} ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontFamily: 'Cairo')),
+                                    Expanded(
+                                      child: Text(
+                                        offer.providerName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontFamily: 'Cairo',
+                                          fontSize: isCompact ? 12 : 13,
+                                          color: isDark ? Colors.white : Colors.black,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '${offer.price} ريال',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                        fontSize: isCompact ? 12 : 13,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                Text('المدة: ${offer.durationDays} يوم', style: TextStyle(fontFamily: 'Cairo', color: isDark ? Colors.white70 : Colors.black87)),
+                                Text(
+                                  'المدة: ${offer.durationDays} يوم',
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: isCompact ? 11 : 12,
+                                    color: isDark ? Colors.white70 : Colors.black87,
+                                  ),
+                                ),
                                 if (offer.note.isNotEmpty) ...[
                                    const SizedBox(height: 4),
-                                   Text('ملاحظات: ${offer.note}', style: const TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'Cairo')),
+                                   Text(
+                                     'ملاحظات: ${offer.note}',
+                                     style: TextStyle(
+                                       fontSize: isCompact ? 11 : 12,
+                                       color: Colors.grey,
+                                       fontFamily: 'Cairo',
+                                     ),
+                                   ),
                                 ],
                                 const SizedBox(height: 10),
                                 SizedBox(
@@ -542,7 +607,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                     ],
 
                     // Completed order: actual delivery + actual amount + rating entry
-                    if (widget.order.status == 'مكتمل')
+                    if (_order.status == 'مكتمل')
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -556,15 +621,15 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                             _infoLabel('موعد التسليم الفعلي'),
                             _infoRow(
                               label: 'موعد التسليم الفعلي',
-                              value: widget.order.deliveredAt == null
+                              value: _order.deliveredAt == null
                                   ? '-'
-                                  : _formatDateOnly(widget.order.deliveredAt!),
+                                  : _formatDateOnly(_order.deliveredAt!),
                             ),
                             const SizedBox(height: 10),
                             _infoLabel('قيمة الخدمة الفعلية (SR)'),
                             _infoRow(
                               label: 'قيمة الخدمة الفعلية (SR)',
-                              value: _formatMoney(widget.order.actualServiceAmountSR),
+                              value: _formatMoney(_order.actualServiceAmountSR),
                             ),
                             const SizedBox(height: 12),
                             SizedBox(
@@ -590,26 +655,31 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                               _ratingRow(
                                 label: 'سرعة الاستجابة',
                                 value: _ratingResponseSpeed,
+                                compact: isCompact,
                                 onChanged: (v) => setState(() => _ratingResponseSpeed = v),
                               ),
                               _ratingRow(
                                 label: 'التكلفة مقابل الخدمة',
                                 value: _ratingCostValue,
+                                compact: isCompact,
                                 onChanged: (v) => setState(() => _ratingCostValue = v),
                               ),
                               _ratingRow(
                                 label: 'جودة الخدمة',
                                 value: _ratingQuality,
+                                compact: isCompact,
                                 onChanged: (v) => setState(() => _ratingQuality = v),
                               ),
                               _ratingRow(
                                 label: 'المصداقية',
                                 value: _ratingCredibility,
+                                compact: isCompact,
                                 onChanged: (v) => setState(() => _ratingCredibility = v),
                               ),
                               _ratingRow(
                                 label: 'وقت الإنجاز',
                                 value: _ratingOnTime,
+                                compact: isCompact,
                                 onChanged: (v) => setState(() => _ratingOnTime = v),
                               ),
                               const SizedBox(height: 12),
@@ -631,8 +701,8 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                   required isFocused,
                                   maxLength,
                                 }) => null,
-                                minLines: 3,
-                                maxLines: 5,
+                                minLines: isCompact ? 2 : 3,
+                                maxLines: isCompact ? 4 : 5,
                                 decoration: const InputDecoration(
                                   border: OutlineInputBorder(),
                                 ),
@@ -668,10 +738,10 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                         ),
                       ),
 
-                    if (widget.order.status == 'مكتمل') const SizedBox(height: 12),
+                    if (_order.status == 'مكتمل') const SizedBox(height: 12),
 
                     // Under execution extra fields
-                    if (widget.order.status == 'تحت التنفيذ')
+                    if (_order.status == 'تحت التنفيذ')
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -685,27 +755,27 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                             _infoLabel('موعد التسليم المتوقع'),
                             _infoRow(
                               label: 'موعد التسليم المتوقع',
-                              value: widget.order.expectedDeliveryAt == null
+                              value: _order.expectedDeliveryAt == null
                                   ? '-'
-                                  : _formatDateOnly(widget.order.expectedDeliveryAt!),
+                                  : _formatDateOnly(_order.expectedDeliveryAt!),
                             ),
                             const SizedBox(height: 10),
                             _infoLabel('قيمة الخدمة المقدرة (SR)'),
                             _infoRow(
                               label: 'قيمة الخدمة المقدرة (SR)',
-                              value: _formatMoney(widget.order.serviceAmountSR),
+                              value: _formatMoney(_order.serviceAmountSR),
                             ),
                             const SizedBox(height: 10),
                             _infoLabel('المبلغ المستلم (SR)'),
                             _infoRow(
                               label: 'المبلغ المستلم (SR)',
-                              value: _formatMoney(widget.order.receivedAmountSR),
+                              value: _formatMoney(_order.receivedAmountSR),
                             ),
                             const SizedBox(height: 10),
                             _infoLabel('المبلغ المتبقي (SR)'),
                             _infoRow(
                               label: 'المبلغ المتبقي (SR)',
-                              value: _formatMoney(widget.order.remainingAmountSR),
+                              value: _formatMoney(_order.remainingAmountSR),
                             ),
                             const SizedBox(height: 12),
                             Text(
@@ -717,7 +787,9 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Row(
+                            Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 12,
                               children: [
                                 Checkbox(
                                   value: _approveProviderInputs,
@@ -732,7 +804,6 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                   'اعتماد',
                                   style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                                 ),
-                                const SizedBox(width: 12),
                                 Checkbox(
                                   value: _rejectProviderInputs,
                                   onChanged: (v) {
@@ -752,10 +823,10 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                         ),
                       ),
 
-                    if (widget.order.status == 'تحت التنفيذ') const SizedBox(height: 12),
+                    if (_order.status == 'تحت التنفيذ') const SizedBox(height: 12),
 
                     // Canceled extra fields
-                    if (widget.order.status == 'ملغي')
+                    if (_order.status == 'ملغي')
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -769,18 +840,20 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                             _infoLabel('تاريخ الإلغاء'),
                             _infoRow(
                               label: 'تاريخ الإلغاء',
-                              value: widget.order.canceledAt == null
+                              value: _order.canceledAt == null
                                   ? '-'
-                                  : _formatDateOnly(widget.order.canceledAt!),
+                                  : _formatDateOnly(_order.canceledAt!),
                             ),
                             const SizedBox(height: 10),
                             _infoLabel('سبب الإلغاء'),
                             _infoRow(
                               label: 'سبب الإلغاء',
-                              value: widget.order.cancelReason ?? '-',
+                              value: _order.cancelReason ?? '-',
                             ),
                             const SizedBox(height: 12),
-                            Row(
+                            Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
                               children: [
                                 Checkbox(
                                   value: _reopenCanceledOrder,
@@ -795,7 +868,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           ],
                         ),
                       ),
-                    if (widget.order.status == 'ملغي') const SizedBox(height: 12),
+                    if (_order.status == 'ملغي') const SizedBox(height: 12),
 
                     // Title section
                     Container(
@@ -847,8 +920,8 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           TextField(
                             controller: _detailsController,
                             enabled: _editDetails,
-                            minLines: 4,
-                            maxLines: 7,
+                            minLines: isCompact ? 3 : 4,
+                            maxLines: isCompact ? 5 : 7,
                             decoration: const InputDecoration(
                               border: OutlineInputBorder(),
                             ),
@@ -912,7 +985,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                               ),
                             ],
                           ),
-                          if (widget.order.attachments.isEmpty)
+                          if (_order.attachments.isEmpty)
                             Text(
                               'لا يوجد مرفقات',
                               style: TextStyle(
@@ -921,7 +994,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                               ),
                             )
                           else
-                            ...widget.order.attachments.map(
+                            ..._order.attachments.map(
                               (a) => Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Row(
@@ -984,8 +1057,8 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           const SizedBox(height: 10),
                           TextField(
                             controller: _reminderController,
-                            minLines: 6,
-                            maxLines: 10,
+                            minLines: isCompact ? 4 : 6,
+                            maxLines: isCompact ? 7 : 10,
                             decoration: InputDecoration(
                               hintText: 'اكتب رسالتك هنا...',
                               hintStyle: const TextStyle(fontFamily: 'Cairo'),

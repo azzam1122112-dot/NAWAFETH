@@ -17,7 +17,8 @@ class ProfileTab extends StatefulWidget {
 }
 
 class _ProfileTabState extends State<ProfileTab> {
-  final Color mainColor = Colors.deepPurple;
+  final Color mainColor = const Color(0xFF00695C);
+  final Color accentColor = const Color(0xFF009688);
 
   static const Map<String, LatLng> _knownSaudiCityCenters = {
     'المدينة المنورة': LatLng(24.5246542, 39.5691841),
@@ -35,6 +36,7 @@ class _ProfileTabState extends State<ProfileTab> {
 
   bool _loading = true;
   bool _saving = false;
+  DateTime? _lastSavedAt;
 
   String _providerType = 'individual';
   bool _acceptsUrgent = false;
@@ -142,39 +144,40 @@ class _ProfileTabState extends State<ProfileTab> {
   Future<void> _load() async {
     final json = await ProvidersApi().getMyProviderProfile();
     if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (json == null) return;
+      _applyProfile(json);
+    });
 
+    await _resolveCityCenter();
+  }
+
+  void _applyProfile(Map<String, dynamic> json) {
     void setText(TextEditingController c, dynamic v) {
       c.text = (v ?? '').toString();
     }
 
-    setState(() {
-      _loading = false;
-      if (json == null) return;
+    _providerType = (json['provider_type'] ?? 'individual').toString();
+    _acceptsUrgent = json['accepts_urgent'] == true;
 
-      _providerType = (json['provider_type'] ?? 'individual').toString();
-      _acceptsUrgent = json['accepts_urgent'] == true;
+    setText(_displayNameController, json['display_name']);
+    setText(_bioController, json['bio']);
+    setText(_cityController, json['city']);
+    setText(_yearsExperienceController, json['years_experience']);
 
-      setText(_displayNameController, json['display_name']);
-      setText(_bioController, json['bio']);
-      setText(_cityController, json['city']);
-      setText(_yearsExperienceController, json['years_experience']);
+    double? asDouble(dynamic v) {
+      if (v is double) return v;
+      if (v is num) return v.toDouble();
+      return double.tryParse((v ?? '').toString().trim());
+    }
 
-      double? asDouble(dynamic v) {
-        if (v is double) return v;
-        if (v is num) return v.toDouble();
-        return double.tryParse((v ?? '').toString().trim());
-      }
+    _lat = asDouble(json['lat']);
+    _lng = asDouble(json['lng']);
 
-      _lat = asDouble(json['lat']);
-      _lng = asDouble(json['lng']);
-
-      if (_lat != null && _lng != null) {
-        final c = LatLng(_lat!, _lng!);
-        _cityCenter = c;
-      }
-    });
-
-    await _resolveCityCenter();
+    if (_lat != null && _lng != null) {
+      _cityCenter = LatLng(_lat!, _lng!);
+    }
   }
 
   int? _parseInt(String s) {
@@ -281,7 +284,13 @@ class _ProfileTabState extends State<ProfileTab> {
     try {
       final updated = await ProvidersApi().updateMyProviderProfile(patch);
       if (!mounted) return;
-      setState(() => _saving = false);
+      setState(() {
+        _saving = false;
+        if (updated != null) {
+          _applyProfile(updated);
+          _lastSavedAt = DateTime.now();
+        }
+      });
 
       if (updated == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -305,9 +314,16 @@ class _ProfileTabState extends State<ProfileTab> {
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: mainColor.withValues(alpha: 0.16)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: mainColor.withValues(alpha: 0.50), width: 1.5),
+      ),
       filled: true,
-      fillColor: Colors.grey[100],
+      fillColor: const Color(0xFFF7FAF9),
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
@@ -354,8 +370,12 @@ class _ProfileTabState extends State<ProfileTab> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       child: Column(
@@ -561,12 +581,76 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
+  Widget _buildTopStatusCard() {
+    final savedText = _lastSavedAt == null
+        ? 'لم يتم الحفظ بعد'
+        : 'آخر حفظ: ${_lastSavedAt!.hour.toString().padLeft(2, '0')}:${_lastSavedAt!.minute.toString().padLeft(2, '0')}';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [mainColor, accentColor],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.17),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.verified_user_outlined, color: Colors.white),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ملف المزود',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  savedText,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_saving)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF3F4FC),
+        backgroundColor: const Color(0xFFF4F7F8),
         appBar: AppBar(
           backgroundColor: mainColor,
           iconTheme: const IconThemeData(color: Colors.white),
@@ -601,6 +685,7 @@ class _ProfileTabState extends State<ProfileTab> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  _buildTopStatusCard(),
                   _sectionCard(
                     title: 'بيانات المزود',
                     icon: Icons.badge_outlined,
