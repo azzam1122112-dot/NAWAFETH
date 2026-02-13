@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
+import '../../models/provider_order.dart';
 import '../../services/marketplace_api.dart';
 import '../../services/role_controller.dart';
 import '../client_orders_screen.dart';
+import 'provider_order_details_screen.dart';
 
 class ProviderOrdersScreen extends StatefulWidget {
   final bool embedded;
@@ -208,6 +210,45 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (label == 'ملغي') return 'cancelled';
 
     return 'new';
+  }
+
+  ProviderOrder _toProviderOrder(Map<String, dynamic> req) {
+    DateTime parseDate(dynamic raw) =>
+        DateTime.tryParse((raw ?? '').toString()) ?? DateTime.now();
+
+    final attachmentsRaw = req['attachments'];
+    final attachments = <ProviderOrderAttachment>[];
+    if (attachmentsRaw is List) {
+      for (final item in attachmentsRaw) {
+        if (item is! Map) continue;
+        final type = (item['file_type'] ?? 'file').toString();
+        final url = (item['file_url'] ?? '').toString();
+        attachments.add(
+          ProviderOrderAttachment(
+            name: url.isEmpty ? 'ملف مرفق' : url,
+            type: type,
+          ),
+        );
+      }
+    }
+
+    final statusAr = (req['status_label'] ?? '').toString().trim().isNotEmpty
+        ? (req['status_label'] ?? '').toString().trim()
+        : _mapStatus((req['status'] ?? '').toString());
+
+    return ProviderOrder(
+      id: '#${(_extractRequestId(req) ?? '').toString()}',
+      serviceCode: (req['subcategory_name'] ?? '').toString(),
+      createdAt: parseDate(req['created_at']),
+      status: statusAr,
+      clientName: (req['client_name'] ?? '-').toString(),
+      clientHandle: '',
+      clientPhone: (req['client_phone'] ?? '').toString(),
+      clientCity: (req['city'] ?? '').toString(),
+      title: (req['title'] ?? '').toString(),
+      details: (req['description'] ?? '').toString(),
+      attachments: attachments,
+    );
   }
 
   String _rawStatus(Map<String, dynamic> req) {
@@ -786,251 +827,32 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       }
     }
     if (!mounted) return;
-
-    final statusGroup = _statusGroup(details);
-    final rawStatus = _rawStatus(details);
-    final type = (details['request_type'] ?? '').toString().trim().toLowerCase();
-    final isCompetitive = type == 'competitive';
-
-    final canAcceptRejectAssigned =
-        !urgentTab &&
-        !isCompetitive &&
-        (statusGroup == 'new' || rawStatus == 'open' || rawStatus == 'pending');
-    final canStartAssigned = !urgentTab && !isCompetitive && rawStatus == 'accepted';
-    final canCompleteAssigned =
-        !urgentTab &&
-        !isCompetitive &&
-        (rawStatus == 'in_progress' || (rawStatus.isEmpty && statusGroup == 'in_progress'));
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (ctx) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withAlpha(40),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  Text(
-                    (details['title'] ?? '').toString(),
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'رقم الطلب: #${(_extractRequestId(details) ?? '').toString()}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'التصنيف: ${(details['subcategory_name'] ?? '').toString()}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'المدينة: ${(details['city'] ?? '').toString()}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    (details['description'] ?? '').toString(),
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.5),
-                  ),
-                  const SizedBox(height: 12),
-                  _detailMetaLine('العميل', (details['client_name'] ?? '-').toString()),
-                  _detailMetaLine('الجوال', (details['client_phone'] ?? '-').toString()),
-                  const SizedBox(height: 10),
-                  _detailAttachments(details),
-                  const SizedBox(height: 10),
-                  _detailLogs(details),
-                  const SizedBox(height: 16),
-                  if (isCompetitive)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _sendOffer(details);
-                        },
-                        icon: const Icon(Icons.local_offer_outlined),
-                        label: const Text('تقديم عرض', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueGrey,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  if (urgentTab)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _acceptUrgent(details);
-                        },
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('قبول الطلب العاجل', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  if (canAcceptRejectAssigned) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _acceptAssigned(details);
-                        },
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('قبول الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(backgroundColor: _mainColor, foregroundColor: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _rejectAssigned(details);
-                        },
-                        icon: const Icon(Icons.close_rounded),
-                        label: const Text('رفض الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      ),
-                    ),
-                  ],
-                  if (canStartAssigned)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _startAssigned(details);
-                        },
-                        icon: const Icon(Icons.play_circle_outline_rounded),
-                        label: const Text('بدء التنفيذ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(backgroundColor: _mainColor, foregroundColor: Colors.white),
-                      ),
-                    ),
-                  if (canCompleteAssigned)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _completeAssigned(details);
-                        },
-                        icon: const Icon(Icons.task_alt_rounded),
-                        label: const Text('تأكيد إكمال الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _detailMetaLine(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
-        '$label: ${value.trim().isEmpty ? '-' : value}',
-        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black87),
+    if (requestId == null || requestId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رقم الطلب غير صالح', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+    final order = _toProviderOrder(details);
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProviderOrderDetailsScreen(
+          order: order,
+          requestId: requestId,
+          rawStatus: _rawStatus(details),
+          statusLogs: (details['status_logs'] is List)
+              ? (details['status_logs'] as List)
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList()
+              : const [],
+        ),
       ),
     );
-  }
-
-  Widget _detailAttachments(Map<String, dynamic> req) {
-    final raw = req['attachments'];
-    final list = raw is List ? raw : const [];
-    if (list.isEmpty) {
-      return const Text(
-        'المرفقات: لا توجد مرفقات',
-        style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
-      );
+    if (changed == true && mounted) {
+      await _refreshAll();
     }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'المرفقات',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-        const SizedBox(height: 6),
-        ...list.map((e) {
-          if (e is! Map) return const SizedBox.shrink();
-          final type = (e['file_type'] ?? '').toString();
-          final url = (e['file_url'] ?? '').toString();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              '- ${type.isEmpty ? 'file' : type}: ${url.isEmpty ? '-' : url}',
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _detailLogs(Map<String, dynamic> req) {
-    final raw = req['status_logs'];
-    final list = raw is List ? raw : const [];
-    if (list.isEmpty) {
-      return const Text(
-        'الرسائل/السجل: لا توجد تحديثات حتى الآن',
-        style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'الرسائل / سجل الحالة',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-        const SizedBox(height: 6),
-        ...list.take(6).map((e) {
-          if (e is! Map) return const SizedBox.shrink();
-          final note = (e['note'] ?? '').toString();
-          final actor = (e['actor_name'] ?? '-').toString();
-          final at = _formatDate(e['created_at']);
-          final from = (e['from_status'] ?? '').toString();
-          final to = (e['to_status'] ?? '').toString();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              '- $at | $actor | $from -> $to${note.trim().isNotEmpty ? ' | $note' : ''}',
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: Colors.black54),
-            ),
-          );
-        }),
-      ],
-    );
   }
 
   Widget _searchBar() {

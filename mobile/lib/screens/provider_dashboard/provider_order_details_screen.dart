@@ -3,13 +3,20 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/provider_order.dart';
+import '../../services/marketplace_api.dart';
 
 class ProviderOrderDetailsScreen extends StatefulWidget {
   final ProviderOrder order;
+  final int requestId;
+  final String rawStatus;
+  final List<Map<String, dynamic>> statusLogs;
 
   const ProviderOrderDetailsScreen({
     super.key,
     required this.order,
+    required this.requestId,
+    required this.rawStatus,
+    this.statusLogs = const [],
   });
 
   @override
@@ -40,6 +47,8 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
 
   bool _accountChecked = false;
   bool _isProviderAccount = false;
+  bool _isSaving = false;
+  late String _initialRawStatus;
 
   @override
   void initState() {
@@ -49,6 +58,7 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
     _detailsController = TextEditingController(text: widget.order.details);
 
     _status = widget.order.status;
+    _initialRawStatus = widget.rawStatus.trim().toLowerCase();
 
     _expectedDeliveryAt = widget.order.expectedDeliveryAt;
     _deliveredAt = widget.order.deliveredAt;
@@ -107,12 +117,6 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
     return value.toString();
   }
 
-  double? _parseDouble(String text) {
-    final t = text.trim().replaceAll(',', '.');
-    if (t.isEmpty) return null;
-    return double.tryParse(t);
-  }
-
   Color _statusColor(String status) {
     switch (status) {
       case 'مكتمل':
@@ -156,45 +160,100 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   }
 
   void _openChat() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'سيتم فتح المحادثة مع العميل قريباً',
-          style: TextStyle(fontFamily: 'Cairo'),
-        ),
-      ),
-    );
+    Navigator.pushNamed(context, '/chats');
   }
 
-  void _save() {
-    final updated = widget.order.copyWith(
-      status: _status,
-      // مقدم الخدمة لا يحق له تعديل عنوان/تفاصيل الطلب
-      title: widget.order.title,
-      details: widget.order.details,
-      expectedDeliveryAt: _status == 'تحت التنفيذ'
-          ? _expectedDeliveryAt
-          : widget.order.expectedDeliveryAt,
-      estimatedServiceAmountSR: _status == 'تحت التنفيذ'
-          ? _parseDouble(_estimatedAmountController.text)
-          : widget.order.estimatedServiceAmountSR,
-      receivedAmountSR: _status == 'تحت التنفيذ'
-          ? _parseDouble(_receivedAmountController.text)
-          : widget.order.receivedAmountSR,
-      remainingAmountSR: _status == 'تحت التنفيذ'
-          ? _parseDouble(_remainingAmountController.text)
-          : widget.order.remainingAmountSR,
-        deliveredAt: _status == 'مكتمل' ? _deliveredAt : widget.order.deliveredAt,
-        actualServiceAmountSR: _status == 'مكتمل'
-          ? _parseDouble(_actualAmountController.text)
-          : widget.order.actualServiceAmountSR,
-      canceledAt: _status == 'ملغي' ? (_canceledAt ?? DateTime.now()) : widget.order.canceledAt,
-      cancelReason: _status == 'ملغي'
-          ? _cancelReasonController.text.trim()
-          : widget.order.cancelReason,
-    );
+  String _statusToRaw(String statusAr) {
+    switch (statusAr) {
+      case 'جديد':
+        return 'new';
+      case 'تحت التنفيذ':
+        return 'in_progress';
+      case 'مكتمل':
+        return 'completed';
+      case 'ملغي':
+        return 'cancelled';
+      default:
+        return '';
+    }
+  }
 
-    Navigator.pop(context, updated);
+  String _extractActionMessage(MarketplaceActionResult result, String fallback) {
+    final msg = (result.message ?? '').trim();
+    return msg.isEmpty ? fallback : msg;
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+
+    final targetRaw = _statusToRaw(_status);
+    if (targetRaw.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حالة الطلب غير صالحة', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final api = MarketplaceApi();
+      bool ok = false;
+      String message = 'تم حفظ التحديث';
+
+      final initial = _initialRawStatus;
+      final isNewLike = initial == 'new' || initial == 'sent' || initial == 'open' || initial == 'pending';
+
+      if (targetRaw == initial) {
+        ok = true;
+      } else if (isNewLike && targetRaw == 'in_progress') {
+        final acceptRes = await api.acceptAssignedRequestDetailed(requestId: widget.requestId);
+        if (!acceptRes.ok) {
+          ok = false;
+          message = _extractActionMessage(acceptRes, 'تعذر قبول الطلب حالياً.');
+        } else {
+          final startOk = await api.startAssignedRequest(
+            requestId: widget.requestId,
+            note: 'بدء التنفيذ من صفحة تفاصيل الطلب',
+          );
+          ok = startOk;
+          message = startOk ? 'تم قبول الطلب وبدء التنفيذ.' : 'تم القبول ولكن تعذر بدء التنفيذ.';
+        }
+      } else if (isNewLike && targetRaw == 'cancelled') {
+        ok = await api.rejectAssignedRequest(
+          requestId: widget.requestId,
+          note: _cancelReasonController.text.trim(),
+        );
+        message = ok ? 'تم رفض الطلب.' : 'تعذر رفض الطلب حالياً.';
+      } else if (isNewLike && targetRaw == 'new') {
+        ok = true;
+      } else if (initial == 'accepted' && targetRaw == 'in_progress') {
+        ok = await api.startAssignedRequest(
+          requestId: widget.requestId,
+          note: 'بدء التنفيذ من صفحة تفاصيل الطلب',
+        );
+        message = ok ? 'تم بدء التنفيذ.' : 'تعذر بدء التنفيذ حالياً.';
+      } else if (initial == 'in_progress' && targetRaw == 'completed') {
+        ok = await api.completeAssignedRequest(
+          requestId: widget.requestId,
+          note: 'تم الإنجاز من صفحة تفاصيل الطلب',
+        );
+        message = ok ? 'تم تحديث الطلب إلى مكتمل.' : 'تعذر إكمال الطلب حالياً.';
+      } else {
+        ok = false;
+        message = 'هذا الانتقال غير مدعوم في النظام حالياً.';
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message, style: const TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: ok ? Colors.green : null,
+        ),
+      );
+      if (ok) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Widget _sectionTitle(String text) {
@@ -728,6 +787,43 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
             ),
 
             const SizedBox(height: 14),
+            if (widget.statusLogs.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'الرسائل / سجل الحالة',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...widget.statusLogs.take(8).map((item) {
+                      final from = (item['from_status'] ?? '').toString();
+                      final to = (item['to_status'] ?? '').toString();
+                      final note = (item['note'] ?? '').toString();
+                      final actor = (item['actor_name'] ?? '-').toString();
+                      final at = _formatDate(item['created_at'] != null ? DateTime.tryParse(item['created_at'].toString()) ?? DateTime.now() : DateTime.now());
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          '- $at | $actor | $from -> $to${note.trim().isNotEmpty ? ' | $note' : ''}',
+                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            if (widget.statusLogs.isNotEmpty) const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -863,14 +959,20 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: _save,
+                    child: ElevatedButton(
+                    onPressed: _isSaving ? null : _save,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       backgroundColor: _mainColor,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('حفظ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 ),
               ],
