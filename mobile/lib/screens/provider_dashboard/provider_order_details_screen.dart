@@ -8,6 +8,7 @@ class ProviderOrderDetailsScreen extends StatefulWidget {
   final ProviderOrder order;
   final int requestId;
   final String rawStatus;
+  final String requestType;
   final List<Map<String, dynamic>> statusLogs;
 
   const ProviderOrderDetailsScreen({
@@ -15,6 +16,7 @@ class ProviderOrderDetailsScreen extends StatefulWidget {
     required this.order,
     required this.requestId,
     required this.rawStatus,
+    required this.requestType,
     this.statusLogs = const [],
   });
 
@@ -48,6 +50,13 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   bool _isProviderAccount = false;
   bool _isSaving = false;
   late String _initialRawStatus;
+
+  bool get _isUrgentRequest => widget.requestType.trim().toLowerCase() == 'urgent';
+  bool get _isCompetitiveRequest => widget.requestType.trim().toLowerCase() == 'competitive';
+  bool get _isNewLikeStatus {
+    final s = _initialRawStatus;
+    return s == 'new' || s == 'sent' || s == 'open' || s == 'pending';
+  }
 
   @override
   void initState() {
@@ -177,6 +186,15 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
   Future<void> _save() async {
     if (_isSaving) return;
 
+    if (_isUrgentRequest || _isCompetitiveRequest) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('استخدم زر الإجراء الأساسي لهذه النوعية من الطلبات.', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+      );
+      return;
+    }
+
     final targetRaw = _statusToRaw(_status);
     if (targetRaw.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -238,6 +256,106 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message, style: const TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: ok ? Colors.green : null,
+        ),
+      );
+      if (ok) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _acceptUrgentFromDetails() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final ok = await MarketplaceApi().acceptUrgentRequest(requestId: widget.requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? 'تم قبول الطلب العاجل.' : 'تعذر قبول الطلب العاجل حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: ok ? Colors.green : null,
+        ),
+      );
+      if (ok) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _sendOfferFromDetails() async {
+    final priceController = TextEditingController();
+    final daysController = TextEditingController(text: '3');
+    final noteController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تقديم عرض', style: TextStyle(fontFamily: 'Cairo')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: priceController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'السعر (ريال)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: daysController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'المدة (بالأيام)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'ملاحظة (اختياري)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('إرسال العرض')),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+    final price = double.tryParse(priceController.text.trim());
+    final days = int.tryParse(daysController.text.trim());
+    if (price == null || price <= 0 || days == null || days <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تحقق من السعر والمدة', style: TextStyle(fontFamily: 'Cairo'))),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final ok = await MarketplaceApi().createOffer(
+        requestId: widget.requestId,
+        price: price,
+        durationDays: days,
+        note: noteController.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? 'تم إرسال العرض.' : 'تعذر إرسال العرض.', style: const TextStyle(fontFamily: 'Cairo')),
           backgroundColor: ok ? Colors.green : null,
         ),
       );
@@ -888,48 +1006,86 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _sectionTitle('تحديث عن حالة تنفيذ العمل'),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(_status),
-                    initialValue: _status,
-                    items: const [
-                      DropdownMenuItem(value: 'جديد', child: Text('جديد', style: TextStyle(fontFamily: 'Cairo'))),
-                      DropdownMenuItem(value: 'تحت التنفيذ', child: Text('تحت التنفيذ', style: TextStyle(fontFamily: 'Cairo'))),
-                      DropdownMenuItem(value: 'مكتمل', child: Text('مكتمل', style: TextStyle(fontFamily: 'Cairo'))),
-                      DropdownMenuItem(value: 'ملغي', child: Text('ملغي', style: TextStyle(fontFamily: 'Cairo'))),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: 'حالة الطلب',
-                      labelStyle: const TextStyle(fontFamily: 'Cairo'),
-                      prefixIcon: const Icon(Icons.inventory_2_outlined, color: _mainColor),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(28)),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: BorderSide(color: _mainColor.withAlpha(70)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: BorderSide(color: _mainColor.withAlpha(170), width: 1.3),
+                  if (_isUrgentRequest && _isNewLikeStatus)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving ? null : _acceptUrgentFromDetails,
+                        icon: const Icon(Icons.check_circle_outline),
+                        label: const Text(
+                          'قبول الطلب العاجل',
+                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
                       ),
                     ),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _status = v);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _mainColor.withAlpha(10),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _mainColor.withAlpha(60)),
+                  if (_isCompetitiveRequest && _isNewLikeStatus)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving ? null : _sendOfferFromDetails,
+                        icon: const Icon(Icons.local_offer_outlined),
+                        label: const Text(
+                          'تقديم عرض',
+                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueGrey,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
                     ),
-                    child: _statusSpecificSection(),
-                  ),
+                  if (!_isUrgentRequest && !_isCompetitiveRequest) ...[
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(_status),
+                      initialValue: _status,
+                      items: const [
+                        DropdownMenuItem(value: 'جديد', child: Text('جديد', style: TextStyle(fontFamily: 'Cairo'))),
+                        DropdownMenuItem(value: 'تحت التنفيذ', child: Text('تحت التنفيذ', style: TextStyle(fontFamily: 'Cairo'))),
+                        DropdownMenuItem(value: 'مكتمل', child: Text('مكتمل', style: TextStyle(fontFamily: 'Cairo'))),
+                        DropdownMenuItem(value: 'ملغي', child: Text('ملغي', style: TextStyle(fontFamily: 'Cairo'))),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'حالة الطلب',
+                        labelStyle: const TextStyle(fontFamily: 'Cairo'),
+                        prefixIcon: const Icon(Icons.inventory_2_outlined, color: _mainColor),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(28)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(28),
+                          borderSide: BorderSide(color: _mainColor.withAlpha(70)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(28),
+                          borderSide: BorderSide(color: _mainColor.withAlpha(170), width: 1.3),
+                        ),
+                      ),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _status = v);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _mainColor.withAlpha(10),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _mainColor.withAlpha(60)),
+                      ),
+                      child: _statusSpecificSection(),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -950,8 +1106,8 @@ class _ProviderOrderDetailsScreenState extends State<ProviderOrderDetailsScreen>
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                    child: ElevatedButton(
-                    onPressed: _isSaving ? null : _save,
+                  child: ElevatedButton(
+                    onPressed: (_isSaving || _isUrgentRequest || _isCompetitiveRequest) ? null : _save,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       backgroundColor: _mainColor,

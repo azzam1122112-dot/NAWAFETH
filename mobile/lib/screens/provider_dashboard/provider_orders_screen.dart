@@ -375,56 +375,17 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     );
   }
 
-  Future<void> _acceptUrgent(Map<String, dynamic> req) async {
-    final id = _extractRequestId(req);
-    if (id == null) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('جاري قبول الطلب العاجل...')),
-    );
-
-    final ok = await MarketplaceApi().acceptUrgentRequest(requestId: id);
-    if (!mounted) return;
-
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر قبول الطلب حالياً.')),
-      );
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم قبول الطلب بنجاح.'), backgroundColor: Colors.green),
-    );
-
-    await _refreshAll();
-    if (!mounted) return;
-    _tabController.animateTo(0);
-  }
-
   Widget _requestCard(Map<String, dynamic> req, {required bool urgentTab}) {
     final statusLabel = (req['status_label'] ?? '').toString().trim();
     final statusAr = statusLabel.isNotEmpty
         ? statusLabel
         : _mapStatus((req['status'] ?? '').toString());
-    final statusGroup = _statusGroup(req);
-    final rawStatus = _rawStatus(req);
     final statusColor = _statusColor(statusAr);
     final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
     final isUrgent = type == 'urgent';
     final isCompetitive = type == 'competitive';
     final typeLabel = isUrgent ? 'عاجل' : (isCompetitive ? 'عروض' : 'عادي');
     final typeColor = isUrgent ? Colors.redAccent : (isCompetitive ? Colors.blueGrey : _mainColor);
-
-    final canAcceptRejectAssigned =
-      !urgentTab &&
-      !isCompetitive &&
-      (statusGroup == 'new' || rawStatus == 'open' || rawStatus == 'pending');
-    final canStartAssigned = !urgentTab && !isCompetitive && rawStatus == 'accepted';
-    final canCompleteAssigned =
-      !urgentTab &&
-      !isCompetitive &&
-      (rawStatus == 'in_progress' || (rawStatus.isEmpty && statusGroup == 'in_progress'));
 
     return InkWell(
       onTap: () => _openRequestDetails(req, urgentTab: urgentTab),
@@ -507,85 +468,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black87, height: 1.4),
             ),
-            const SizedBox(height: 10),
-            if (urgentTab) ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _acceptUrgent(req),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('قبول الطلب العاجل', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ] else if (canAcceptRejectAssigned) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _rejectAssigned(req),
-                      icon: const Icon(Icons.close_rounded),
-                      label: const Text('رفض', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: BorderSide(color: Colors.red.withAlpha(120)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _acceptAssigned(req),
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('قبول', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _mainColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ] else if (canStartAssigned) ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _startAssigned(req),
-                  icon: const Icon(Icons.play_circle_outline_rounded),
-                  label: const Text('بدء التنفيذ', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _mainColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ] else if (canCompleteAssigned) ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _completeAssigned(req),
-                  icon: const Icon(Icons.task_alt_rounded),
-                  label: const Text('تأكيد إكمال الطلب', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -602,219 +484,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         ),
       ),
     );
-  }
-
-  Future<void> _acceptAssigned(Map<String, dynamic> req) async {
-    final id = _extractRequestId(req);
-    if (id == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('قبول الطلب', style: TextStyle(fontFamily: 'Cairo')),
-          content: const Text('هل تريد قبول هذا الطلب؟', style: TextStyle(fontFamily: 'Cairo')),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(backgroundColor: _mainColor, foregroundColor: Colors.white),
-              child: const Text('قبول'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final result = await MarketplaceApi().acceptAssignedRequestDetailed(requestId: id);
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.ok ? 'تم قبول الطلب.' : (result.message ?? 'تعذر قبول الطلب حالياً.'),
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        backgroundColor: result.ok ? Colors.green : null,
-      ),
-    );
-
-    if (result.ok) {
-      await _fetchAssigned();
-    }
-  }
-
-  Future<void> _rejectAssigned(Map<String, dynamic> req) async {
-    final id = _extractRequestId(req);
-    if (id == null) return;
-
-    final noteController = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('رفض الطلب', style: TextStyle(fontFamily: 'Cairo')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('اكتب سبب الرفض (اختياري):', style: TextStyle(fontFamily: 'Cairo')),
-              const SizedBox(height: 10),
-              TextField(
-                controller: noteController,
-                maxLines: 2,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-              child: const Text('رفض'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final ok = await MarketplaceApi().rejectAssignedRequest(
-      requestId: id,
-      note: noteController.text,
-    );
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'تم رفض الطلب.' : 'تعذر رفض الطلب حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
-        backgroundColor: ok ? Colors.green : null,
-      ),
-    );
-
-    await _fetchAssigned();
-  }
-
-  Future<void> _sendOffer(Map<String, dynamic> req) async {
-    final id = _extractRequestId(req);
-    if (id == null) return;
-
-    final priceController = TextEditingController();
-    final daysController = TextEditingController(text: '3');
-    final noteController = TextEditingController();
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('تقديم عرض', style: TextStyle(fontFamily: 'Cairo')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'السعر (ريال)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: daysController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'المدة (بالأيام)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: noteController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'ملاحظة (اختياري)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('إرسال العرض')),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final price = double.tryParse(priceController.text.trim());
-    final days = int.tryParse(daysController.text.trim());
-    if (price == null || price <= 0 || days == null || days <= 0) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تحقق من السعر والمدة', style: TextStyle(fontFamily: 'Cairo'))),
-      );
-      return;
-    }
-
-    final ok = await MarketplaceApi().createOffer(
-      requestId: id,
-      price: price,
-      durationDays: days,
-      note: noteController.text,
-    );
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'تم إرسال العرض.' : 'تعذر إرسال العرض.', style: const TextStyle(fontFamily: 'Cairo')),
-        backgroundColor: ok ? Colors.green : null,
-      ),
-    );
-
-    await _fetchCompetitive();
-  }
-
-  Future<void> _startAssigned(Map<String, dynamic> req) async {
-    final id = _extractRequestId(req);
-    if (id == null) return;
-
-    final ok = await MarketplaceApi().startAssignedRequest(requestId: id, note: 'بدء التنفيذ من التطبيق');
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'تم بدء التنفيذ.' : 'تعذر بدء التنفيذ حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
-        backgroundColor: ok ? Colors.green : null,
-      ),
-    );
-
-    await _fetchAssigned();
-  }
-
-  Future<void> _completeAssigned(Map<String, dynamic> req) async {
-    final id = _extractRequestId(req);
-    if (id == null) return;
-
-    final ok = await MarketplaceApi().completeAssignedRequest(requestId: id, note: 'تم الإنجاز من التطبيق');
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'تم تحديث الطلب إلى مكتمل.' : 'تعذر إكمال الطلب حالياً.', style: const TextStyle(fontFamily: 'Cairo')),
-        backgroundColor: ok ? Colors.green : null,
-      ),
-    );
-
-    await _fetchAssigned();
   }
 
   Future<void> _openRequestDetails(Map<String, dynamic> req, {required bool urgentTab}) async {
@@ -841,6 +510,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           order: order,
           requestId: requestId,
           rawStatus: _rawStatus(details),
+          requestType: (details['request_type'] ?? '').toString(),
           statusLogs: (details['status_logs'] is List)
               ? (details['status_logs'] as List)
                   .whereType<Map>()
@@ -941,32 +611,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       : 'ستظهر الطلبات هنا عندما يتم إسنادها لك.'),
             )
           else
-            ...filtered.map((e) {
-              if (isCompetitive) {
-                return Column(
-                  children: [
-                    _requestCard(e, urgentTab: false),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _sendOffer(e),
-                        icon: const Icon(Icons.local_offer_outlined),
-                        label: const Text('قدّم عرض', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueGrey,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                );
-              }
-              return _requestCard(e, urgentTab: isUrgent);
-            }),
+            ...filtered.map((e) => _requestCard(e, urgentTab: isUrgent)),
         ],
       ),
     );
