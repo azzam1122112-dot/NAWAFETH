@@ -409,15 +409,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // العنوان والرقم
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -556,7 +556,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ),
         ],
       ),
-    ),
+      ),
     );
   }
 
