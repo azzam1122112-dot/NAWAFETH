@@ -402,10 +402,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final rawStatus = (req['status'] ?? '').toString().trim().toLowerCase();
     final showStartButton = !urgentTab && (rawStatus == 'new' || rawStatus == 'sent' || rawStatus == 'open' || rawStatus == 'pending');
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    return InkWell(
+      onTap: () => _openRequestDetails(req, urgentTab: urgentTab),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
@@ -534,7 +537,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               ],
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _showRequestQuickView(req, urgentTab: urgentTab),
+                  onPressed: () => _openRequestDetails(req, urgentTab: urgentTab),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -553,6 +556,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -593,210 +597,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (changed == true && mounted) {
       await _refreshAll();
     }
-  }
-
-  Future<void> _showRequestQuickView(Map<String, dynamic> req, {required bool urgentTab}) async {
-    final requestId = _extractRequestId(req);
-    if (requestId == null || requestId <= 0) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('رقم الطلب غير صالح', style: TextStyle(fontFamily: 'Cairo'))),
-      );
-      return;
-    }
-
-    final statusLabel = (req['status_label'] ?? '').toString().trim();
-    final statusAr = statusLabel.isNotEmpty
-        ? statusLabel
-        : _mapStatus((req['status'] ?? '').toString());
-    final type = (req['request_type'] ?? '').toString().trim().toLowerCase();
-    final isUrgent = type == 'urgent';
-    final typeLabel = isUrgent ? 'عاجل' : ((type == 'competitive') ? 'عروض' : 'عادي');
-    
-    final rawStatus = (req['status'] ?? '').toString().trim().toLowerCase();
-    final showStartButton = !urgentTab && (rawStatus == 'new' || rawStatus == 'sent' || rawStatus == 'open' || rawStatus == 'pending');
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: Container(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // عنوان الـ bottom sheet
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        (req['title'] ?? '').toString(),
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                // رقم الطلب
-                Text(
-                  'رقم الطلب: #$requestId',
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, color: Colors.black54),
-                ),
-                const SizedBox(height: 8),
-                // شارة نوع الطلب والحالة
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isUrgent ? Colors.redAccent.withOpacity(0.15) : _mainColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isUrgent ? Colors.redAccent.withOpacity(0.4) : _mainColor.withOpacity(0.4),
-                        ),
-                      ),
-                      child: Text(
-                        typeLabel,
-                        style: TextStyle(
-                          color: isUrgent ? Colors.redAccent : _mainColor,
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _statusColor(statusAr).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _statusColor(statusAr).withOpacity(0.4)),
-                      ),
-                      child: Text(
-                        statusAr,
-                        style: TextStyle(
-                          color: _statusColor(statusAr),
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // التفاصيل
-                Text(
-                  '${(req['subcategory_name'] ?? '').toString()} • ${(req['city'] ?? '').toString()}',
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black54),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _formatDate(req['created_at']),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black45),
-                ),
-                if ((req['client_name'] ?? '').toString().trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'العميل: ${(req['client_name'] ?? '').toString()}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black87),
-                  ),
-                ],
-                if ((req['client_phone'] ?? '').toString().trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'الجوال: ${(req['client_phone'] ?? '').toString()}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black87),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                // رسالة التحديثات
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'لا توجد تحديثات حتى الآن',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.black54),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // الأزرار
-                if (showStartButton)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _startRequest(req);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _mainColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.play_circle_outline, size: 20),
-                      label: const Text(
-                        'بدء التنفيذ',
-                        style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _openRequestDetails(req, urgentTab: urgentTab);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      side: BorderSide(color: Colors.grey.shade400),
-                    ),
-                    icon: const Icon(Icons.description_outlined, size: 20),
-                    label: const Text(
-                      'شرح الطلب',
-                      style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _startRequest(Map<String, dynamic> req) async {
