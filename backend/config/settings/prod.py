@@ -99,15 +99,26 @@ LOGGING = {
 			"format": "%(asctime)s %(levelname)s %(name)s %(message)s",
 		}
 	},
+	"filters": {
+		"exclude_health_access": {
+			"()": "apps.core.logging_filters.ExcludeHealthCheckAccessFilter",
+		}
+	},
 	"handlers": {
 		"console": {
 			"class": "logging.StreamHandler",
 			"formatter": "standard",
-		},
+		}
 	},
 	"root": {"handlers": ["console"], "level": _log_level},
 	"loggers": {
 		"django.request": {"handlers": ["console"], "level": _log_level, "propagate": False},
 		"django.security": {"handlers": ["console"], "level": _log_level, "propagate": False},
+		"uvicorn.access": {
+			"handlers": ["console"],
+			"level": "INFO",
+			"propagate": False,
+			"filters": ["exclude_health_access"],
+		},
 	},
 }

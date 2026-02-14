@@ -6,7 +6,7 @@ services:
     buildCommand: bash scripts/render_build.sh
     startCommand: bash scripts/render_start.sh
     autoDeployTrigger: commit
-    healthCheckPath: /health/
+    healthCheckPath: /health/live/
     envVars:
       - key: DJANGO_ENV
         value: prod
