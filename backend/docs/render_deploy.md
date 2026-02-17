@@ -50,24 +50,37 @@ Safety:
 
 - This is forced off in production settings.
 
-## OTP app bypass (Flutter QA, staging only)
+## OTP app bypass (Flutter QA, staging/testing only)
+
+⚠️ **For testing/staging environments ONLY** ⚠️
 
 If your QA testers use the real Flutter app, sending a secret header is not practical.
-For staging only, you can enable an app bypass where `POST /api/accounts/otp/verify/` accepts **any** 4-digit code and issues JWT tokens **without headers**.
+For staging/testing only, you can enable an app bypass where `POST /api/accounts/otp/verify/` accepts **any** 4-digit code and issues JWT tokens **without headers**.
 
-- Set env vars on the Render service (staging only):
-	- `OTP_APP_BYPASS=1`
-	- (optional but recommended) `OTP_APP_BYPASS_ALLOWLIST=+9665xxxxxxx,+9665yyyyyyy`
+**Steps to enable on Render:**
 
-Behavior:
+1. Go to your Render Dashboard → **nawafeth-backend** service
+2. Navigate to **Environment** tab
+3. Add the following environment variable:
+   - Key: `OTP_APP_BYPASS`
+   - Value: `1`
+4. (Optional) To restrict bypass to specific phone numbers, add:
+   - Key: `OTP_APP_BYPASS_ALLOWLIST`
+   - Value: `+9665xxxxxxx,+9665yyyyyyy` (comma-separated)
+5. Click **Save Changes** (Render will auto-deploy)
+
+**Behavior:**
 
 - When allowlist is set, bypass works **only** for those phone numbers.
 - Bypass requires an existing OTP record, so the client must still call `POST /api/accounts/otp/send/` first (this keeps cooldown/limits meaningful).
-- Each bypass usage is logged with phone + IP for monitoring.
+- Each bypass usage is logged with `phone` + `ip` for monitoring.
 
-Safety:
+**Safety & Important Notes:**
 
-- This is forced off in production settings.
+- ⚠️ **SECURITY RISK**: Anyone can login with any 4 digits when enabled.
+- ✅ Use ONLY for testing/staging environments with test data.
+- ❌ **Remove or set to 0 before exposing to real users.**
+- The setting is now configurable via environment variable (previously hardcoded off).
 
 ## Flutter QA test steps
 

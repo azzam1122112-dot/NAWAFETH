@@ -9,9 +9,17 @@ OTP_TEST_MODE = False
 OTP_TEST_KEY = ""
 OTP_TEST_CODE = ""
 
-# Never allow app QA bypass in production.
-OTP_APP_BYPASS = False
-OTP_APP_BYPASS_ALLOWLIST = []
+# ⚠️ OTP_APP_BYPASS: For staging/testing ONLY on Render.
+# To enable (bypasses OTP verification for any 4-digit code):
+# - Set environment variable OTP_APP_BYPASS=1 on Render
+# - ⚠️ WARNING: This is a SECURITY RISK. Use only for testing/staging environments.
+# - Remove or set to 0 before exposing to real users.
+OTP_APP_BYPASS = os.getenv("OTP_APP_BYPASS", "0") == "1"
+OTP_APP_BYPASS_ALLOWLIST = [
+    p.strip()
+    for p in os.getenv("OTP_APP_BYPASS_ALLOWLIST", "").split(",")
+    if p.strip()
+]
 
 # Render (and similar PaaS) hostnames
 if ".onrender.com" not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
