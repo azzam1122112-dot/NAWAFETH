@@ -154,15 +154,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
 
-    // We don't depend on any dev_code; user completes OTP manually.
-
     // نحفظ الرقم ونحوّل لصفحة OTP دائماً بعد التحقق من الصيغة.
     // إرسال OTP من السيرفر يحاول، لكن فشله لا يمنع الانتقال.
+    String? devCode;
     try {
       final api = AuthApi();
       await const SessionStorage().savePhone(phoneLocal);
       try {
-        await api.sendOtp(phone: phoneLocal);
+        devCode = await api.sendOtp(phone: phoneLocal);
       } catch (_) {
         // ignore
       }
@@ -197,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (_) => TwoFAScreen(
           phone: phoneLocal,
           redirectTo: widget.redirectTo,
-          initialDevCode: null,
+          initialDevCode: devCode,
         ),
       ),
     );
