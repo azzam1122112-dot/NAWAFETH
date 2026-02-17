@@ -26,10 +26,39 @@ param(
     [switch]$AllowDowngrade,
 
     [Parameter(Mandatory = $false)]
-    [switch]$Launch
+    [switch]$Launch,
+
+    # Build-time API base URL override (passed to Flutter via --dart-define)
+    # Example: http://127.0.0.1:8000  (use with adb reverse)
+    [Parameter(Mandatory = $false)]
+    [string]$ApiBaseUrl,
+
+    # Convenience: Local mode sets ApiBaseUrl=http://127.0.0.1:8000 and enables adb reverse.
+    [Parameter(Mandatory = $false)]
+    [switch]$Local,
+
+    # Enable adb reverse for local backend reachability from a physical Android device.
+    [Parameter(Mandatory = $false)]
+    [switch]$AdbReverse,
+
+    # Port used for adb reverse mapping (tcp:<port> -> tcp:<port>)
+    [Parameter(Mandatory = $false)]
+    [int]$ReversePort = 8000,
+
+    # Optionally start local Django backend (dev server) on 0.0.0.0:<BackendPort>
+    [Parameter(Mandatory = $false)]
+    [switch]$StartBackend,
+
+    [Parameter(Mandatory = $false)]
+    [int]$BackendPort = 8000
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Avoid treating native stderr output as terminating errors.
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 
 function Assert-Command {
     param(
@@ -60,6 +89,65 @@ function Write-Ok {
     Write-Host $Message -ForegroundColor Green
 }
 
+function Start-AdbServer {
+    try {
+        # Some environments print daemon startup logs to stderr/stdout; ignore and continue.
+        & adb start-server 2>$null | Out-Null
+    } catch {
+        # Non-fatal: device detection will still fail later with a clearer message.
+    }
+}
+
+function Test-LocalPortOpen {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Port
+    )
+
+    try {
+        return (Test-NetConnection -ComputerName '127.0.0.1' -Port $Port -InformationLevel Quiet)
+    } catch {
+        return $false
+    }
+}
+
+function Start-LocalBackendServer {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Port
+    )
+
+    if (Test-LocalPortOpen -Port $Port) {
+        Write-Warn "Backend already appears to be running on port $Port. Skipping start."
+        return
+    }
+
+    $repoRoot = $PSScriptRoot
+    $backendPath = Join-Path $repoRoot 'backend'
+    if (-not (Test-Path $backendPath)) {
+        Write-Warn "Backend folder not found at: $backendPath. Skipping backend start."
+        return
+    }
+
+    $venvPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
+    $pythonExe = if (Test-Path $venvPython) { $venvPython } else { 'python' }
+
+    $managePy = Join-Path $backendPath 'manage.py'
+    if (-not (Test-Path $managePy)) {
+        Write-Warn "manage.py not found at: $managePy. Skipping backend start."
+        return
+    }
+
+    $processArgs = @('manage.py', 'runserver', "0.0.0.0:$Port")
+    Write-Step "Starting local backend on 0.0.0.0:$Port (background)..."
+    try {
+        $p = Start-Process -FilePath $pythonExe -ArgumentList $processArgs -WorkingDirectory $backendPath -WindowStyle Minimized -PassThru
+        Write-Ok "Backend started (PID $($p.Id))."
+    } catch {
+        Write-Warn "Failed to start backend automatically. You can run: cd backend; python manage.py runserver 0.0.0.0:$Port"
+    }
+}
+
 function Get-PackageNameFromGradle {
     param(
         [Parameter(Mandatory = $true)]
@@ -81,10 +169,13 @@ function Get-PackageNameFromGradle {
 
 function Get-AdbDevices {
     # Returns array of objects: { Id, State, Raw }
-    $lines = & adb devices -l 2>$null
+    $lines = & adb devices -l 2>&1
     if (-not $lines) {
         return @()
     }
+
+    # Filter out daemon startup noise (e.g., '* daemon not running; starting now...')
+    $lines = @($lines | Where-Object { $_ -and ($_ -notmatch '^\*\s+daemon\s+') })
 
     $deviceLines = @($lines | Select-Object -Skip 1 | Where-Object { $_ -match '\S+' })
     $devices = @()
@@ -163,6 +254,18 @@ if (-not (Test-Path $mobilePath)) {
 
 Assert-Command -Name adb -InstallHint "Install Android Platform-Tools (adb) and add it to PATH, then re-run."
 
+Start-AdbServer
+
+if ($Local) {
+    if (-not $ApiBaseUrl) {
+        $ApiBaseUrl = 'http://127.0.0.1:8000'
+    }
+    $AdbReverse = $true
+    $StartBackend = $true
+    $ReversePort = 8000
+    $BackendPort = 8000
+}
+
 if (-not $ApkPath) {
     Assert-Command -Name flutter -InstallHint "Install Flutter and ensure 'flutter' is on PATH, then re-run."
 }
@@ -209,6 +312,19 @@ try {
 
     Assert-AdbDeviceOnline -Id $DeviceId
 
+    if ($StartBackend) {
+        Start-LocalBackendServer -Port $BackendPort
+    }
+
+    if ($AdbReverse) {
+        Write-Step "Setting adb reverse tcp:$ReversePort -> tcp:$ReversePort for device '$DeviceId'..."
+        try {
+            & adb -s $DeviceId reverse "tcp:$ReversePort" "tcp:$ReversePort" | Out-Null
+        } catch {
+            Write-Warn "adb reverse failed. If you're using a local backend, the phone may not reach it."
+        }
+    }
+
     if ($UninstallFirst) {
         Write-Step "Uninstalling old app '$PackageName' from device '$DeviceId' (will clear app data)..."
         & adb -s $DeviceId uninstall $PackageName | Out-Host
@@ -230,7 +346,13 @@ try {
 
         $modeFlag = "--$Mode"
         Write-Step "Building APK ($Mode)..."
-        flutter build apk $modeFlag
+        $buildArgs = @('build', 'apk', $modeFlag)
+        if ($ApiBaseUrl -and $ApiBaseUrl.Trim().Length -gt 0) {
+            Write-Host "Using API_BASE_URL=$ApiBaseUrl" -ForegroundColor Cyan
+            $buildArgs += "--dart-define=API_BASE_URL=$ApiBaseUrl"
+        }
+
+        flutter @buildArgs
         if ($LASTEXITCODE -ne 0) {
             throw "flutter build apk failed (exit code $LASTEXITCODE)."
         }
