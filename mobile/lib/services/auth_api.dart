@@ -32,8 +32,12 @@ class OtpVerifyResult {
 }
 
 class AuthApi {
-  // Development mode: allow any 4-digit OTP and skip backend verification.
-  static const bool _devAllowAny4DigitsOtp = true;
+  // Development fallback mode (disabled by default):
+  // enable with --dart-define=DEV_ALLOW_ANY_OTP_FALLBACK=true
+  static const bool _devAllowAny4DigitsOtpFallback = bool.fromEnvironment(
+    'DEV_ALLOW_ANY_OTP_FALLBACK',
+    defaultValue: false,
+  );
 
   final Dio _dio;
 
@@ -47,9 +51,20 @@ class AuthApi {
 
   Future<OtpVerifyResult> otpVerify({required String phone, required String code}) async {
     final normalized = code.trim();
-    if (_devAllowAny4DigitsOtp &&
-        normalized.length == 4 &&
-        int.tryParse(normalized) != null) {
+    try {
+      final result = await verifyOtp(phone: phone, code: code);
+      if (result.access.trim().isNotEmpty && result.refresh.trim().isNotEmpty) {
+        await ApiDio.setTokens(result.access, result.refresh);
+      }
+      return result;
+    } on DioException catch (e) {
+      final shouldFallback = _devAllowAny4DigitsOtpFallback &&
+          normalized.length == 4 &&
+          int.tryParse(normalized) != null &&
+          e.response?.statusCode == 400;
+
+      if (!shouldFallback) rethrow;
+
       const devResult = OtpVerifyResult(
         ok: true,
         isNewUser: false,
@@ -60,12 +75,6 @@ class AuthApi {
       await ApiDio.setTokens(devResult.access, devResult.refresh);
       return devResult;
     }
-
-    final result = await verifyOtp(phone: phone, code: code);
-    if (result.access.trim().isNotEmpty && result.refresh.trim().isNotEmpty) {
-      await ApiDio.setTokens(result.access, result.refresh);
-    }
-    return result;
   }
 
   Future<String?> sendOtp({required String phone}) async {

@@ -28,7 +28,7 @@ class TwoFAScreen extends StatefulWidget {
 }
 
 class _TwoFAScreenState extends State<TwoFAScreen> {
-  // Development mode: accept any 4-digit OTP when backend/SMS provider is not ready.
+  // Development shortcut: accept any 4-digit OTP.
   static const bool _devAllowAny4DigitsOtp = true;
 
   final TextEditingController _codeController = TextEditingController();
