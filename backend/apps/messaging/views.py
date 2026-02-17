@@ -340,6 +340,7 @@ class MyDirectThreadsListView(APIView):
 			result.append({
 				"thread_id": t.id,
 				"peer_id": peer.id,
+				"peer_provider_id": getattr(peer_provider, "id", None),
 				"peer_name": (
 					peer_provider.display_name if peer_provider
 					else getattr(peer, "get_full_name", lambda: "")() or getattr(peer, "phone", str(peer))

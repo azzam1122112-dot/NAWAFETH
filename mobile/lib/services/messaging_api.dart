@@ -137,6 +137,38 @@ class MessagingApi {
     return _asMap(raw);
   }
 
+  int? statusCodeOf(Object error) {
+    if (error is DioException) return error.response?.statusCode;
+    return null;
+  }
+
+  String? errorMessageOf(Object error) {
+    if (error is! DioException) return null;
+    final data = error.response?.data;
+
+    if (data is Map) {
+      const keys = [
+        'error',
+        'detail',
+        'message',
+        'body',
+        'non_field_errors',
+      ];
+      for (final key in keys) {
+        final value = data[key];
+        if (value is String && value.trim().isNotEmpty) return value.trim();
+        if (value is List && value.isNotEmpty) {
+          final first = value.first;
+          if (first is String && first.trim().isNotEmpty) return first.trim();
+        }
+      }
+    } else if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+
+    return null;
+  }
+
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) {

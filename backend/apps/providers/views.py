@@ -169,11 +169,19 @@ class ProviderListView(generics.ListAPIView):
 	permission_classes = [permissions.AllowAny]
 
 	def get_queryset(self):
-		# Annotate with counts
-		qs = ProviderProfile.objects.annotate(
-			followers_count=Count("followers"),
-			likes_count=Count("likes"),
-		).order_by("-id")
+		# Public list must include only real active provider accounts.
+		qs = (
+			ProviderProfile.objects.select_related("user")
+			.filter(
+				user__is_active=True,
+				user__role_state=UserRole.PROVIDER,
+			)
+			.annotate(
+				followers_count=Count("followers", distinct=True),
+				likes_count=Count("likes", distinct=True),
+			)
+			.order_by("-id")
+		)
 
 		q = (self.request.query_params.get("q") or "").strip()
 		city = (self.request.query_params.get("city") or "").strip()
@@ -207,7 +215,7 @@ class ProviderListView(generics.ListAPIView):
 					qs = qs.filter(providercategory__subcategory_id__in=sub_ids)
 			except ValueError:
 				pass
-		return qs
+		return qs.distinct()
 
 
 class ProviderDetailView(generics.RetrieveAPIView):
@@ -215,9 +223,16 @@ class ProviderDetailView(generics.RetrieveAPIView):
 	permission_classes = [permissions.AllowAny]
 
 	def get_queryset(self):
-		return ProviderProfile.objects.annotate(
-			followers_count=Count("followers"),
-			likes_count=Count("likes"),
+		return (
+			ProviderProfile.objects.select_related("user")
+			.filter(
+				user__is_active=True,
+				user__role_state=UserRole.PROVIDER,
+			)
+			.annotate(
+				followers_count=Count("followers", distinct=True),
+				likes_count=Count("likes", distinct=True),
+			)
 		)
 
 

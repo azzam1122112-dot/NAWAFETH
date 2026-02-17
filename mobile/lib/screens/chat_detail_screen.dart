@@ -420,9 +420,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         try {
           _socket!.add(jsonEncode({'type': 'message', 'text': text}));
         } catch (_) {
-          if (_isDirect && _threadId != null) {
-            await _api.sendDirectMessage(threadId: _threadId!, body: text);
-            await _loadDirectMessages();
+          if (_isDirect) {
+            await _sendDirectMessageWithRecovery(text);
           } else if (_requestId != null) {
             await _api.sendMessage(requestId: _requestId!, body: text);
             await _loadMessages();
@@ -430,9 +429,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             rethrow;
           }
         }
-      } else if (_isDirect && _threadId != null) {
-        await _api.sendDirectMessage(threadId: _threadId!, body: text);
-        await _loadDirectMessages();
+      } else if (_isDirect) {
+        await _sendDirectMessageWithRecovery(text);
       } else if (_requestId != null) {
         await _api.sendMessage(requestId: _requestId!, body: text);
         await _loadMessages();
@@ -441,11 +439,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (mounted && _peerTyping) {
         setState(() => _peerTyping = false);
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
+        final apiError = _api.errorMessageOf(error);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('تعذر إرسال الرسالة.')));
+        ).showSnackBar(
+          SnackBar(content: Text(apiError ?? 'تعذر إرسال الرسالة.')),
+        );
       }
     } finally {
       if (mounted) {
@@ -468,30 +469,62 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         try {
           _socket!.add(jsonEncode({'type': 'message', 'text': linkText}));
         } catch (_) {
-          if (_isDirect && _threadId != null) {
-            await _api.sendDirectMessage(threadId: _threadId!, body: linkText);
-            await _loadDirectMessages();
+          if (_isDirect) {
+            await _sendDirectMessageWithRecovery(linkText);
           } else if (_requestId != null) {
             await _api.sendMessage(requestId: _requestId!, body: linkText);
             await _loadMessages();
           }
         }
-      } else if (_isDirect && _threadId != null) {
-        await _api.sendDirectMessage(threadId: _threadId!, body: linkText);
-        await _loadDirectMessages();
+      } else if (_isDirect) {
+        await _sendDirectMessageWithRecovery(linkText);
       } else if (_requestId != null) {
         await _api.sendMessage(requestId: _requestId!, body: linkText);
         await _loadMessages();
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
+        final apiError = _api.errorMessageOf(error);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر إرسال رابط الطلب.')),
+          SnackBar(content: Text(apiError ?? 'تعذر إرسال رابط الطلب.')),
         );
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  Future<void> _sendDirectMessageWithRecovery(String body) async {
+    Object? directError;
+    if (_threadId != null) {
+      try {
+        await _api.sendDirectMessage(threadId: _threadId!, body: body);
+        await _loadDirectMessages();
+        return;
+      } catch (error) {
+        directError = error;
+        final status = _api.statusCodeOf(error);
+        final canRecover = status == 403 || status == 404;
+        if (!canRecover) rethrow;
+      }
+    }
+
+    final providerId = int.tryParse((widget.peerId ?? '').trim());
+    if (providerId == null) {
+      if (directError != null) throw directError;
+      throw Exception('تعذر تحديد مزود الخدمة للمحادثة.');
+    }
+
+    final thread = await _api.getOrCreateDirectThread(providerId);
+    final recoveredThreadId = _asInt(thread['id']);
+    if (recoveredThreadId == null) {
+      throw Exception('تعذر استعادة المحادثة المباشرة.');
+    }
+
+    _threadId = recoveredThreadId;
+    await _api.sendDirectMessage(threadId: recoveredThreadId, body: body);
+    await _loadDirectMessages();
+    await _connectWs();
   }
 
   bool _isServiceRequestLink(String text) {

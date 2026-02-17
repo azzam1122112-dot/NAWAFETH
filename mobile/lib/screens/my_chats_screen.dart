@@ -166,7 +166,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
         final threadId = _asInt(dt['thread_id']);
         if (threadId == null) continue;
 
-        final peerId = _asInt(dt['peer_id']);
+        final peerId = _asInt(dt['peer_provider_id']) ?? _asInt(dt['peer_id']);
         final peerName = (dt['peer_name'] ?? '').toString();
         final lastMessage = (dt['last_message'] ?? '').toString();
         final lastMessageAt =
