@@ -247,9 +247,9 @@ class AvailableUrgentRequestsView(generics.ListAPIView):
 				request_type=RequestType.URGENT,
 				provider__isnull=True,
 				status__in=[RequestStatus.NEW, RequestStatus.SENT],
-				city=provider.city,
 				subcategory_id__in=provider_subcats,
 			)
+			.filter(Q(city=provider.city) | Q(city=""))
 			.exclude(expires_at__isnull=False, expires_at__lt=now)
 			.order_by("-created_at")
 		)

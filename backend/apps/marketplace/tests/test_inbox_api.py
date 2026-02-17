@@ -312,3 +312,151 @@ def test_provider_can_accept_assigned_normal_request():
     assert accept.status_code == 200
     sr.refresh_from_db()
     assert sr.status == RequestStatus.ACCEPTED
+
+
+@pytest.mark.django_db
+def test_available_urgent_blank_city_matches_any_provider_city_with_same_subcategory():
+    cat = Category.objects.create(name="خدمات", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="نجارة", is_active=True)
+
+    from apps.accounts.models import User
+
+    user_riyadh = User.objects.create(phone="0500004011", username="prov_4011")
+    provider_riyadh = ProviderProfile.objects.create(
+        user=user_riyadh,
+        provider_type="individual",
+        display_name="مزود الرياض",
+        bio="bio",
+        years_experience=1,
+        city="Riyadh",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=provider_riyadh, subcategory=sub)
+
+    user_jeddah = User.objects.create(phone="0500004012", username="prov_4012")
+    provider_jeddah = ProviderProfile.objects.create(
+        user=user_jeddah,
+        provider_type="individual",
+        display_name="مزود جدة",
+        bio="bio",
+        years_experience=1,
+        city="Jeddah",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=provider_jeddah, subcategory=sub)
+
+    urgent_any_city = ServiceRequest.objects.create(
+        client=user_riyadh,
+        subcategory=sub,
+        title="عاجل بدون مدينة",
+        description="desc",
+        request_type=RequestType.URGENT,
+        status=RequestStatus.SENT,
+        city="",
+        is_urgent=True,
+        expires_at=timezone.now() + timedelta(minutes=10),
+    )
+
+    client = APIClient()
+    send = client.post("/api/accounts/otp/send/", {"phone": "0500004011"}, format="json")
+    assert send.status_code == 200
+    code = send.json().get("dev_code") or OTP.objects.filter(phone="0500004011").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert code
+    verify = client.post("/api/accounts/otp/verify/", {"phone": "0500004011", "code": code}, format="json")
+    assert verify.status_code == 200
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {verify.json()['access']}")
+    res_riyadh = client.get("/api/marketplace/provider/urgent/available/")
+    assert res_riyadh.status_code == 200
+    ids_riyadh = {item["id"] for item in res_riyadh.json()}
+    assert urgent_any_city.id in ids_riyadh
+
+    client2 = APIClient()
+    send2 = client2.post("/api/accounts/otp/send/", {"phone": "0500004012"}, format="json")
+    assert send2.status_code == 200
+    code2 = send2.json().get("dev_code") or OTP.objects.filter(phone="0500004012").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert code2
+    verify2 = client2.post("/api/accounts/otp/verify/", {"phone": "0500004012", "code": code2}, format="json")
+    assert verify2.status_code == 200
+    client2.credentials(HTTP_AUTHORIZATION=f"Bearer {verify2.json()['access']}")
+    res_jeddah = client2.get("/api/marketplace/provider/urgent/available/")
+    assert res_jeddah.status_code == 200
+    ids_jeddah = {item["id"] for item in res_jeddah.json()}
+    assert urgent_any_city.id in ids_jeddah
+
+
+@pytest.mark.django_db
+def test_available_urgent_with_city_only_matches_same_city_and_subcategory():
+    cat = Category.objects.create(name="خدمات", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="سباكة", is_active=True)
+
+    from apps.accounts.models import User
+
+    user_riyadh = User.objects.create(phone="0500004021", username="prov_4021")
+    provider_riyadh = ProviderProfile.objects.create(
+        user=user_riyadh,
+        provider_type="individual",
+        display_name="مزود الرياض",
+        bio="bio",
+        years_experience=1,
+        city="Riyadh",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=provider_riyadh, subcategory=sub)
+
+    user_jeddah = User.objects.create(phone="0500004022", username="prov_4022")
+    provider_jeddah = ProviderProfile.objects.create(
+        user=user_jeddah,
+        provider_type="individual",
+        display_name="مزود جدة",
+        bio="bio",
+        years_experience=1,
+        city="Jeddah",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=provider_jeddah, subcategory=sub)
+
+    urgent_riyadh = ServiceRequest.objects.create(
+        client=user_riyadh,
+        subcategory=sub,
+        title="عاجل في الرياض",
+        description="desc",
+        request_type=RequestType.URGENT,
+        status=RequestStatus.SENT,
+        city="Riyadh",
+        is_urgent=True,
+        expires_at=timezone.now() + timedelta(minutes=10),
+    )
+
+    client = APIClient()
+    send = client.post("/api/accounts/otp/send/", {"phone": "0500004021"}, format="json")
+    assert send.status_code == 200
+    code = send.json().get("dev_code") or OTP.objects.filter(phone="0500004021").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert code
+    verify = client.post("/api/accounts/otp/verify/", {"phone": "0500004021", "code": code}, format="json")
+    assert verify.status_code == 200
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {verify.json()['access']}")
+    res_riyadh = client.get("/api/marketplace/provider/urgent/available/")
+    assert res_riyadh.status_code == 200
+    ids_riyadh = {item["id"] for item in res_riyadh.json()}
+    assert urgent_riyadh.id in ids_riyadh
+
+    client2 = APIClient()
+    send2 = client2.post("/api/accounts/otp/send/", {"phone": "0500004022"}, format="json")
+    assert send2.status_code == 200
+    code2 = send2.json().get("dev_code") or OTP.objects.filter(phone="0500004022").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert code2
+    verify2 = client2.post("/api/accounts/otp/verify/", {"phone": "0500004022", "code": code2}, format="json")
+    assert verify2.status_code == 200
+    client2.credentials(HTTP_AUTHORIZATION=f"Bearer {verify2.json()['access']}")
+    res_jeddah = client2.get("/api/marketplace/provider/urgent/available/")
+    assert res_jeddah.status_code == 200
+    ids_jeddah = {item["id"] for item in res_jeddah.json()}
+    assert urgent_riyadh.id not in ids_jeddah

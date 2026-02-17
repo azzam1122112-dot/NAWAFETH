@@ -274,3 +274,60 @@ def test_create_normal_request_requires_provider():
     )
 
     assert res.status_code == 400
+
+
+@pytest.mark.django_db
+def test_create_urgent_allows_blank_city_when_dispatch_all():
+    cat = Category.objects.create(name="خدمات", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="كهرباء", is_active=True)
+
+    client = APIClient()
+    send = client.post("/api/accounts/otp/send/", {"phone": "0500000005"}, format="json")
+    assert send.status_code == 200
+    payload = send.json()
+    dev_code = payload.get("dev_code") or OTP.objects.filter(phone="0500000005").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert dev_code
+
+    verify = client.post(
+        "/api/accounts/otp/verify/",
+        {"phone": "0500000005", "code": dev_code},
+        format="json",
+    )
+    assert verify.status_code == 200
+    access = verify.json()["access"]
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    complete = client.post(
+        "/api/accounts/complete/",
+        {
+            "first_name": "عميل",
+            "last_name": "بدون مدينة",
+            "username": "user_0500000005",
+            "email": "0500000005@example.com",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+            "accept_terms": True,
+        },
+        format="json",
+    )
+    assert complete.status_code == 200
+
+    res = client.post(
+        "/api/marketplace/requests/create/",
+        {
+            "subcategory": sub.id,
+            "title": "طلب عاجل بدون مدينة",
+            "description": "desc",
+            "request_type": "urgent",
+            "dispatch_mode": "all",
+            "city": "",
+        },
+        format="json",
+    )
+
+    assert res.status_code == 201
+    sr = ServiceRequest.objects.get(id=res.json()["id"])
+    assert sr.city == ""
+    assert sr.request_type == "urgent"

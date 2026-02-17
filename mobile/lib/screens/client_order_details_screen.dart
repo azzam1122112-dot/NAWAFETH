@@ -193,6 +193,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       );
 
       _didSubmitReview = true;
+      _showRatingForm = false;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -207,6 +208,13 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       if (!mounted) return;
       final msg =
           _extractErrorMessage(e.response?.data) ?? 'تعذر إرسال التقييم';
+      final lower = msg.toLowerCase();
+      if (lower.contains('تم تقييم هذا الطلب') || lower.contains('مسبق')) {
+        setState(() {
+          _didSubmitReview = true;
+          _showRatingForm = false;
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
@@ -979,46 +987,73 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: _mainColor.withValues(alpha: 0.07),
+                                  color: _didSubmitReview
+                                      ? Colors.green.withValues(alpha: 0.10)
+                                      : _mainColor.withValues(alpha: 0.07),
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: _mainColor.withValues(alpha: 0.25),
+                                    color: _didSubmitReview
+                                        ? Colors.green.withValues(alpha: 0.35)
+                                        : _mainColor.withValues(alpha: 0.25),
                                   ),
                                 ),
-                                child: const Text(
-                                  'تنبيه: يرجى مراجعة الطلب وتقييم الخدمة.',
+                                child: Text(
+                                  _didSubmitReview
+                                      ? 'تم تقييم الطلب مسبقاً.'
+                                      : 'تنبيه: يرجى مراجعة الطلب وتقييم الخدمة.',
                                   style: TextStyle(
                                     fontFamily: 'Cairo',
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w700,
-                                    color: _mainColor,
+                                    color: _didSubmitReview
+                                        ? Colors.green.shade700
+                                        : _mainColor,
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 12),
                               SizedBox(
                                 width: double.infinity,
-                                child: OutlinedButton(
-                                  onPressed: () => setState(
-                                    () => _showRatingForm = !_showRatingForm,
-                                  ),
+                                child: OutlinedButton.icon(
+                                  onPressed: _didSubmitReview
+                                      ? null
+                                      : () => setState(
+                                            () =>
+                                                _showRatingForm = !_showRatingForm,
+                                          ),
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 14,
                                     ),
-                                    side: const BorderSide(color: _mainColor),
+                                    side: BorderSide(
+                                      color: _didSubmitReview
+                                          ? Colors.green.shade600
+                                          : _mainColor,
+                                    ),
                                   ),
-                                  child: const Text(
-                                    'تقييم الخدمة',
+                                  icon: Icon(
+                                    _didSubmitReview
+                                        ? Icons.verified_rounded
+                                        : Icons.rate_review_outlined,
+                                    color: _didSubmitReview
+                                        ? Colors.green.shade700
+                                        : _mainColor,
+                                  ),
+                                  label: Text(
+                                    _didSubmitReview
+                                        ? 'تم التقييم مسبقاً'
+                                        : 'تقييم الخدمة',
                                     style: TextStyle(
                                       fontFamily: 'Cairo',
                                       fontWeight: FontWeight.bold,
-                                      color: _mainColor,
+                                      color: _didSubmitReview
+                                          ? Colors.green.shade700
+                                          : _mainColor,
                                     ),
                                   ),
                                 ),
                               ),
-                              if (_showRatingForm) ...[
+                              if (_showRatingForm && !_didSubmitReview) ...[
                                 const SizedBox(height: 12),
                                 _ratingRow(
                                   label: 'سرعة الاستجابة',

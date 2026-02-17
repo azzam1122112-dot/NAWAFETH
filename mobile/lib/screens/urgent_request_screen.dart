@@ -65,13 +65,18 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
 
     final title = _titleController.text.trim();
     final desc = _descriptionController.text.trim();
-    if (title.isEmpty ||
-        desc.isEmpty ||
-        _selectedCity == null ||
-        _selectedCity!.isEmpty) {
+    final city = (_selectedCity ?? '').trim();
+    final requiresCity = _dispatchMode != 'all';
+    if (title.isEmpty || desc.isEmpty || (requiresCity && city.isEmpty)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أكمل العنوان والوصف والمدينة')),
+        SnackBar(
+          content: Text(
+            requiresCity
+                ? 'أكمل العنوان والوصف والمدينة'
+                : 'أكمل العنوان والوصف',
+          ),
+        ),
       );
       return;
     }
@@ -82,7 +87,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
       title: title,
       description: desc,
       requestType: 'urgent',
-      city: _selectedCity!,
+      city: city,
       dispatchMode: _dispatchMode,
     );
 
@@ -375,7 +380,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                     const SizedBox(width: 12),
                     const Expanded(
                       child: Text(
-                        "سيتم إرسال طلبك لجميع المزودين المتاحين في المدينة",
+                        "سيتم إرسال طلبك حسب طريقة الإرسال التي تختارها",
                         style: TextStyle(
                           fontSize: 12,
                           fontFamily: 'Cairo',
@@ -443,7 +448,12 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               ),
               const SizedBox(height: 24),
 
-              // City Selection
+              _buildSectionHeader("طريقة الإرسال", Icons.send_rounded, isDark),
+              const SizedBox(height: 12),
+              _buildDispatchModeCard(isDark),
+              const SizedBox(height: 24),
+
+              // City Selection (placed below dispatch options)
               _buildSectionHeader(
                 "المدينة",
                 Icons.location_city_rounded,
@@ -451,11 +461,6 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               ),
               const SizedBox(height: 12),
               _buildCityDropdown(isDark),
-              const SizedBox(height: 24),
-
-              _buildSectionHeader("طريقة الإرسال", Icons.send_rounded, isDark),
-              const SizedBox(height: 12),
-              _buildDispatchModeCard(isDark),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -539,6 +544,10 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               'إرسال لجميع مزودي الخدمة العاجلة',
               style: TextStyle(fontFamily: 'Cairo', fontSize: 13),
             ),
+            subtitle: const Text(
+              'المدينة اختيارية في هذا الخيار',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5),
+            ),
           ),
           RadioListTile<String>(
             value: 'nearest',
@@ -608,7 +617,9 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     return DropdownButtonFormField<String>(
       value: _selectedCity,
       decoration: InputDecoration(
-        hintText: 'اختر المدينة',
+        hintText: _dispatchMode == 'all'
+            ? 'اختياري: اختر المدينة (يمكن تركها فارغة)'
+            : 'اختر المدينة',
         hintStyle: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
         prefixIcon: const Icon(Icons.location_city),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -678,7 +689,11 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
               )
             : const Icon(Icons.send_rounded, size: 22),
         label: Text(
-          _submitting ? "جاري الإرسال..." : "إرسال للجميع في المدينة",
+          _submitting
+              ? "جاري الإرسال..."
+              : (_dispatchMode == 'all'
+                    ? "إرسال لجميع المزودين العاجلين"
+                    : "إرسال للأقرب في المدينة"),
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,

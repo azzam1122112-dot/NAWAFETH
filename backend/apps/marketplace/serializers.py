@@ -5,6 +5,7 @@ from apps.providers.models import ProviderCategory, ProviderProfile
 
 
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):
+    city = serializers.CharField(required=False, allow_blank=True)
     dispatch_mode = serializers.ChoiceField(
         choices=("all", "nearest"),
         required=False,
@@ -52,7 +53,14 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         provider = attrs.get("provider")
         request_type = attrs.get("request_type")
         city = (attrs.get("city") or "").strip()
+        dispatch_mode = (attrs.get("dispatch_mode") or "all").strip().lower()
         subcategory = attrs.get("subcategory")
+        attrs["city"] = city
+
+        # City is optional only for urgent broadcasts sent to all providers.
+        # For all other flows, keep city required.
+        if not city and not (request_type == "urgent" and dispatch_mode == "all"):
+            raise serializers.ValidationError({"city": "المدينة مطلوبة"})
 
         # Competitive/Urgent requests are broadcast to matching providers.
         # They must NOT be targeted to a single provider.

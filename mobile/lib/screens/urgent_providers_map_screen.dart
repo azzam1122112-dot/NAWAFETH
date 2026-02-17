@@ -624,7 +624,7 @@ class _UrgentProvidersMapScreenState extends State<UrgentProvidersMapScreen> {
                             ),
                           ],
                         ),
-                      ),
+                      );
                     },
                   ),
                 ],
