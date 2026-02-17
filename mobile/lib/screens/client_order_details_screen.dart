@@ -32,9 +32,11 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   bool _editTitle = false;
   bool _editDetails = false;
 
+  bool _cancelOrder = false;
   bool _reopenCanceledOrder = false;
   bool _approveProviderInputs = false;
   bool _rejectProviderInputs = false;
+  bool _isSaving = false;
 
   bool _showRatingForm = false;
   late double _ratingResponseSpeed;
@@ -355,20 +357,114 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   }
 
   Future<void> _save() async {
-    final canDecideProviderInputs =
-        (_order.status == 'تحت التنفيذ' ||
-            _order.status == 'بانتظار اعتماد العميل') &&
-        _order.providerInputsApproved == null;
-    if (canDecideProviderInputs &&
-        (_approveProviderInputs || _rejectProviderInputs)) {
-      final requestId = _requestIdValue();
-      if (requestId != null) {
-        final ok = await MarketplaceApi().submitProviderInputsDecision(
+    if (_isSaving) return;
+    final requestId = _requestIdValue();
+    if (requestId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'رقم الطلب غير صالح',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final api = MarketplaceApi();
+      bool didAnyAction = false;
+      String successMessage = 'تم حفظ التغييرات بنجاح';
+
+      if (_reopenCanceledOrder && _order.status == 'ملغي') {
+        final ok = await api.reopenMyRequest(
+          requestId: requestId,
+          note: _reminderController.text.trim(),
+        );
+        if (!ok) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'تعذر إعادة فتح الطلب حالياً',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          );
+          return;
+        }
+        didAnyAction = true;
+        successMessage = 'تمت إعادة فتح الطلب كطلب جديد';
+      }
+
+      final canCancelOrder =
+          _order.status == 'جديد' || _order.status == 'بانتظار اعتماد العميل';
+      if (!_reopenCanceledOrder && _cancelOrder && canCancelOrder) {
+        final ok = await api.cancelMyRequest(
+          requestId: requestId,
+          note: _reminderController.text.trim(),
+        );
+        if (!ok) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'تعذر إلغاء الطلب حالياً',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          );
+          return;
+        }
+        didAnyAction = true;
+        successMessage = 'تم إلغاء الطلب بنجاح';
+      }
+
+      if (!_cancelOrder && !_reopenCanceledOrder) {
+        final title = _titleController.text.trim();
+        final details = _detailsController.text.trim();
+        final titleChanged = title.isNotEmpty && title != _order.title;
+        final detailsChanged = details.isNotEmpty && details != _order.details;
+
+        if (titleChanged || detailsChanged) {
+          final updated = await api.updateMyRequestDetail(
+            requestId: requestId,
+            title: titleChanged ? title : null,
+            description: detailsChanged ? details : null,
+          );
+          if (updated == null) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'تعذر تحديث بيانات الطلب حالياً',
+                  style: TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            );
+            return;
+          }
+          didAnyAction = true;
+          successMessage = 'تم تحديث بيانات الطلب';
+        }
+      }
+
+      final canDecideProviderInputs =
+          _order.status == 'بانتظار اعتماد العميل' &&
+          _order.providerInputsApproved == null;
+      if (!_cancelOrder &&
+          !_reopenCanceledOrder &&
+          canDecideProviderInputs &&
+          (_approveProviderInputs || _rejectProviderInputs)) {
+        final ok = await api.submitProviderInputsDecision(
           requestId: requestId,
           approved: _approveProviderInputs,
           note: _reminderController.text.trim(),
         );
-        if (!ok && mounted) {
+        if (!ok) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -379,42 +475,68 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
           );
           return;
         }
+        didAnyAction = true;
+        successMessage = _approveProviderInputs
+            ? 'تم اعتماد مدخلات مقدم الخدمة'
+            : 'تم رفض مدخلات مقدم الخدمة';
       }
+
+      if (!_cancelOrder &&
+          !_reopenCanceledOrder &&
+          _reminderController.text.trim().isNotEmpty &&
+          !(canDecideProviderInputs &&
+              (_approveProviderInputs || _rejectProviderInputs))) {
+        if ((_order.providerName ?? '').trim().isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'لا يمكن إرسال تذكير قبل تعيين مقدم خدمة للطلب',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          );
+          return;
+        }
+        final ok = await api.sendRequestReminder(
+          requestId: requestId,
+          message: _reminderController.text,
+        );
+        if (!ok) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'تعذر إرسال التذكير حالياً',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          );
+          return;
+        }
+        didAnyAction = true;
+        successMessage = 'تم إرسال التذكير للمختص';
+      }
+
+      if (!didAnyAction) {
+        successMessage = 'لا توجد تغييرات للحفظ';
+      }
+
+      await _refreshFromBackend(silent: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            successMessage,
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context, _order);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    final bool shouldReopen = _order.status == 'ملغي' && _reopenCanceledOrder;
-
-    final bool canUpdateRating = _order.status == 'مكتمل' && _didSubmitReview;
-
-    final updated = _order.copyWith(
-      status: shouldReopen ? 'جديد' : _order.status,
-      title: _titleController.text.trim().isEmpty
-          ? _order.title
-          : _titleController.text.trim(),
-      details: _detailsController.text.trim().isEmpty
-          ? _order.details
-          : _detailsController.text.trim(),
-      ratingResponseSpeed: canUpdateRating
-          ? _ratingResponseSpeed
-          : _order.ratingResponseSpeed,
-      ratingCostValue: canUpdateRating
-          ? _ratingCostValue
-          : _order.ratingCostValue,
-      ratingQuality: canUpdateRating ? _ratingQuality : _order.ratingQuality,
-      ratingCredibility: canUpdateRating
-          ? _ratingCredibility
-          : _order.ratingCredibility,
-      ratingOnTime: canUpdateRating ? _ratingOnTime : _order.ratingOnTime,
-      ratingComment: canUpdateRating
-          ? _ratingCommentController.text.trim()
-          : _order.ratingComment,
-      providerInputsApproved: _approveProviderInputs
-          ? true
-          : (_rejectProviderInputs ? false : _order.providerInputsApproved),
-    );
-
-    if (!mounted) return;
-    Navigator.pop(context, updated);
   }
 
   String _formatDateOnly(DateTime date) {
@@ -541,6 +663,8 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
     final cardPadding = isCompact ? 12.0 : 14.0;
     final cardRadius = isCompact ? 12.0 : 14.0;
     final statusColor = _statusColor(_order.status);
+    final canEditOrderFields =
+        _order.status == 'جديد' || _order.status == 'أُرسل';
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final borderColor = isDark ? Colors.white10 : Colors.grey.shade200;
 
@@ -1055,8 +1179,10 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                 children: [
                                   Checkbox(
                                     value: _approveProviderInputs,
-                                    onChanged: _order.providerInputsApproved !=
-                                            null
+                                    onChanged: (_order.status !=
+                                                'بانتظار اعتماد العميل' ||
+                                            _order.providerInputsApproved !=
+                                                null)
                                         ? null
                                         : (v) {
                                       setState(() {
@@ -1076,8 +1202,10 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                   ),
                                   Checkbox(
                                     value: _rejectProviderInputs,
-                                    onChanged: _order.providerInputsApproved !=
-                                            null
+                                    onChanged: (_order.status !=
+                                                'بانتظار اعتماد العميل' ||
+                                            _order.providerInputsApproved !=
+                                                null)
                                         ? null
                                         : (v) {
                                       setState(() {
@@ -1124,6 +1252,39 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                       if (_order.status == 'تحت التنفيذ' ||
                           _order.status == 'بانتظار اعتماد العميل')
                         const SizedBox(height: 12),
+                      if (_order.status == 'جديد' ||
+                          _order.status == 'بانتظار اعتماد العميل')
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Checkbox(
+                                value: _cancelOrder,
+                                onChanged: (v) => setState(
+                                  () => _cancelOrder = v ?? false,
+                                ),
+                              ),
+                              const Text(
+                                'إلغاء الطلب',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (_order.status == 'جديد' ||
+                          _order.status == 'بانتظار اعتماد العميل')
+                        const SizedBox(height: 12),
 
                       // Canceled extra fields
                       if (_order.status == 'ملغي')
@@ -1162,10 +1323,11 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                     ),
                                   ),
                                   const Text(
-                                    'إعادة فتح الطلب',
+                                    'إعادة فتح الطلب (كطلب جديد)',
                                     style: TextStyle(
                                       fontFamily: 'Cairo',
                                       fontWeight: FontWeight.bold,
+                                      color: Colors.green,
                                     ),
                                   ),
                                 ],
@@ -1188,14 +1350,14 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           children: [
                             _sectionHeader(
                               title: 'عنوان الطلب',
-                              canEdit: true,
+                              canEdit: canEditOrderFields,
                               isEditing: _editTitle,
                               onToggle: () =>
                                   setState(() => _editTitle = !_editTitle),
                             ),
                             TextField(
                               controller: _titleController,
-                              enabled: _editTitle,
+                              enabled: _editTitle && canEditOrderFields,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                               ),
@@ -1219,14 +1381,14 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                           children: [
                             _sectionHeader(
                               title: 'تفاصيل الطلب',
-                              canEdit: true,
+                              canEdit: canEditOrderFields,
                               isEditing: _editDetails,
                               onToggle: () =>
                                   setState(() => _editDetails = !_editDetails),
                             ),
                             TextField(
                               controller: _detailsController,
-                              enabled: _editDetails,
+                              enabled: _editDetails && canEditOrderFields,
                               minLines: isCompact ? 3 : 4,
                               maxLines: isCompact ? 5 : 7,
                               decoration: const InputDecoration(
@@ -1236,7 +1398,9 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'تنبيه: سيتم إشعار مقدم الخدمة بأي تعديل في بيانات الطلب.',
+                              canEditOrderFields
+                                  ? 'تنبيه: سيتم إشعار مقدم الخدمة بأي تعديل في بيانات الطلب.'
+                                  : 'لا يمكن تعديل بيانات الطلب في هذه المرحلة.',
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 12,
@@ -1267,25 +1431,6 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                                     style: TextStyle(
                                       fontFamily: 'Cairo',
                                       fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'تعديل المرفقات سيُضاف لاحقاً',
-                                          style: TextStyle(fontFamily: 'Cairo'),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  child: const Text(
-                                    'تعديل',
-                                    style: TextStyle(
-                                      fontFamily: 'Cairo',
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -1420,19 +1565,28 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _save,
+                        onPressed: _isSaving ? null : _save,
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           backgroundColor: _mainColor,
                         ),
-                        child: const Text(
-                          'حفظ',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        child: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'حفظ',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                       ),
                     ),
                   ],

@@ -16,6 +16,7 @@ from .views import (
     provider_requests,
     RequestCancelView,
     RequestCompleteView,
+    RequestReopenView,
     request_action,
     request_detail,
     RequestOffersListView,
@@ -114,6 +115,11 @@ urlpatterns += [
         "requests/<int:request_id>/cancel/",
         RequestCancelView.as_view(),
         name="request_cancel",
+    ),
+    path(
+        "requests/<int:request_id>/reopen/",
+        RequestReopenView.as_view(),
+        name="request_reopen",
     ),
     path(
         "requests/<int:request_id>/provider-inputs/decision/",

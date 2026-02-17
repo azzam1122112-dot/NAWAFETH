@@ -286,3 +286,186 @@ def test_provider_progress_update_creates_log_and_client_notification():
     notif = Notification.objects.filter(user=client_user, request_id=sr.id).order_by("-id").first()
     assert notif is not None
     assert notif.title == "تحديث على الطلب"
+
+
+@pytest.mark.django_db
+def test_client_can_patch_request_details_and_notify_provider():
+    client_user = User.objects.create_user(phone="0500000401")
+    provider_user = User.objects.create_user(phone="0500000402")
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="تنظيف")
+    sub = SubCategory.objects.create(category=cat, name="منازل")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب قديم",
+        description="وصف قديم",
+        request_type=RequestType.NORMAL,
+        status=RequestStatus.SENT,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    res = api.patch(
+        f"/api/marketplace/client/requests/{sr.id}/",
+        {"title": "طلب محدث", "description": "وصف محدث"},
+        format="json",
+    )
+    assert res.status_code == 200
+
+    sr.refresh_from_db()
+    assert sr.title == "طلب محدث"
+    assert sr.description == "وصف محدث"
+
+    log = RequestStatusLog.objects.filter(request=sr).order_by("-id").first()
+    assert log is not None
+    assert log.from_status == sr.status
+    assert log.to_status == sr.status
+    assert "تحديث بيانات الطلب من العميل" in (log.note or "")
+
+    notif = Notification.objects.filter(user=provider_user, request_id=sr.id).order_by("-id").first()
+    assert notif is not None
+    assert notif.title == "تحديث على الطلب"
+
+
+@pytest.mark.django_db
+def test_client_cannot_patch_request_details_when_in_progress():
+    client_user = User.objects.create_user(phone="0500000411")
+    provider_user = User.objects.create_user(phone="0500000412")
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="نظافة")
+    sub = SubCategory.objects.create(category=cat, name="مكاتب")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب جاري",
+        description="وصف جاري",
+        request_type=RequestType.NORMAL,
+        status=RequestStatus.IN_PROGRESS,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    res = api.patch(
+        f"/api/marketplace/client/requests/{sr.id}/",
+        {"title": "عنوان جديد"},
+        format="json",
+    )
+    assert res.status_code == 400
+    sr.refresh_from_db()
+    assert sr.title == "طلب جاري"
+
+
+@pytest.mark.django_db
+def test_client_cannot_patch_request_details_when_accepted():
+    client_user = User.objects.create_user(phone="0500000413")
+    provider_user = User.objects.create_user(phone="0500000414")
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="صيانة")
+    sub = SubCategory.objects.create(category=cat, name="مكيفات")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب بانتظار الاعتماد",
+        description="وصف",
+        request_type=RequestType.NORMAL,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    res = api.patch(
+        f"/api/marketplace/client/requests/{sr.id}/",
+        {"description": "وصف جديد"},
+        format="json",
+    )
+    assert res.status_code == 400
+    sr.refresh_from_db()
+    assert sr.description == "وصف"
+
+
+@pytest.mark.django_db
+def test_client_can_reopen_cancelled_request_as_new_with_new_created_at():
+    client_user = User.objects.create_user(phone="0500000501")
+    provider_user = User.objects.create_user(phone="0500000502")
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="نقل")
+    sub = SubCategory.objects.create(category=cat, name="أثاث")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب ملغي",
+        description="وصف",
+        request_type=RequestType.NORMAL,
+        status=RequestStatus.CANCELLED,
+        city="الرياض",
+        canceled_at=timezone.now(),
+        cancel_reason="تم الإلغاء",
+    )
+    old_created = sr.created_at
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    res = api.post(
+        f"/api/marketplace/requests/{sr.id}/reopen/",
+        {"note": "إعادة فتح"},
+        format="json",
+    )
+    assert res.status_code == 200
+
+    sr.refresh_from_db()
+    assert sr.status == RequestStatus.SENT
+    assert sr.created_at >= old_created
+    assert sr.canceled_at is None
+    assert sr.cancel_reason == ""

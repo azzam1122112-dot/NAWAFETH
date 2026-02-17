@@ -446,10 +446,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     );
 
     if (!mounted || updated == null) return;
-    setState(() {
-      final index = _orders.indexWhere((o) => o.id == updated.id);
-      if (index != -1) _orders[index] = updated;
-    });
+    await _fetchOrders();
   }
 
   @override
@@ -498,16 +495,6 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   }) {
     final horizontalPadding = isCompact ? 12.0 : 16.0;
     final cardRadius = isCompact ? 14.0 : 18.0;
-
-    final total = _orders.length;
-    final inProgress = _orders
-        .where(
-          (o) =>
-              o.status == 'تحت التنفيذ' || o.status == 'بانتظار اعتماد العميل',
-        )
-        .length;
-    final completed = _orders.where((o) => o.status == 'مكتمل').length;
-    final canceled = _orders.where((o) => o.status == 'ملغي').length;
 
     final listContent = orders.isEmpty
         ? ListView(
@@ -594,117 +581,6 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(isCompact ? 14 : 16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF667EEA),
-                      Color(0xFF764BA2),
-                      Color(0xFFF093FB),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(cardRadius),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF667EEA).withValues(alpha: 0.35),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            Icons.dashboard_customize_rounded,
-                            color: Colors.white,
-                            size: isCompact ? 20 : 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'إحصاءات طلباتي',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: isCompact ? 15 : 17,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'متابعة شاملة لجميع طلباتك مع تحديثات فورية',
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: isCompact ? 11 : 12,
-                        color: Colors.white.withValues(alpha: 0.95),
-                        height: 1.4,
-                      ),
-                    ),
-                    SizedBox(height: isCompact ? 14 : 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _modernSummaryBadge(
-                            'الإجمالي',
-                            total.toString(),
-                            Icons.grid_view_rounded,
-                            compact: isCompact,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _modernSummaryBadge(
-                            'قيد التنفيذ',
-                            inProgress.toString(),
-                            Icons.timelapse_rounded,
-                            compact: isCompact,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _modernSummaryBadge(
-                            'مكتمل',
-                            completed.toString(),
-                            Icons.check_circle_rounded,
-                            compact: isCompact,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _modernSummaryBadge(
-                            'ملغي',
-                            canceled.toString(),
-                            Icons.cancel_rounded,
-                            compact: isCompact,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: isCompact ? 14 : 16,
@@ -976,118 +852,6 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           fontSize: compact ? 10 : 11,
           fontWeight: FontWeight.bold,
         ),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontFamily: 'Cairo',
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: AppColors.softBlue,
-        ),
-      ),
-    );
-  }
-
-  Widget _modernSummaryBadge(
-    String title,
-    String value,
-    IconData icon, {
-    required bool compact,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 10 : 12,
-        vertical: compact ? 10 : 12,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: compact ? 16 : 18,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: compact ? 10 : 11,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: compact ? 16 : 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryBadge(String title, String value, {required bool compact}) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 9 : 10,
-        vertical: compact ? 6 : 7,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: compact ? 10 : 11,
-              color: Colors.white.withValues(alpha: 0.92),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: compact ? 11 : 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-        ],
       ),
     );
   }

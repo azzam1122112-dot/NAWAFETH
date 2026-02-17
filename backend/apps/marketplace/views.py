@@ -29,6 +29,7 @@ from .models import (
 	ServiceRequest,
 )
 from .serializers import (
+	ClientRequestUpdateSerializer,
 	OfferCreateSerializer,
 	OfferListSerializer,
 	ProviderInputsDecisionSerializer,
@@ -489,10 +490,14 @@ class ProviderAssignedRequestRejectView(APIView):
 		return Response({"ok": True, "request_id": sr.id, "status": sr.status}, status=status.HTTP_200_OK)
 
 
-class MyClientRequestDetailView(generics.RetrieveAPIView):
+class MyClientRequestDetailView(generics.RetrieveUpdateAPIView):
 	permission_classes = [IsAtLeastClient]
-	serializer_class = ProviderRequestDetailSerializer
 	lookup_url_kwarg = "request_id"
+
+	def get_serializer_class(self):
+		if self.request.method in ("PATCH", "PUT"):
+			return ClientRequestUpdateSerializer
+		return ProviderRequestDetailSerializer
 
 	def get_queryset(self):
 		return ServiceRequest.objects.select_related(
@@ -504,6 +509,55 @@ class MyClientRequestDetailView(generics.RetrieveAPIView):
 			"status_logs",
 			"status_logs__actor",
 		).filter(client=self.request.user)
+
+	def update(self, request, *args, **kwargs):
+		obj = self.get_object()
+		s = self.get_serializer(data=request.data, partial=True)
+		s.is_valid(raise_exception=True)
+
+		if obj.status in (
+			RequestStatus.ACCEPTED,
+			RequestStatus.IN_PROGRESS,
+			RequestStatus.COMPLETED,
+			RequestStatus.CANCELLED,
+			RequestStatus.EXPIRED,
+		):
+			return Response(
+				{"detail": "لا يمكن تعديل الطلب في هذه الحالة"},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
+
+		update_fields = []
+		changes = []
+
+		title = s.validated_data.get("title")
+		if title is not None:
+			title = title.strip()
+			if title and title != obj.title:
+				obj.title = title
+				update_fields.append("title")
+				changes.append("العنوان")
+
+		description = s.validated_data.get("description")
+		if description is not None:
+			description = description.strip()
+			if description and description != obj.description:
+				obj.description = description
+				update_fields.append("description")
+				changes.append("التفاصيل")
+
+		if update_fields:
+			obj.save(update_fields=update_fields)
+			RequestStatusLog.objects.create(
+				request=obj,
+				actor=request.user,
+				from_status=obj.status,
+				to_status=obj.status,
+				note=f"تحديث بيانات الطلب من العميل ({'، '.join(changes)})",
+			)
+
+		out = ProviderRequestDetailSerializer(obj, context={"request": request})
+		return Response(out.data, status=status.HTTP_200_OK)
 
 
 class CreateOfferView(APIView):
@@ -908,6 +962,72 @@ class RequestCancelView(APIView):
 				from_status=old,
 				to_status=sr.status,
 				note=note or "إلغاء من العميل",
+			)
+
+		return Response(
+			{"ok": True, "request_id": sr.id, "status": sr.status},
+			status=status.HTTP_200_OK,
+		)
+
+
+class RequestReopenView(APIView):
+	permission_classes = [permissions.IsAuthenticated]
+
+	def post(self, request, request_id):
+		s = RequestActionSerializer(data=request.data)
+		s.is_valid(raise_exception=True)
+		note = s.validated_data.get("note", "").strip()
+
+		with transaction.atomic():
+			sr = (
+				ServiceRequest.objects.select_for_update()
+				.select_related("client")
+				.filter(id=request_id)
+				.first()
+			)
+
+			if not sr:
+				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+
+			if sr.client_id != request.user.id:
+				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
+
+			if sr.status != RequestStatus.CANCELLED:
+				return Response(
+					{"detail": "يمكن إعادة فتح الطلبات الملغية فقط"},
+					status=status.HTTP_400_BAD_REQUEST,
+				)
+
+			old = sr.status
+			sr.status = RequestStatus.SENT
+			sr.created_at = timezone.now()
+			sr.canceled_at = None
+			sr.cancel_reason = ""
+			sr.delivered_at = None
+			sr.actual_service_amount = None
+			sr.provider_inputs_approved = None
+			sr.provider_inputs_decided_at = None
+			sr.provider_inputs_decision_note = ""
+			sr.save(
+				update_fields=[
+					"status",
+					"created_at",
+					"canceled_at",
+					"cancel_reason",
+					"delivered_at",
+					"actual_service_amount",
+					"provider_inputs_approved",
+					"provider_inputs_decided_at",
+					"provider_inputs_decision_note",
+				]
+			)
+
+			RequestStatusLog.objects.create(
+				request=sr,
+				actor=request.user,
+				from_status=old,
+				to_status=sr.status,
+				note=note or "إعادة فتح الطلب من العميل",
 			)
 
 		return Response(

@@ -256,6 +256,99 @@ class MarketplaceApi {
     }
   }
 
+  Future<Map<String, dynamic>?> updateMyRequestDetail({
+    required int requestId,
+    String? title,
+    String? description,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return null;
+
+    final payload = <String, dynamic>{};
+    if ((title ?? '').trim().isNotEmpty) payload['title'] = title!.trim();
+    if ((description ?? '').trim().isNotEmpty) {
+      payload['description'] = description!.trim();
+    }
+    if (payload.isEmpty) return null;
+
+    try {
+      final response = await _dio.patch(
+        '${ApiConfig.apiPrefix}/marketplace/client/requests/$requestId/',
+        data: payload,
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return Map<String, dynamic>.from(response.data as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> cancelMyRequest({
+    required int requestId,
+    String? note,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/cancel/',
+        data: {
+          if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(),
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> reopenMyRequest({
+    required int requestId,
+    String? note,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/reopen/',
+        data: {
+          if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(),
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> sendRequestReminder({
+    required int requestId,
+    required String message,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+    final body = message.trim();
+    if (body.isEmpty) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/messaging/requests/$requestId/messages/send/',
+        data: {'body': body},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> startAssignedRequest({
     required int requestId,
     String? note,

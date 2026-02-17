@@ -234,6 +234,16 @@ class RequestActionSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
+class ClientRequestUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255, required=False, allow_blank=False)
+    description = serializers.CharField(required=False, allow_blank=False)
+
+    def validate(self, attrs):
+        if "title" not in attrs and "description" not in attrs:
+            raise serializers.ValidationError("لا توجد حقول للتحديث")
+        return attrs
+
+
 class RequestStartSerializer(RequestActionSerializer):
     expected_delivery_at = serializers.DateTimeField(required=True)
     estimated_service_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
