@@ -927,49 +927,54 @@ class _ProviderOrderDetailsScreenState
     );
   }
 
-  Widget _statusDropdown() {
+  Widget _statusSelector() {
     final options = _availableStatuses();
     final current = options.contains(_status) ? _status : options.first;
     if (current != _status) {
       _status = current;
     }
 
+    final isReadOnly = _isUrgentRequest || _isCompetitiveRequest;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: _mainColor.withValues(alpha: 0.55),
-          width: 1.4,
-        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _mainColor.withValues(alpha: 0.18)),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: current,
-          isExpanded: true,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: _mainColor,
-          ),
-          items: options
-              .map(
-                (s) => DropdownMenuItem<String>(
-                  value: s,
-                  child: Text(
-                    s,
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 14),
-                  ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: options
+            .map(
+              (status) => ChoiceChip(
+                label: Text(
+                  status,
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
                 ),
-              )
-              .toList(),
-          onChanged: (_isUrgentRequest || _isCompetitiveRequest)
-              ? null
-              : (value) {
-                  if (value == null) return;
-                  setState(() => _status = value);
-                },
-        ),
+                selected: current == status,
+                onSelected: isReadOnly
+                    ? null
+                    : (_) {
+                        setState(() => _status = status);
+                      },
+                selectedColor: _mainColor.withValues(alpha: 0.16),
+                disabledColor: _mainColor.withValues(alpha: 0.08),
+                side: BorderSide(color: _mainColor.withValues(alpha: 0.3)),
+                labelStyle: TextStyle(
+                  fontFamily: 'Cairo',
+                  color: current == status ? _mainColor : Colors.black87,
+                  fontWeight: current == status
+                      ? FontWeight.bold
+                      : FontWeight.w600,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -1021,7 +1026,7 @@ class _ProviderOrderDetailsScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'قائمة منسدلة:',
+            'مسار الحالة',
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 16,
@@ -1403,7 +1408,7 @@ class _ProviderOrderDetailsScreenState
                     ],
                   ),
                   const SizedBox(height: 6),
-                  _statusDropdown(),
+                  _statusSelector(),
                   _statusSpecificCard(),
                   const SizedBox(height: 12),
                   _statusTimelineSection(),
