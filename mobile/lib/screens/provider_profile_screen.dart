@@ -774,17 +774,18 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                         separatorBuilder: (_, __) => const Divider(),
                         itemBuilder: (context, i) {
                           final provider = list[i];
+                          final displayName = provider.displayName ?? 'مزود';
                           return ListTile(
                             leading: CircleAvatar(
                               backgroundImage: provider.imageUrl != null && provider.imageUrl!.trim().isNotEmpty
                                   ? NetworkImage(provider.imageUrl!)
                                   : null,
                               child: provider.imageUrl == null || provider.imageUrl!.trim().isEmpty
-                                  ? Text(provider.displayName[0].toUpperCase())
+                                  ? Text(displayName[0].toUpperCase())
                                   : null,
                             ),
                             title: Text(
-                              provider.displayName,
+                              displayName,
                               style: const TextStyle(fontFamily: 'Cairo'),
                             ),
                             subtitle: provider.city != null
