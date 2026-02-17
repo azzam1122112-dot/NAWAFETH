@@ -44,7 +44,7 @@ class SessionStorage {
     String? lastName,
     String? phone,
   }) async {
-    String _normalizeUsername(String raw) {
+    String normalizeUsername(String raw) {
       final trimmed = raw.trim();
       if (trimmed.isEmpty) return trimmed;
       return trimmed.replaceFirst(RegExp(r'^@+'), '');
@@ -54,7 +54,7 @@ class SessionStorage {
       await _secure.write(key: _userIdKey, value: userId.toString());
     }
     if (username != null) {
-      await _secure.write(key: _usernameKey, value: _normalizeUsername(username));
+      await _secure.write(key: _usernameKey, value: normalizeUsername(username));
     }
     if (email != null) {
       await _secure.write(key: _emailKey, value: email);
