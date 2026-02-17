@@ -198,7 +198,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       children: [
         const CircleAvatar(
           radius: 26,
-          backgroundImage: AssetImage('assets/images/1.png'),
+          child: Icon(Icons.person),
         ),
         const SizedBox(width: 10),
         Column(

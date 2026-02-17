@@ -139,8 +139,8 @@
             </div>
 
             <div id="chatMessages" class="h-96 overflow-y-auto rounded-2xl border border-gray-100 p-5 bg-gradient-to-br from-gray-50 to-white shadow-sm">
-              {% if messages %}
-                {% for m in messages %}
+              {% if thread_messages %}
+                {% for m in thread_messages %}
                   <div class="bg-white border border-gray-100 rounded-xl p-4 mb-3 shadow-sm card-hover">
                     <div class="text-xs text-gray-500 mb-2 flex items-center gap-2">
                       <span>👤 {{ m.sender.phone|default:"—" }}</span>
@@ -193,7 +193,7 @@
                   <div class="flex-1">
                     <div class="font-semibold text-gray-800">{{ n.title|default:"إشعار" }}</div>
                     <div class="text-xs text-gray-500 mt-1">🕒 {{ n.created_at|date:"Y-m-d H:i" }}</div>
-                    <div class="mt-3 whitespace-pre-line text-gray-700 leading-relaxed">{{ n.message|default:"" }}</div>
+                    <div class="mt-3 whitespace-pre-line text-gray-700 leading-relaxed">{{ n.body|default:"" }}</div>
                   </div>
                 </div>
               </div>

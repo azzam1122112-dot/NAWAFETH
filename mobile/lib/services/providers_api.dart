@@ -15,12 +15,30 @@ class ProvidersApi {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }
 
+  List<dynamic> _extractList(dynamic data) {
+    if (data is List) return data;
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      final results = map['results'];
+      if (results is List) return results;
+      final items = map['items'];
+      if (items is List) return items;
+      final payload = map['data'];
+      if (payload is List) return payload;
+    }
+    return const [];
+  }
+
   Future<List<Category>> getCategories() async {
     try {
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/categories/',
       );
-      final list = (res.data as List).map((e) => Category.fromJson(e)).toList();
+      final rawList = _extractList(res.data);
+      final list = rawList
+          .whereType<Map>()
+          .map((e) => Category.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
       return list;
     } catch (e) {
       // Return empty list on error for now to avoid crashing UI
@@ -31,8 +49,10 @@ class ProvidersApi {
   Future<List<ProviderProfile>> getProviders() async {
     try {
       final res = await _dio.get('${ApiConfig.apiPrefix}/providers/list/');
-      final list = (res.data as List)
-          .map((e) => ProviderProfile.fromJson(e))
+      final rawList = _extractList(res.data);
+      final list = rawList
+          .whereType<Map>()
+          .map((e) => ProviderProfile.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       return list;
     } catch (e) {
@@ -53,22 +73,18 @@ class ProvidersApi {
       if (subcategoryId != null) params['subcategory_id'] = subcategoryId;
       if (categoryId != null) params['category_id'] = categoryId;
 
-      print('🔍 Searching providers with params: $params');
-
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/list/',
         queryParameters: params,
       );
 
-      print('✅ Response status: ${res.statusCode}');
-      print('✅ Response data length: ${(res.data as List).length}');
-
-      final list = (res.data as List)
-          .map((e) => ProviderProfile.fromJson(e))
+      final rawList = _extractList(res.data);
+      final list = rawList
+          .whereType<Map>()
+          .map((e) => ProviderProfile.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       return list;
     } catch (e) {
-      print('❌ Error in getProvidersFiltered: $e');
       return [];
     }
   }
@@ -114,8 +130,9 @@ class ProvidersApi {
       }
 
       final providers = <Map<String, dynamic>>[];
-      for (final item in res.data as List) {
-        final provider = item as Map<String, dynamic>;
+      final rawList = _extractList(res.data);
+      for (final item in rawList.whereType<Map>()) {
+        final provider = Map<String, dynamic>.from(item);
         final lat = _asDouble(provider['lat']);
         final lng = _asDouble(provider['lng']);
         if (lat != null && lng != null) {
@@ -146,7 +163,6 @@ class ProvidersApi {
 
       return providers;
     } catch (e) {
-      print('❌ Error in getProvidersForMap: $e');
       return [];
     }
   }
@@ -165,8 +181,10 @@ class ProvidersApi {
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/$providerId/services/',
       );
-      final list = (res.data as List)
-          .map((e) => ProviderService.fromJson(e))
+      final rawList = _extractList(res.data);
+      final list = rawList
+          .whereType<Map>()
+          .map((e) => ProviderService.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       return list;
     } catch (_) {
@@ -179,8 +197,10 @@ class ProvidersApi {
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/me/services/',
       );
-      final list = (res.data as List)
-          .map((e) => ProviderService.fromJson(e))
+      final rawList = _extractList(res.data);
+      final list = rawList
+          .whereType<Map>()
+          .map((e) => ProviderService.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       return list;
     } catch (_) {

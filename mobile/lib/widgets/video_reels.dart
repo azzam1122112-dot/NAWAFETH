@@ -40,12 +40,12 @@ class _VideoReelsState extends State<VideoReels> {
     }
   }
 
-  ImageProvider _providerImage(ProviderProfile p) {
+  ImageProvider? _providerImage(ProviderProfile p) {
     final raw = (p.imageUrl ?? '').trim();
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
       return NetworkImage(raw);
     }
-    return AssetImage(p.placeholderImage);
+    return null;
   }
 
   void _openProvider(ProviderProfile p) {
@@ -55,7 +55,7 @@ class _VideoReelsState extends State<VideoReels> {
         builder: (_) => ProviderProfileScreen(
           providerId: p.id.toString(),
           providerName: p.displayName,
-          providerImage: p.placeholderImage,
+          providerImage: p.imageUrl,
           providerVerified: p.isVerifiedBlue,
         ),
       ),
@@ -81,6 +81,7 @@ class _VideoReelsState extends State<VideoReels> {
         itemCount: _items.length,
         itemBuilder: (context, index) {
           final p = _items[index];
+          final avatar = _providerImage(p);
           return GestureDetector(
             onTap: () => _openProvider(p),
             child: Container(
@@ -110,7 +111,10 @@ class _VideoReelsState extends State<VideoReels> {
                         color: Colors.white,
                       ),
                       child: CircleAvatar(
-                        backgroundImage: _providerImage(p),
+                        backgroundImage: avatar,
+                        child: avatar == null
+                            ? const Icon(Icons.person, color: AppColors.deepPurple)
+                            : null,
                       ),
                     ),
                   ),

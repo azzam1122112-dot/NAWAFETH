@@ -28,8 +28,11 @@ class TwoFAScreen extends StatefulWidget {
 }
 
 class _TwoFAScreenState extends State<TwoFAScreen> {
-  // Development shortcut: accept any 4-digit OTP.
-  static const bool _devAllowAny4DigitsOtp = true;
+  // Development shortcut disabled by default; enable explicitly by build flag.
+  static const bool _devAllowAny4DigitsOtp = bool.fromEnvironment(
+    'DEV_ALLOW_ANY_OTP',
+    defaultValue: false,
+  );
 
   final TextEditingController _codeController = TextEditingController();
   bool _loading = false;

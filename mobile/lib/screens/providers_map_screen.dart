@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/service_provider_location.dart';
 import '../constants/colors.dart';
 import '../utils/whatsapp_helper.dart';
+import '../services/providers_api.dart';
 import 'provider_profile_screen.dart';
 import 'service_request_form_screen.dart';
 
@@ -302,7 +303,7 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
 
   Future<void> _initializeMap() async {
     await _getCurrentLocation();
-    _loadMockProviders();
+    await _loadProvidersFromApi();
     _filterProviders();
   }
 
@@ -357,116 +358,53 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
     _mapController!.move(center, zoom);
   }
 
-  // ✅ تحميل بيانات تجريبية (ستستبدل بـ API لاحقاً)
-  void _loadMockProviders() {
-    // موقع الرياض كمركز (24.7136° N, 46.6753° E)
-    final riyadhLat = _currentPosition?.latitude ?? 24.7136;
-    final riyadhLng = _currentPosition?.longitude ?? 46.6753;
+  Future<void> _loadProvidersFromApi() async {
+    final apiProviders = await ProvidersApi().getProviders();
+    final mapped = <ServiceProviderLocation>[];
 
-    _providers = [
-      ServiceProviderLocation(
-        id: '1',
-        name: 'خالد الحربي',
-        category: 'صيانة المركبات',
-        subCategory: 'ميكانيكا',
-        latitude: riyadhLat + 0.01,
-        longitude: riyadhLng + 0.01,
-        rating: 4.8,
-        operationsCount: 120,
-        phoneNumber: '0501234567',
-        urgentServices: ['ميكانيكا', 'كهرباء'],
-        responseTime: 10,
-        verified: true,
-        profileImage: 'assets/images/1.png',
-      ),
-      ServiceProviderLocation(
-        id: '2',
-        name: 'عبدالله الفني',
-        category: 'خدمات المنازل',
-        subCategory: 'سباكة',
-        latitude: riyadhLat - 0.015,
-        longitude: riyadhLng + 0.02,
-        rating: 4.9,
-        operationsCount: 190,
-        phoneNumber: '0509876543',
-        urgentServices: ['سباكة', 'كهرباء'],
-        responseTime: 15,
-        verified: true,
-      ),
-      ServiceProviderLocation(
-        id: '3',
-        name: 'أحمد المحامي',
-        category: 'استشارات قانونية',
-        subCategory: 'عامة',
-        latitude: riyadhLat + 0.02,
-        longitude: riyadhLng - 0.01,
-        rating: 4.7,
-        operationsCount: 85,
-        phoneNumber: '0555551234',
-        urgentServices: ['عامة', 'صياغة عقود'],
-        responseTime: 5,
-        verified: false,
-      ),
-      ServiceProviderLocation(
-        id: '4',
-        name: 'محمد الكهربائي',
-        category: 'صيانة المركبات',
-        subCategory: 'كهرباء',
-        latitude: riyadhLat - 0.008,
-        longitude: riyadhLng - 0.015,
-        rating: 4.6,
-        operationsCount: 95,
-        phoneNumber: '0544443333',
-        urgentServices: ['كهرباء'],
-        responseTime: 12,
-        verified: true,
-      ),
-      ServiceProviderLocation(
-        id: '5',
-        name: 'فهد النجار',
-        category: 'خدمات المنازل',
-        subCategory: 'نقل أثاث',
-        latitude: riyadhLat + 0.025,
-        longitude: riyadhLng + 0.018,
-        rating: 4.5,
-        operationsCount: 78,
-        phoneNumber: '0533332222',
-        urgentServices: ['نقل أثاث'],
-        responseTime: 20,
-        verified: true,
-      ),
-    ];
+    for (final p in apiProviders) {
+      final lat = p.lat;
+      final lng = p.lng;
+      if (lat == null || lng == null) continue;
 
-    // حساب المسافة لكل مزود
-    if (_currentPosition != null) {
-      for (var provider in _providers) {
-        final distance = Geolocator.distanceBetween(
-          _currentPosition!.latitude,
-          _currentPosition!.longitude,
-          provider.latitude,
-          provider.longitude,
-        ) / 1000; // تحويل إلى كيلومتر
-
-        _providers[_providers.indexOf(provider)] =
-            provider.copyWith(distanceFromUser: distance);
+      double? distanceKm;
+      if (_currentPosition != null) {
+        distanceKm = Geolocator.distanceBetween(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              lat,
+              lng,
+            ) /
+            1000;
       }
+
+      mapped.add(
+        ServiceProviderLocation(
+          id: p.id.toString(),
+          name: (p.displayName ?? '').trim().isEmpty ? 'مزود خدمة' : p.displayName!.trim(),
+          category: widget.category,
+          subCategory: (widget.subCategory ?? '').trim(),
+          latitude: lat,
+          longitude: lng,
+          rating: p.ratingAvg,
+          operationsCount: p.ratingCount,
+          phoneNumber: (p.phone ?? '').trim(),
+          urgentServices: const [],
+          responseTime: 0,
+          verified: p.isVerifiedBlue || p.isVerifiedGreen,
+          profileImage: p.imageUrl,
+          distanceFromUser: distanceKm,
+        ),
+      );
     }
+
+    _providers = mapped;
   }
 
   // ✅ تصفية المزودين حسب التصنيف
   void _filterProviders() {
     setState(() {
-      _filteredProviders = _providers.where((provider) {
-        // تطابق التصنيف الرئيسي
-        if (provider.category != widget.category) return false;
-        
-        // إذا كان هناك تصنيف فرعي، نتحقق منه
-        if (widget.subCategory != null && widget.subCategory!.isNotEmpty) {
-          return provider.subCategory == widget.subCategory;
-        }
-        
-        return true;
-      }).toList();
+      _filteredProviders = List<ServiceProviderLocation>.from(_providers);
 
       // ترتيب حسب المسافة
       _filteredProviders.sort((a, b) {
@@ -725,12 +663,20 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
                           height: 50,
                           color: Colors.grey.shade300,
                           child: provider.profileImage != null
-                              ? Image.asset(
-                                  provider.profileImage!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
-                                      const Icon(Icons.person, size: 24),
-                                )
+                              ? (provider.profileImage!.startsWith('http://') ||
+                                      provider.profileImage!.startsWith('https://')
+                                  ? Image.network(
+                                      provider.profileImage!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.person, size: 24),
+                                    )
+                                  : Image.asset(
+                                      provider.profileImage!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.person, size: 24),
+                                    ))
                               : const Icon(Icons.person, size: 24),
                         ),
                       ),
@@ -1228,12 +1174,20 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
                     height: 60,
                     color: Colors.grey.shade200,
                     child: provider.profileImage != null
-                        ? Image.asset(
-                            provider.profileImage!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.person, size: 32),
-                          )
+                        ? (provider.profileImage!.startsWith('http://') ||
+                                provider.profileImage!.startsWith('https://')
+                            ? Image.network(
+                                provider.profileImage!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.person, size: 32),
+                              )
+                            : Image.asset(
+                                provider.profileImage!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.person, size: 32),
+                              ))
                         : const Icon(Icons.person, size: 32),
                   ),
                 ),

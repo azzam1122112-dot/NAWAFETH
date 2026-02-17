@@ -88,7 +88,4 @@ class ProviderProfile {
       likesCount: parseInt(json['likes_count']),
     );
   }
-
-  // Placeholder for image until we have it in backend
-  String get placeholderImage => 'assets/images/1.png'; 
 }

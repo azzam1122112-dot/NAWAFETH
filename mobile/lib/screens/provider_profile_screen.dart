@@ -13,6 +13,7 @@ import 'network_video_player_screen.dart';
 import 'service_request_form_screen.dart';
 import 'provider_service_detail_screen.dart';
 import '../services/providers_api.dart'; // Added
+import '../services/api_config.dart';
 import '../models/provider.dart'; // Added
 import '../models/provider_portfolio_item.dart';
 import '../models/provider_service.dart';
@@ -106,7 +107,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   String get providerImage =>
       _fullProfile?.imageUrl?.trim().isNotEmpty == true
           ? _fullProfile!.imageUrl!.trim()
-          : (widget.providerImage ?? 'assets/images/8410.jpeg');
+          : (widget.providerImage ?? '').trim();
 
     bool get providerVerified =>
       (_fullProfile?.isVerifiedBlue ?? false) ||
@@ -148,6 +149,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   }
 
   Widget _providerAvatar() {
+    if (providerImage.trim().isEmpty) {
+      return const Icon(Icons.person, size: 36);
+    }
     if (_isRemoteImage(providerImage)) {
       return Image.network(
         providerImage,
@@ -439,7 +443,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   Future<void> _showShareAndReportSheet() async {
     final e164 = _formatPhoneE164(providerPhone);
-    final fakeLink = 'https://nawafeth.app/provider/${widget.providerId ?? 'provider_demo'}';
+    final shareLink = '${ApiConfig.baseUrl}/provider/${widget.providerId ?? ''}';
 
     await showModalBottomSheet(
       context: context,
@@ -519,7 +523,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () async {
-                                await Clipboard.setData(ClipboardData(text: fakeLink));
+                                await Clipboard.setData(ClipboardData(text: shareLink));
                                 if (sheetContext.mounted) {
                                   Navigator.pop(sheetContext);
                                 }
@@ -536,13 +540,13 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () {
-                                Clipboard.setData(ClipboardData(text: fakeLink));
+                                Clipboard.setData(ClipboardData(text: shareLink));
                                 if (sheetContext.mounted) {
                                   Navigator.pop(sheetContext);
                                 }
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('تمت مشاركة الرابط (وهمي)')),
+                                  const SnackBar(content: Text('تم نسخ رابط المشاركة')),
                                 );
                               },
                               icon: const Icon(Icons.share, size: 18),

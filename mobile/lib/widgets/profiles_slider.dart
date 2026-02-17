@@ -73,7 +73,7 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
         builder: (_) => ProviderProfileScreen(
           providerId: provider.id.toString(),
           providerName: provider.displayName,
-          providerImage: provider.placeholderImage,
+          providerImage: provider.imageUrl,
           providerVerified: provider.isVerifiedBlue,
           // We can pass more if needed, but Detail screen should fetch full data
         ),
@@ -81,13 +81,13 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
     );
   }
 
-  ImageProvider _providerImage(ProviderProfile provider) {
+  ImageProvider? _providerImage(ProviderProfile provider) {
     final raw = (provider.imageUrl ?? '').trim();
-    if (raw.isEmpty) return AssetImage(provider.placeholderImage);
+    if (raw.isEmpty) return null;
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
       return NetworkImage(raw);
     }
-    return AssetImage(provider.placeholderImage);
+    return null;
   }
 
   @override
@@ -103,6 +103,7 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
         itemCount: _providers.length,
         itemBuilder: (context, index) {
           final profile = _providers[index];
+          final avatar = _providerImage(profile);
           return GestureDetector(
             onTap: () => _openProfileDetail(context, profile),
             child: Container(
@@ -118,7 +119,10 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
                         backgroundColor: AppColors.softBlue,
                         child: CircleAvatar(
                           radius: 32,
-                          backgroundImage: _providerImage(profile),
+                          backgroundImage: avatar,
+                          child: avatar == null
+                              ? const Icon(Icons.person, color: Colors.white)
+                              : null,
                         ),
                       ),
                       if (profile.isVerifiedBlue)

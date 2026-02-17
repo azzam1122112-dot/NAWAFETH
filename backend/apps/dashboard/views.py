@@ -111,12 +111,33 @@ def _dashboard_allowed(user, dashboard_code: str, write: bool = False) -> bool:
 
 
 def dashboard_access_required(dashboard_code: str, write: bool = False):
+    def _first_allowed_dashboard(user) -> str | None:
+        candidates = [
+            ("analytics", "dashboard:home"),
+            ("content", "dashboard:requests_list"),
+            ("billing", "dashboard:billing_invoices_list"),
+            ("support", "dashboard:support_tickets_list"),
+            ("verify", "dashboard:verification_requests_list"),
+            ("promo", "dashboard:promo_requests_list"),
+            ("subs", "dashboard:subscriptions_list"),
+            ("extras", "dashboard:extras_list"),
+            ("access", "dashboard:access_profiles_list"),
+        ]
+        for code, route in candidates:
+            if _dashboard_allowed(user, code, write=False):
+                return route
+        return None
+
     def decorator(func):
         @wraps(func)
         def wrapped(request: HttpRequest, *args, **kwargs):
             if not _dashboard_allowed(request.user, dashboard_code, write=write):
                 messages.error(request, "لا تملك صلاحية الوصول لهذه اللوحة.")
-                return redirect("dashboard:home")
+                fallback = _first_allowed_dashboard(request.user)
+                current = getattr(getattr(request, "resolver_match", None), "view_name", "")
+                if fallback and fallback != current:
+                    return redirect(fallback)
+                return HttpResponse("غير مصرح", status=403)
             return func(request, *args, **kwargs)
         return wrapped
     return decorator
@@ -367,9 +388,8 @@ def requests_list(request):
         qs = qs.filter(created_at__gte=date_from)
 
     if date_to:
-        # نهاية اليوم: نجعلها شاملة بإضافة 1 يوم عمليًا عبر <= (to + 1 day) عادة،
-        # لكن لتجنب تعقيد، نستخدم <= 23:59:59 تقريبًا عبر +86400 ثانية. سنبقيها بسيطة.
-        qs = qs.filter(created_at__lte=date_to)
+        # Inclusive end-date: include full selected day.
+        qs = qs.filter(created_at__lt=(date_to + timedelta(days=1)))
 
     if _want_csv(request):
         rows = [
@@ -604,7 +624,7 @@ def request_detail(request, request_id: int):
     # ---- محاولات تحميل بيانات مرتبطة (حسب توفر موديلاتك) ----
     offers = []
     thread = None
-    messages_page = None
+    thread_messages = None
     notifications_page = None
     review = None
 
@@ -628,7 +648,7 @@ def request_detail(request, request_id: int):
         thread = Thread.objects.filter(request=obj).first()
         if thread:
             # نعرض آخر 30 رسالة فقط (سهل وسريع للويب)
-            messages_page = (
+            thread_messages = (
                 Message.objects
                 .select_related("sender")
                 .filter(thread=thread)
@@ -636,7 +656,7 @@ def request_detail(request, request_id: int):
             )
     except Exception:
         thread = None
-        messages_page = None
+        thread_messages = None
 
     # Notifications مرتبطة بالطلب (لو عندك ربط content_object أو request FK)
     try:
@@ -659,7 +679,7 @@ def request_detail(request, request_id: int):
             # fallback: نحاول نبحث نصيًا عن رقم الطلب في الرسالة (اختياري)
             notifications_page = (
                 Notification.objects
-                .filter(Q(title__icontains=str(obj.id)) | Q(message__icontains=str(obj.id)))
+                .filter(Q(title__icontains=str(obj.id)) | Q(body__icontains=str(obj.id)))
                 .order_by("-id")[:30]
             )
     except Exception:
@@ -683,7 +703,7 @@ def request_detail(request, request_id: int):
         "tab": tab,
         "offers": offers,
         "thread": thread,
-        "messages": messages_page,
+        "thread_messages": thread_messages,
         "notifications": notifications_page,
         "review": review,
     }

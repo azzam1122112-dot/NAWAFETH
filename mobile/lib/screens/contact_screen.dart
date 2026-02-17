@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
-import 'dart:io';
-import '../core/api/device_features_api.dart';
 import '../core/permissions/permissions_service.dart';
 import '../models/ticket_model.dart';
+import '../services/support_api.dart';
 
 class ContactScreen extends StatefulWidget {
   final bool startNewTicketForm;
@@ -24,38 +23,12 @@ class ContactScreen extends StatefulWidget {
 }
 
 class _ContactScreenState extends State<ContactScreen> {
-  final DeviceFeaturesApi _deviceFeaturesApi = DeviceFeaturesApi();
+  final SupportApi _supportApi = SupportApi();
   bool _isFeatureActionInProgress = false;
-  double _uploadProgress = 0;
+  bool _isLoadingTickets = false;
 
-  // البيانات التجريبية
-  List<Ticket> tickets = [
-    Ticket(
-      id: 'HD0002',
-      createdAt: DateTime(2024, 10, 25, 19, 40),
-      status: 'جديد',
-      supportTeam: 'الدعم الفني',
-      title: 'شكاوى التعليقات',
-      description: 'وجود تعليق مسيء يحتاج إجراء الإزالة',
-      lastUpdate: DateTime(2024, 10, 25, 19, 40),
-      replies: [
-        TicketReply(
-          from: 'platform',
-          message: 'تعليق منصة نوافذ (300 حرف)',
-          timestamp: DateTime(2024, 10, 25, 20, 15),
-        ),
-      ],
-    ),
-    Ticket(
-      id: 'HD0003',
-      createdAt: DateTime(2024, 10, 25, 19, 40),
-      status: 'تحت المعالجة',
-      supportTeam: 'الاشتراكات',
-      title: 'مشكلة في الاشتراك',
-      description: 'لم يتم تفعيل الاشتراك بعد الدفع',
-      lastUpdate: DateTime(2024, 10, 25, 20, 0),
-    ),
-  ];
+  // لا توجد بيانات محلية وهمية؛ يجب أن تأتي التذاكر من API الدعم.
+  List<Ticket> tickets = [];
 
   Ticket? selectedTicket;
   bool showNewTicketForm = false;
@@ -67,15 +40,10 @@ class _ContactScreenState extends State<ContactScreen> {
   String? selectedSupportTeam;
   List<String> attachments = [];
 
-  // قائمة فرق الدعم
-  final List<String> supportTeams = [
-    'الدعم الفني',
-    'الاشتراكات',
-    'التوثيق',
-    'الاقتراحات',
-    'الإعلانات',
-    'الشكاوى والبلاغات',
-  ];
+  // قوائم فرق الدعم من الباكند
+  List<String> supportTeams = const [];
+  final Map<String, String> _teamNameToCode = <String, String>{};
+  final Map<String, String> _teamCodeToName = <String, String>{};
 
   @override
   void initState() {
@@ -86,15 +54,11 @@ class _ContactScreenState extends State<ContactScreen> {
       selectedTicket = null;
     }
 
-    final team = widget.initialSupportTeam;
-    if (team != null && supportTeams.contains(team)) {
-      selectedSupportTeam = team;
-    }
-
     final desc = widget.initialDescription;
     if (desc != null && desc.trim().isNotEmpty) {
       _descriptionController.text = desc;
     }
+    _bootstrapSupportData();
   }
 
   @override
@@ -106,6 +70,140 @@ class _ContactScreenState extends State<ContactScreen> {
 
   String _formatDateTime(DateTime dt) {
     return DateFormat('dd/MM/yyyy - HH:mm').format(dt);
+  }
+
+  String _normalizeSupportStatus(String raw) {
+    switch (raw.trim()) {
+      case 'new':
+        return 'جديد';
+      case 'in_progress':
+        return 'تحت المعالجة';
+      case 'returned':
+        return 'تحت المعالجة';
+      case 'closed':
+        return 'مغلق';
+      default:
+        return 'جديد';
+    }
+  }
+
+  Ticket _ticketFromApi(Map<String, dynamic> json) {
+    DateTime parseDate(dynamic value) {
+      final s = value?.toString();
+      if (s == null || s.trim().isEmpty) return DateTime.now();
+      return DateTime.tryParse(s)?.toLocal() ?? DateTime.now();
+    }
+
+    final comments = (json['comments'] as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .where((e) => e['is_internal'] != true)
+        .map(
+          (e) => TicketReply(
+            from: ((e['created_by_name'] ?? '').toString().trim() == 'منصة نوافذ')
+                ? 'platform'
+                : 'user',
+            message: (e['text'] ?? '').toString(),
+            timestamp: parseDate(e['created_at']),
+          ),
+        )
+        .toList();
+
+    final attachmentsApi = (json['attachments'] as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => (e['file'] ?? '').toString())
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+
+    final teamObj = json['assigned_team_obj'];
+    String supportTeamName = 'غير محدد';
+    if (teamObj is Map) {
+      supportTeamName = (teamObj['name_ar'] ?? 'غير محدد').toString();
+    } else {
+      final typeCode = (json['ticket_type'] ?? '').toString();
+      supportTeamName = _teamCodeToName[typeCode] ?? typeCode;
+    }
+
+    final code = (json['code'] ?? json['id'] ?? '').toString();
+    return Ticket(
+      id: code.isEmpty ? '—' : code,
+      createdAt: parseDate(json['created_at']),
+      status: _normalizeSupportStatus((json['status'] ?? '').toString()),
+      supportTeam: supportTeamName,
+      title: supportTeamName,
+      description: (json['description'] ?? '').toString(),
+      attachments: attachmentsApi,
+      replies: comments,
+      lastUpdate: parseDate(json['updated_at']),
+    );
+  }
+
+  Future<void> _bootstrapSupportData() async {
+    await _loadSupportTeams();
+    await _loadTickets();
+  }
+
+  Future<void> _loadSupportTeams() async {
+    try {
+      final teams = await _supportApi.getTeams();
+      if (!mounted) return;
+      setState(() {
+        supportTeams = teams
+            .map((e) => (e['name_ar'] ?? '').toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        _teamNameToCode
+          ..clear()
+          ..addEntries(
+            teams.map((e) {
+              final name = (e['name_ar'] ?? '').toString().trim();
+              final code = (e['code'] ?? '').toString().trim();
+              return MapEntry(name, code);
+            }),
+          );
+        _teamCodeToName
+          ..clear()
+          ..addEntries(
+            teams.map((e) {
+              final name = (e['name_ar'] ?? '').toString().trim();
+              final code = (e['code'] ?? '').toString().trim();
+              return MapEntry(code, name);
+            }),
+          );
+      });
+
+      final initialTeam = widget.initialSupportTeam?.trim();
+      if (initialTeam != null && initialTeam.isNotEmpty && mounted) {
+        if (supportTeams.contains(initialTeam)) {
+          setState(() => selectedSupportTeam = initialTeam);
+        }
+      }
+    } catch (_) {
+      // ignore: fallback to empty team list
+    }
+  }
+
+  Future<void> _loadTickets() async {
+    setState(() => _isLoadingTickets = true);
+    try {
+      final list = await _supportApi.getMyTickets();
+      final mapped = list.map(_ticketFromApi).toList();
+      if (!mounted) return;
+      setState(() {
+        tickets = mapped;
+        if (selectedTicket != null) {
+          final current = tickets.where((t) => t.id == selectedTicket!.id).toList();
+          if (current.isNotEmpty) selectedTicket = current.first;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحميل تذاكر الدعم')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoadingTickets = false);
+    }
   }
 
   Color _getStatusColor(String status, bool isDark) {
@@ -148,24 +246,8 @@ class _ContactScreenState extends State<ContactScreen> {
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       setState(() {
-        _isFeatureActionInProgress = true;
-        _uploadProgress = 0;
-      });
-      final result = await _deviceFeaturesApi.uploadImage(
-        file: File(image.path),
-        onProgress: (p) {
-          if (!mounted) return;
-          setState(() => _uploadProgress = p);
-        },
-      );
-      setState(() {
         attachments.add(image.path);
-        _isFeatureActionInProgress = false;
       });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.messageAr)),
-      );
     }
   }
 
@@ -183,24 +265,8 @@ class _ContactScreenState extends State<ContactScreen> {
     final XFile? photo = await picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
       setState(() {
-        _isFeatureActionInProgress = true;
-        _uploadProgress = 0;
-      });
-      final result = await _deviceFeaturesApi.uploadImage(
-        file: File(photo.path),
-        onProgress: (p) {
-          if (!mounted) return;
-          setState(() => _uploadProgress = p);
-        },
-      );
-      setState(() {
         attachments.add(photo.path);
-        _isFeatureActionInProgress = false;
       });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.messageAr)),
-      );
     }
   }
 
@@ -217,94 +283,107 @@ class _ContactScreenState extends State<ContactScreen> {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result != null && result.files.single.path != null) {
       setState(() {
-        _isFeatureActionInProgress = true;
-        _uploadProgress = 0;
-      });
-      final upload = await _deviceFeaturesApi.uploadDocument(
-        file: File(result.files.single.path!),
-        onProgress: (p) {
-          if (!mounted) return;
-          setState(() => _uploadProgress = p);
-        },
-      );
-      setState(() {
         attachments.add(result.files.single.path!);
-        _isFeatureActionInProgress = false;
       });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(upload.messageAr)),
-      );
     }
   }
 
   Future<void> _sendCurrentLocation() async {
-    setState(() {
-      _isFeatureActionInProgress = true;
-    });
-    final result = await _deviceFeaturesApi.submitCurrentLocation();
-    if (!mounted) return;
-    setState(() {
-      _isFeatureActionInProgress = false;
-    });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result.messageAr)),
+      const SnackBar(content: Text('إرسال الموقع متاح بعد فتح تذكرة.')),
     );
   }
 
-  void _createNewTicket() {
+  Future<void> _createNewTicket() async {
     if (selectedSupportTeam == null || _descriptionController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء اختيار فريق الدعم وكتابة التفاصيل')),
       );
       return;
     }
+    final teamCode = _teamNameToCode[selectedSupportTeam!];
+    if (teamCode == null || teamCode.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديد نوع التذكرة من فريق الدعم المختار')),
+      );
+      return;
+    }
 
-    final newTicket = Ticket(
-      id: 'HD${(tickets.length + 1).toString().padLeft(4, '0')}',
-      createdAt: DateTime.now(),
-      status: 'جديد',
-      supportTeam: selectedSupportTeam!,
-      title: selectedSupportTeam!,
-      description: _descriptionController.text.trim(),
-      attachments: List.from(attachments),
-      lastUpdate: DateTime.now(),
-    );
+    setState(() => _isFeatureActionInProgress = true);
+    try {
+      final created = await _supportApi.createTicket(
+        ticketType: teamCode,
+        description: _descriptionController.text.trim(),
+      );
+      final ticketIdRaw = created['id'];
+      final ticketId = ticketIdRaw is int ? ticketIdRaw : int.tryParse('$ticketIdRaw');
+      if (ticketId != null) {
+        for (final path in attachments) {
+          try {
+            await _supportApi.addAttachment(ticketId: ticketId, filePath: path);
+          } catch (_) {}
+        }
+      }
 
-    setState(() {
-      tickets.insert(0, newTicket);
-      showNewTicketForm = false;
-      isSupportTeamDropdownOpen = false;
-      _descriptionController.clear();
-      selectedSupportTeam = null;
-      attachments.clear();
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم إنشاء البلاغ بنجاح')),
-    );
+      await _loadTickets();
+      if (!mounted) return;
+      setState(() {
+        showNewTicketForm = false;
+        _descriptionController.clear();
+        selectedSupportTeam = null;
+        attachments.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إنشاء التذكرة بنجاح')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فشل إنشاء التذكرة')),
+      );
+    } finally {
+      if (mounted) setState(() => _isFeatureActionInProgress = false);
+    }
   }
 
-  void _sendReply() {
+  Future<void> _sendReply() async {
     if (_replyController.text.trim().isEmpty || selectedTicket == null) return;
+    final idRaw = selectedTicket!.id.replaceAll(RegExp(r'[^0-9]'), '');
+    final ticketId = int.tryParse(idRaw);
+    if (ticketId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديد رقم التذكرة')),
+      );
+      return;
+    }
 
-    final reply = TicketReply(
-      from: 'user',
-      message: _replyController.text.trim(),
-      timestamp: DateTime.now(),
-    );
-
-    setState(() {
-      final index = tickets.indexWhere((t) => t.id == selectedTicket!.id);
-      if (index != -1) {
-        tickets[index] = tickets[index].copyWith(
-          replies: [...tickets[index].replies, reply],
-          lastUpdate: DateTime.now(),
-        );
-        selectedTicket = tickets[index];
-      }
+    try {
+      await _supportApi.addComment(
+        ticketId: ticketId,
+        text: _replyController.text.trim(),
+      );
       _replyController.clear();
-    });
+      final detail = await _supportApi.getTicketDetail(ticketId);
+      final mapped = _ticketFromApi(detail);
+      if (!mounted) return;
+      setState(() {
+        selectedTicket = mapped;
+        final index = tickets.indexWhere((t) => t.id == mapped.id);
+        if (index >= 0) {
+          tickets[index] = mapped;
+        } else {
+          tickets.insert(0, mapped);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إرسال الرد')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال الرد')),
+      );
+    }
   }
 
   @override
@@ -407,7 +486,25 @@ class _ContactScreenState extends State<ContactScreen> {
           const SizedBox(height: 16),
           
           // عرض البطاقات
-          ...tickets.map((ticket) => _buildTicketCard(ticket, theme, isDark)),
+          if (_isLoadingTickets)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (tickets.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'لا توجد تذاكر حالياً.',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 13,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+              ),
+            )
+          else
+            ...tickets.map((ticket) => _buildTicketCard(ticket, theme, isDark)),
         ],
       ),
     );
@@ -720,10 +817,6 @@ class _ContactScreenState extends State<ContactScreen> {
                       color: isDark ? Colors.white70 : Colors.black54,
                     ),
                   ),
-                ],
-                if (_isFeatureActionInProgress) ...[
-                  const SizedBox(height: 10),
-                  LinearProgressIndicator(value: _uploadProgress > 0 ? _uploadProgress : null),
                 ],
                 const SizedBox(height: 10),
                 SizedBox(

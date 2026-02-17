@@ -37,13 +37,6 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage>
   bool _isLiked = false;
   bool _isSaved = false;
 
-  // ✅ صور المستخدمين المرتبطة بكل فيديو
-  final List<String> userImages = [
-    "assets/images/551.png",
-    "assets/images/251.jpg",
-    "assets/images/1.png",
-  ];
-
   // ⚡ الرسالة التفاعلية (فقاعة الإعجاب / الحفظ)
   bool _showOverlayMessage = false;
   String _overlayText = "";
@@ -197,8 +190,6 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage>
 
   // ✅ قائمة يمينية (الصورة + إعجاب + حفظ + الرئيسية)
   Widget _buildRightSideMenu() {
-    final userImage = userImages[_currentIndex % userImages.length];
-
     return Positioned(
       right: 12,
       bottom: 110,
@@ -225,7 +216,12 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage>
               ),
               child: CircleAvatar(
                 radius: 27,
-                backgroundImage: AssetImage(userImage),
+                backgroundColor: AppColors.primaryLight,
+                child: const Icon(
+                  Icons.person,
+                  color: AppColors.deepPurple,
+                  size: 28,
+                ),
               ),
             ),
           ),

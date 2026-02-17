@@ -9,7 +9,7 @@ class PaymentCheckout {
     required BuildContext context,
     required BillingApi billingApi,
     required int invoiceId,
-    String provider = 'mock',
+    String provider = 'default',
     String? idempotencyKey,
     String? successMessage,
   }) async {
