@@ -32,6 +32,9 @@ class OtpVerifyResult {
 }
 
 class AuthApi {
+  // Development mode: allow any 4-digit OTP and skip backend verification.
+  static const bool _devAllowAny4DigitsOtp = true;
+
   final Dio _dio;
 
   AuthApi({Dio? dio})
@@ -43,6 +46,21 @@ class AuthApi {
   Future<String?> otpSend({required String phone}) => sendOtp(phone: phone);
 
   Future<OtpVerifyResult> otpVerify({required String phone, required String code}) async {
+    final normalized = code.trim();
+    if (_devAllowAny4DigitsOtp &&
+        normalized.length == 4 &&
+        int.tryParse(normalized) != null) {
+      const devResult = OtpVerifyResult(
+        ok: true,
+        isNewUser: false,
+        needsCompletion: false,
+        access: 'dev_access_token',
+        refresh: 'dev_refresh_token',
+      );
+      await ApiDio.setTokens(devResult.access, devResult.refresh);
+      return devResult;
+    }
+
     final result = await verifyOtp(phone: phone, code: code);
     if (result.access.trim().isNotEmpty && result.refresh.trim().isNotEmpty) {
       await ApiDio.setTokens(result.access, result.refresh);
