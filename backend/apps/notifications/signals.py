@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from apps.accounts.models import User
 from apps.marketplace.models import Offer, OfferStatus, ServiceRequest, RequestStatusLog
 from apps.messaging.models import Message
 
@@ -64,9 +65,42 @@ def notify_offer_selected(sender, instance: Offer, created, **kwargs):
 def notify_new_message(sender, instance: Message, created, **kwargs):
     if not created:
         return
-    sr = instance.thread.request
+    thread = instance.thread
 
-    # الطرف الآخر فقط
+    # Direct thread: notify the other participant.
+    if thread.is_direct:
+        if instance.sender_id == thread.participant_1_id:
+            target_id = thread.participant_2_id
+        elif instance.sender_id == thread.participant_2_id:
+            target_id = thread.participant_1_id
+        else:
+            return
+
+        if not target_id:
+            return
+
+        target = User.objects.filter(id=target_id).first()
+        if not target:
+            return
+
+        create_notification(
+            user=target,
+            title="رسالة جديدة",
+            body="لديك رسالة جديدة في المحادثة.",
+            kind="info",
+            url=f"/threads/{thread.id}/chat",
+            actor=instance.sender,
+            event_type=EventType.MESSAGE_NEW,
+            message_id=instance.id,
+            meta={"thread_id": thread.id, "is_direct": True},
+        )
+        return
+
+    sr = thread.request
+    if sr is None:
+        return
+
+    # Request thread: notify the opposite party only.
     if sr.provider_id and instance.sender_id == sr.client_id:
         target = sr.provider.user
     elif sr.provider_id and instance.sender_id == sr.provider.user_id:
@@ -84,6 +118,7 @@ def notify_new_message(sender, instance: Message, created, **kwargs):
         event_type=EventType.MESSAGE_NEW,
         request_id=sr.id,
         message_id=instance.id,
+        meta={"thread_id": thread.id, "is_direct": False},
     )
 
 

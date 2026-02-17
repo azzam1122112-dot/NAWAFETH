@@ -106,3 +106,21 @@ def test_status_log_creates_notification_for_counterparty():
     notif = Notification.objects.filter(user=client_user, title="تحديث على الطلب").first()
     assert notif is not None
     assert "تحت التنفيذ" in notif.body
+
+
+@pytest.mark.django_db
+def test_direct_message_creates_notification_for_other_participant():
+    client_user = User.objects.create_user(phone="0509000031")
+    provider_user = User.objects.create_user(phone="0509000032")
+
+    thread = Thread.objects.create(
+        is_direct=True,
+        participant_1=client_user,
+        participant_2=provider_user,
+    )
+
+    Message.objects.create(thread=thread, sender=client_user, body="مرحبا مباشر")
+
+    notif = Notification.objects.filter(user=provider_user, title="رسالة جديدة").first()
+    assert notif is not None
+    assert "/threads/" in (notif.url or "")
