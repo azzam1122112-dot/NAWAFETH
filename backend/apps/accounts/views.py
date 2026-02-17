@@ -26,6 +26,53 @@ from .otp import generate_otp_code, otp_expiry
 logger = logging.getLogger(__name__)
 
 
+def _keep_digits(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _normalize_phone_local05(phone: str) -> str:
+    raw = (phone or "").strip()
+    digits = _keep_digits(raw)
+
+    if len(digits) == 10 and digits.startswith("05"):
+        return digits
+    if len(digits) == 9 and digits.startswith("5"):
+        return f"0{digits}"
+    if len(digits) == 12 and digits.startswith("9665"):
+        return f"0{digits[3:]}"
+    if len(digits) == 14 and digits.startswith("009665"):
+        return f"0{digits[5:]}"
+
+    return raw
+
+
+def _phone_candidates(phone: str) -> list[str]:
+    raw = (phone or "").strip()
+    local = _normalize_phone_local05(raw)
+    digits = _keep_digits(raw)
+    local_digits = _keep_digits(local)
+
+    candidates = {
+        raw,
+        local,
+        digits,
+        local_digits,
+    }
+
+    if len(local_digits) == 10 and local_digits.startswith("05"):
+        tail = local_digits[1:]
+        candidates.update(
+            {
+                tail,  # 5XXXXXXXX
+                f"+966{tail}",
+                f"966{tail}",
+                f"00966{tail}",
+            }
+        )
+
+    return [c for c in candidates if c]
+
+
 def _me_payload(user: User) -> dict:
     has_provider_profile = False
     try:
@@ -117,16 +164,17 @@ def _otp_test_authorized(request) -> bool:
 
 
 def _issue_tokens_for_phone(phone: str):
-    normalized_phone = (phone or "").strip()
+    normalized_phone = _normalize_phone_local05(phone)
     phone_username = normalized_phone.lstrip("@")
-
-    user, created = User.objects.get_or_create(
-        phone=normalized_phone,
-        defaults={
-            "role_state": UserRole.PHONE_ONLY,
-            "username": phone_username,
-        },
-    )
+    user = User.objects.filter(phone__in=_phone_candidates(normalized_phone)).order_by("id").first()
+    created = False
+    if user is None:
+        user = User.objects.create(
+            phone=normalized_phone,
+            role_state=UserRole.PHONE_ONLY,
+            username=phone_username,
+        )
+        created = True
 
     # Ensure baseline "phone-only" identity for accounts that are still at
     # pre-completion level, and backfill username for legacy rows.
@@ -217,7 +265,7 @@ def otp_send(request):
     s = OTPSendSerializer(data=request.data)
     s.is_valid(raise_exception=True)
 
-    phone = s.validated_data["phone"].strip()
+    phone = _normalize_phone_local05(s.validated_data["phone"])
     client_ip = _client_ip(request)
 
     # Basic cooldown to prevent spam (professional default)
@@ -311,7 +359,7 @@ def otp_verify(request):
     s = OTPVerifySerializer(data=request.data)
     s.is_valid(raise_exception=True)
 
-    phone = s.validated_data["phone"].strip()
+    phone = _normalize_phone_local05(s.validated_data["phone"])
     code = s.validated_data["code"].strip()
     client_ip = _client_ip(request)
 

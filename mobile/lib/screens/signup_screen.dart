@@ -70,7 +70,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final phone = await const SessionStorage().readPhone();
     if (phone != null && phone.isNotEmpty) {
       setState(() {
-        _usernameController.text = '@$phone';
+        _usernameController.text = phone;
       });
     }
   }

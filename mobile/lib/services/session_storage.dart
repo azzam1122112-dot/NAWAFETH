@@ -70,7 +70,13 @@ class SessionStorage {
     }
   }
 
-  Future<String?> readUsername() => _secure.read(key: _usernameKey);
+  Future<String?> readUsername() async {
+    final raw = await _secure.read(key: _usernameKey);
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.replaceFirst(RegExp(r'^@+'), '');
+  }
   Future<String?> readEmail() => _secure.read(key: _emailKey);
 
   Future<String?> readFirstName() => _secure.read(key: _firstNameKey);
