@@ -3,7 +3,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
-from apps.marketplace.models import RequestStatus, RequestType, ServiceRequest
+from apps.marketplace.models import RequestStatus, RequestStatusLog, RequestType, ServiceRequest
+from apps.notifications.models import Notification
 from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
 
 
@@ -223,3 +224,65 @@ def test_client_can_decide_provider_inputs_when_accepted():
     assert sr.status == RequestStatus.IN_PROGRESS
     assert sr.provider_inputs_approved is True
     assert sr.provider_inputs_decision_note == "تم الاعتماد"
+
+
+@pytest.mark.django_db
+def test_provider_progress_update_creates_log_and_client_notification():
+    client_user = User.objects.create_user(phone="0500000301")
+    provider_user = User.objects.create_user(phone="0500000302")
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="صيانة")
+    sub = SubCategory.objects.create(category=cat, name="تكييف")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.NORMAL,
+        status=RequestStatus.IN_PROGRESS,
+        city="الرياض",
+        expected_delivery_at=timezone.now(),
+        estimated_service_amount="500.00",
+        received_amount="100.00",
+        remaining_amount="400.00",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=provider_user)
+    res = api.post(
+        f"/api/marketplace/provider/requests/{sr.id}/progress-update/",
+        {
+            "note": "تم إنجاز 50٪ من العمل",
+            "estimated_service_amount": "600.00",
+            "received_amount": "200.00",
+        },
+        format="json",
+    )
+    assert res.status_code == 200
+
+    sr.refresh_from_db()
+    assert str(sr.estimated_service_amount) == "600.00"
+    assert str(sr.received_amount) == "200.00"
+    assert str(sr.remaining_amount) == "400.00"
+
+    log = RequestStatusLog.objects.filter(request=sr).order_by("-id").first()
+    assert log is not None
+    assert log.from_status == RequestStatus.IN_PROGRESS
+    assert log.to_status == RequestStatus.IN_PROGRESS
+    assert "50" in (log.note or "")
+
+    notif = Notification.objects.filter(user=client_user, request_id=sr.id).order_by("-id").first()
+    assert notif is not None
+    assert notif.title == "تحديث على الطلب"

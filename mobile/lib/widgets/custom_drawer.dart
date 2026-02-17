@@ -36,6 +36,13 @@ class CustomDrawer extends StatefulWidget {
 
 class _CustomDrawerState extends State<CustomDrawer> {
   String selectedLanguage = "ar";
+  late final Future<bool> _isSuperAdminFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _isSuperAdminFuture = _loadIsSuperAdmin();
+  }
 
   Future<bool> _loadIsProviderRegistered() async {
     final prefs = await SharedPreferences.getInstance();
@@ -86,6 +93,18 @@ class _CustomDrawerState extends State<CustomDrawer> {
     }
 
     await _logout();
+  }
+
+  Future<bool> _loadIsSuperAdmin() async {
+    final loggedIn = await const SessionStorage().isLoggedIn();
+    if (!loggedIn) return false;
+    try {
+      final me = await AccountApi().me();
+      final role = (me['role_state'] ?? '').toString().trim().toLowerCase();
+      return role == 'staff';
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _openWebDashboard() async {
@@ -249,14 +268,22 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   isDark: isDark,
                 ),
                 if (info.loggedIn)
-                  _buildDrawerItem(
-                    icon: Icons.dashboard_customize_outlined,
-                    label: 'لوحة التحكم (Web)',
-                    onTap: () {
-                      Navigator.pop(context);
-                      _openWebDashboard();
+                  FutureBuilder<bool>(
+                    future: _isSuperAdminFuture,
+                    builder: (context, adminSnap) {
+                      if (adminSnap.data != true) {
+                        return const SizedBox.shrink();
+                      }
+                      return _buildDrawerItem(
+                        icon: Icons.dashboard_customize_outlined,
+                        label: 'لوحة التحكم (Web)',
+                        onTap: () {
+                          Navigator.pop(context);
+                          _openWebDashboard();
+                        },
+                        isDark: isDark,
+                      );
                     },
-                    isDark: isDark,
                   ),
                 _buildDrawerItem(
                   icon: Icons.language,

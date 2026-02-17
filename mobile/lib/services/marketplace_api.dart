@@ -340,6 +340,35 @@ class MarketplaceApi {
     }
   }
 
+  Future<bool> updateProviderProgress({
+    required int requestId,
+    String? note,
+    DateTime? expectedDeliveryAt,
+    double? estimatedServiceAmount,
+    double? receivedAmount,
+  }) async {
+    final token = await _session.readAccessToken();
+    if (token == null) return false;
+
+    try {
+      await _dio.post(
+        '${ApiConfig.apiPrefix}/marketplace/provider/requests/$requestId/progress-update/',
+        data: {
+          if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(),
+          if (expectedDeliveryAt != null)
+            'expected_delivery_at': expectedDeliveryAt.toUtc().toIso8601String(),
+          if (estimatedServiceAmount != null)
+            'estimated_service_amount': estimatedServiceAmount,
+          if (receivedAmount != null) 'received_amount': receivedAmount,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> createOffer({
     required int requestId,
     required double price,

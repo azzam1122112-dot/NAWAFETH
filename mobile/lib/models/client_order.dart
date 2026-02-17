@@ -27,6 +27,8 @@ class ClientOrder {
   final bool? providerInputsApproved;
   final DateTime? providerInputsDecidedAt;
   final String? providerInputsDecisionNote;
+  final String? latestStatusNote;
+  final DateTime? latestStatusAt;
 
   // Completed order fields
   final DateTime? deliveredAt;
@@ -62,6 +64,8 @@ class ClientOrder {
     this.providerInputsApproved,
     this.providerInputsDecidedAt,
     this.providerInputsDecisionNote,
+    this.latestStatusNote,
+    this.latestStatusAt,
     this.deliveredAt,
     this.actualServiceAmountSR,
     this.ratingResponseSpeed,
@@ -99,6 +103,21 @@ class ClientOrder {
     }
 
     final statusLabel = (json['status_label'] ?? '').toString().trim();
+    String? latestStatusNote;
+    DateTime? latestStatusAt;
+    final logs = json['status_logs'];
+    if (logs is List) {
+      for (final raw in logs.reversed) {
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final note = (item['note'] ?? '').toString().trim();
+        if (note.isEmpty) continue;
+        latestStatusNote = note;
+        latestStatusAt = DateTime.tryParse((item['created_at'] ?? '').toString());
+        break;
+      }
+    }
+
     return ClientOrder(
       id: json['id'].toString(),
       serviceCode: json['subcategory_name'] ?? 'General',
@@ -139,6 +158,8 @@ class ClientOrder {
               .isEmpty
           ? null
           : (json['provider_inputs_decision_note'] ?? '').toString(),
+      latestStatusNote: latestStatusNote,
+      latestStatusAt: latestStatusAt,
       deliveredAt: DateTime.tryParse((json['delivered_at'] ?? '').toString()),
       actualServiceAmountSR: double.tryParse(
         (json['actual_service_amount'] ?? '').toString(),
@@ -168,6 +189,8 @@ class ClientOrder {
     bool? providerInputsApproved,
     DateTime? providerInputsDecidedAt,
     String? providerInputsDecisionNote,
+    String? latestStatusNote,
+    DateTime? latestStatusAt,
     DateTime? deliveredAt,
     double? actualServiceAmountSR,
     double? ratingResponseSpeed,
@@ -201,6 +224,8 @@ class ClientOrder {
           providerInputsDecidedAt ?? this.providerInputsDecidedAt,
       providerInputsDecisionNote:
           providerInputsDecisionNote ?? this.providerInputsDecisionNote,
+      latestStatusNote: latestStatusNote ?? this.latestStatusNote,
+      latestStatusAt: latestStatusAt ?? this.latestStatusAt,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       actualServiceAmountSR:
           actualServiceAmountSR ?? this.actualServiceAmountSR,

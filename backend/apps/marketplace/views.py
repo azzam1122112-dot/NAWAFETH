@@ -32,6 +32,7 @@ from .serializers import (
 	OfferCreateSerializer,
 	OfferListSerializer,
 	ProviderInputsDecisionSerializer,
+	ProviderProgressUpdateSerializer,
 	ProviderRejectSerializer,
 	RequestCompleteSerializer,
 	ProviderRequestDetailSerializer,
@@ -681,6 +682,70 @@ class RequestStartView(APIView):
 				from_status=old,
 				to_status=sr.status,
 				note=note or "إرسال مدخلات التنفيذ بانتظار اعتماد العميل",
+			)
+
+		return Response(
+			{"ok": True, "request_id": sr.id, "status": sr.status},
+			status=status.HTTP_200_OK,
+		)
+
+
+class ProviderProgressUpdateView(APIView):
+	permission_classes = [permissions.IsAuthenticated, IsProviderPermission]
+
+	def post(self, request, request_id):
+		s = ProviderProgressUpdateSerializer(data=request.data)
+		s.is_valid(raise_exception=True)
+		note = s.validated_data.get("note", "").strip()
+
+		provider = request.user.provider_profile
+
+		with transaction.atomic():
+			sr = (
+				ServiceRequest.objects.select_for_update()
+				.select_related("client")
+				.filter(id=request_id)
+				.first()
+			)
+
+			if not sr:
+				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+
+			if sr.provider_id != provider.id:
+				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
+
+			if sr.status not in (RequestStatus.ACCEPTED, RequestStatus.IN_PROGRESS):
+				return Response(
+					{"detail": "لا يمكن تحديث التنفيذ في هذه الحالة"},
+					status=status.HTTP_400_BAD_REQUEST,
+				)
+
+			update_fields = []
+			if "expected_delivery_at" in s.validated_data:
+				sr.expected_delivery_at = s.validated_data["expected_delivery_at"]
+				update_fields.append("expected_delivery_at")
+
+			if "estimated_service_amount" in s.validated_data:
+				sr.estimated_service_amount = s.validated_data["estimated_service_amount"]
+				sr.received_amount = s.validated_data["received_amount"]
+				sr.remaining_amount = s.validated_data["remaining_amount"]
+				update_fields.extend(
+					[
+						"estimated_service_amount",
+						"received_amount",
+						"remaining_amount",
+					]
+				)
+
+			if update_fields:
+				sr.save(update_fields=update_fields)
+
+			RequestStatusLog.objects.create(
+				request=sr,
+				actor=request.user,
+				from_status=sr.status,
+				to_status=sr.status,
+				note=note or "تحديث من مزود الخدمة",
 			)
 
 		return Response(

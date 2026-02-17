@@ -491,9 +491,24 @@ class _ProviderOrderDetailsScreenState
       bool ok = false;
       String message = 'تم حفظ التحديث';
       final initial = _initialRawStatus;
+      final noteText = _executionUpdateController.text.trim();
 
       if (targetRaw == initial) {
-        ok = true;
+        if (initial == 'accepted' || initial == 'in_progress') {
+          ok = await api.updateProviderProgress(
+            requestId: widget.requestId,
+            note: noteText,
+            expectedDeliveryAt: _expectedDeliveryAt,
+            estimatedServiceAmount: _parseMoney(_estimatedAmountController),
+            receivedAmount: _parseMoney(_receivedAmountController),
+          );
+          message = ok
+              ? 'تم إرسال تحديث للعميل.'
+              : 'تعذر إرسال التحديث حالياً.';
+        } else {
+          ok = true;
+          message = 'لا يوجد تغيير جديد للحفظ.';
+        }
       } else if (_isNewLikeStatus && targetRaw == 'in_progress') {
         if (!_validateExecutionInputs()) {
           ok = false;
@@ -511,9 +526,9 @@ class _ProviderOrderDetailsScreenState
           } else {
             final startOk = await api.startAssignedRequest(
               requestId: widget.requestId,
-              note: _executionUpdateController.text.trim().isEmpty
+              note: noteText.isEmpty
                   ? 'بدء التنفيذ'
-                  : _executionUpdateController.text.trim(),
+                  : noteText,
               expectedDeliveryAt: _expectedDeliveryAt,
               estimatedServiceAmount: _parseMoney(_estimatedAmountController),
               receivedAmount: _parseMoney(_receivedAmountController),
@@ -531,9 +546,9 @@ class _ProviderOrderDetailsScreenState
         } else {
           ok = await api.rejectAssignedRequest(
             requestId: widget.requestId,
-            note: _executionUpdateController.text.trim().isEmpty
+            note: noteText.isEmpty
                 ? _cancelReasonController.text.trim()
-                : _executionUpdateController.text.trim(),
+                : noteText,
             canceledAt: _canceledAt,
             cancelReason: _cancelReasonController.text.trim(),
           );
@@ -546,9 +561,9 @@ class _ProviderOrderDetailsScreenState
         } else {
           ok = await api.startAssignedRequest(
             requestId: widget.requestId,
-            note: _executionUpdateController.text.trim().isEmpty
+            note: noteText.isEmpty
                 ? 'بدء التنفيذ'
-                : _executionUpdateController.text.trim(),
+                : noteText,
             expectedDeliveryAt: _expectedDeliveryAt,
             estimatedServiceAmount: _parseMoney(_estimatedAmountController),
             receivedAmount: _parseMoney(_receivedAmountController),
@@ -564,9 +579,9 @@ class _ProviderOrderDetailsScreenState
         } else {
           ok = await api.completeAssignedRequest(
             requestId: widget.requestId,
-            note: _executionUpdateController.text.trim().isEmpty
+            note: noteText.isEmpty
                 ? 'تم الإنجاز'
-                : _executionUpdateController.text.trim(),
+                : noteText,
             deliveredAt: _deliveredAt,
             actualServiceAmount: _parseMoney(_actualAmountController),
           );

@@ -272,6 +272,61 @@ class ProviderRejectSerializer(RequestActionSerializer):
     canceled_at = serializers.DateTimeField(required=True)
     cancel_reason = serializers.CharField(max_length=255, required=True, allow_blank=False)
 
+class ProviderProgressUpdateSerializer(RequestActionSerializer):
+    expected_delivery_at = serializers.DateTimeField(required=False)
+    estimated_service_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+    )
+    received_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+    )
+
+    def validate(self, attrs):
+        note = (attrs.get("note") or "").strip()
+        has_expected = "expected_delivery_at" in attrs
+        has_estimated = "estimated_service_amount" in attrs
+        has_received = "received_amount" in attrs
+
+        if has_estimated != has_received:
+            raise serializers.ValidationError(
+                {
+                    "received_amount": "يلزم إرسال القيمة المقدرة والمبلغ المستلم معًا",
+                }
+            )
+
+        if has_estimated:
+            estimated = attrs.get("estimated_service_amount")
+            received = attrs.get("received_amount")
+            if estimated is not None and estimated < 0:
+                raise serializers.ValidationError(
+                    {"estimated_service_amount": "القيمة يجب أن تكون موجبة"}
+                )
+            if received is not None and received < 0:
+                raise serializers.ValidationError(
+                    {"received_amount": "القيمة يجب أن تكون موجبة"}
+                )
+            if (
+                estimated is not None
+                and received is not None
+                and received > estimated
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "received_amount": "المبلغ المستلم لا يمكن أن يكون أكبر من القيمة المقدرة",
+                    }
+                )
+            attrs["remaining_amount"] = estimated - received
+
+        if not note and not has_expected and not has_estimated:
+            raise serializers.ValidationError(
+                {"note": "أدخل ملاحظة أو حدّث بيانات التنفيذ"}
+            )
+        return attrs
+
 
 class ServiceRequestAttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()

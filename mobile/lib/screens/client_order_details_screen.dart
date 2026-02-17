@@ -652,6 +652,62 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
+                      if ((_order.latestStatusNote ?? '').trim().isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.campaign_outlined,
+                                    color: _mainColor,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'آخر تحديث من مقدم الخدمة',
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _order.latestStatusNote!.trim(),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 13,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                ),
+                              ),
+                              if (_order.latestStatusAt != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  _formatDate(_order.latestStatusAt!),
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 11,
+                                    color: isDark ? Colors.white54 : Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
 
                       // Offers Section
                       if (_isLoadingOffers)

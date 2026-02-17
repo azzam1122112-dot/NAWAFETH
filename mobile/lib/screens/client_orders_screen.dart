@@ -206,148 +206,180 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     _fetchOrders();
   }
 
-  Widget _filterChip({
+  Widget _modernDropdown({
     required String label,
-    IconData? icon,
-    required bool selected,
-    required VoidCallback onTap,
-    required bool compact,
+    required IconData icon,
+    required String value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+    required bool isDark,
+    required bool isCompact,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 11 : 12,
-          vertical: compact ? 8 : 9,
-        ),
+    return Expanded(
+      child: Container(
+        height: isCompact ? 44 : 48,
+        padding: EdgeInsets.symmetric(horizontal: isCompact ? 10 : 12),
         decoration: BoxDecoration(
-          color: selected
-              ? _mainColor.withValues(alpha: 0.14)
-              : const Color(0xFFF7F7FC),
-          borderRadius: BorderRadius.circular(16),
+          color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF7F7FC),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? _mainColor : const Color(0xFFE8E7F0),
+            color: isDark ? Colors.white12 : const Color(0xFFE8E7F0),
+            width: 1.2,
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: compact ? 14 : 15,
-                color: selected ? _mainColor : Colors.black45,
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: compact ? 11 : 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? _mainColor : Colors.black54,
-              ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: _mainColor,
+              size: 22,
             ),
-          ],
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: isCompact ? 12 : 13,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            dropdownColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            items: items.map((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Row(
+                  children: [
+                    Icon(
+                      _getIconForItem(item, label),
+                      size: isCompact ? 15 : 16,
+                      color: item == value ? _mainColor : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: isCompact ? 11.5 : 12.5,
+                          fontWeight: item == value ? FontWeight.bold : FontWeight.w500,
+                          color: item == value
+                              ? _mainColor
+                              : (isDark ? Colors.white70 : Colors.black87),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            onChanged: onChanged,
+            selectedItemBuilder: (BuildContext context) {
+              return items.map<Widget>((String item) {
+                return Row(
+                  children: [
+                    Icon(icon, size: isCompact ? 15 : 16, color: _mainColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: isCompact ? 12 : 13,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                );
+              }).toList();
+            },
+          ),
         ),
       ),
     );
   }
 
-  Widget _filterGroup({
-    required String title,
-    required List<_FilterOption> options,
-    required String selectedValue,
-    required ValueChanged<String> onChanged,
-    required bool compact,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: compact ? 12 : 13,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF4E4A6A),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(options.length, (index) {
-              final option = options[index];
-              return Padding(
-                padding: EdgeInsetsDirectional.only(
-                  start: index == 0 ? 0 : 8,
-                ),
-                child: _filterChip(
-                  label: option.label,
-                  icon: option.icon,
-                  selected: selectedValue == option.label,
-                  onTap: () => onChanged(option.label),
-                  compact: compact,
-                ),
-              );
-            }),
-          ),
-        ),
-      ],
-    );
+  IconData _getIconForItem(String item, String category) {
+    if (category == 'النوع') {
+      switch (item) {
+        case 'الكل':
+          return Icons.apps_rounded;
+        case 'عادي':
+          return Icons.assignment_rounded;
+        case 'عاجل':
+          return Icons.bolt_rounded;
+        case 'عروض':
+          return Icons.request_quote_rounded;
+        default:
+          return Icons.circle_outlined;
+      }
+    } else {
+      // category == 'الحالة'
+      switch (item) {
+        case 'الكل':
+          return Icons.tune_rounded;
+        case 'جديد':
+          return Icons.fiber_new_rounded;
+        case 'تحت التنفيذ':
+          return Icons.timelapse_rounded;
+        case 'مكتمل':
+          return Icons.task_alt_rounded;
+        case 'ملغي':
+          return Icons.cancel_outlined;
+        default:
+          return Icons.circle_outlined;
+      }
+    }
   }
 
   Widget _filterPanel({required bool isDark, required bool isCompact}) {
-    final typeOptions = const [
-      _FilterOption(label: 'الكل', icon: Icons.apps_rounded),
-      _FilterOption(label: 'عادي', icon: Icons.assignment_rounded),
-      _FilterOption(label: 'عاجل', icon: Icons.bolt_rounded),
-      _FilterOption(label: 'عروض', icon: Icons.request_quote_rounded),
-    ];
-    final statusOptions = const [
-      _FilterOption(label: 'الكل', icon: Icons.tune_rounded),
-      _FilterOption(label: 'جديد', icon: Icons.fiber_new_rounded),
-      _FilterOption(label: 'تحت التنفيذ', icon: Icons.timelapse_rounded),
-      _FilterOption(label: 'مكتمل', icon: Icons.task_alt_rounded),
-      _FilterOption(label: 'ملغي', icon: Icons.cancel_outlined),
-    ];
+    final typeItems = ['الكل', 'عادي', 'عاجل', 'عروض'];
+    final statusItems = ['الكل', 'جديد', 'تحت التنفيذ', 'مكتمل', 'ملغي'];
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-        isCompact ? 10 : 12,
-        isCompact ? 10 : 12,
-        isCompact ? 10 : 12,
-        isCompact ? 10 : 12,
-      ),
+      padding: EdgeInsets.all(isCompact ? 12 : 14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
         border: Border.all(
           color: isDark ? Colors.white10 : const Color(0xFFE9E7F3),
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: _mainColor.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.tune_rounded,
-                size: isCompact ? 17 : 18,
-                color: _mainColor,
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _mainColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.filter_list_rounded,
+                  size: isCompact ? 16 : 18,
+                  color: _mainColor,
+                ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 10),
               Text(
                 'تصفية الطلبات',
                 style: TextStyle(
                   fontFamily: 'Cairo',
-                  fontSize: isCompact ? 12 : 13,
-                  fontWeight: FontWeight.w800,
+                  fontSize: isCompact ? 13 : 14,
+                  fontWeight: FontWeight.w900,
                   color: isDark ? Colors.white : const Color(0xFF3D395B),
                 ),
               ),
@@ -357,8 +389,12 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   foregroundColor: _mainColor,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 8 : 10,
+                    vertical: 4,
+                  ),
                 ),
-                icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                icon: Icon(Icons.restart_alt_rounded, size: isCompact ? 16 : 18),
                 label: Text(
                   'إعادة',
                   style: TextStyle(
@@ -370,21 +406,33 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
               ),
             ],
           ),
-          SizedBox(height: isCompact ? 8 : 10),
-          _filterGroup(
-            title: 'نوع الطلب',
-            options: typeOptions,
-            selectedValue: _selectedType,
-            onChanged: _setTypeFilter,
-            compact: isCompact,
-          ),
           SizedBox(height: isCompact ? 10 : 12),
-          _filterGroup(
-            title: 'حالة الطلب',
-            options: statusOptions,
-            selectedValue: _selectedFilter,
-            onChanged: _setStatusFilter,
-            compact: isCompact,
+          Row(
+            children: [
+              _modernDropdown(
+                label: 'النوع',
+                icon: Icons.category_rounded,
+                value: _selectedType,
+                items: typeItems,
+                onChanged: (val) {
+                  if (val != null) _setTypeFilter(val);
+                },
+                isDark: isDark,
+                isCompact: isCompact,
+              ),
+              SizedBox(width: isCompact ? 8 : 10),
+              _modernDropdown(
+                label: 'الحالة',
+                icon: Icons.flag_rounded,
+                value: _selectedFilter,
+                items: statusItems,
+                onChanged: (val) {
+                  if (val != null) _setStatusFilter(val);
+                },
+                isDark: isDark,
+                isCompact: isCompact,
+              ),
+            ],
           ),
         ],
       ),
@@ -548,19 +596,24 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
             children: [
               Container(
                 width: double.infinity,
-                padding: EdgeInsets.all(isCompact ? 12 : 14),
+                padding: EdgeInsets.all(isCompact ? 14 : 16),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF5B5BD6), Color(0xFF8C7BFF)],
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
+                    colors: [
+                      Color(0xFF667EEA),
+                      Color(0xFF764BA2),
+                      Color(0xFFF093FB),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(cardRadius),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF5B5BD6).withValues(alpha: 0.22),
-                      blurRadius: 14,
-                      offset: const Offset(0, 8),
+                      color: const Color(0xFF667EEA).withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                      spreadRadius: 2,
                     ),
                   ],
                 ),
@@ -569,56 +622,82 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.assignment_rounded,
-                          color: Colors.white,
-                          size: 20,
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.dashboard_customize_rounded,
+                            color: Colors.white,
+                            size: isCompact ? 20 : 22,
+                          ),
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         Text(
-                          'طلباتي',
+                          'إحصاءات طلباتي',
                           style: TextStyle(
                             fontFamily: 'Cairo',
-                            fontSize: isCompact ? 14 : 16,
-                            fontWeight: FontWeight.bold,
+                            fontSize: isCompact ? 15 : 17,
+                            fontWeight: FontWeight.w900,
                             color: Colors.white,
+                            letterSpacing: 0.3,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
-                      'كل طلباتك في مكان واحد مع حالة واضحة لكل طلب.',
+                      'متابعة شاملة لجميع طلباتك مع تحديثات فورية',
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: isCompact ? 11 : 12,
-                        color: Colors.white.withValues(alpha: 0.92),
+                        color: Colors.white.withValues(alpha: 0.95),
+                        height: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    SizedBox(height: isCompact ? 14 : 16),
+                    Row(
                       children: [
-                        _summaryBadge(
-                          'الإجمالي',
-                          total.toString(),
-                          compact: isCompact,
+                        Expanded(
+                          child: _modernSummaryBadge(
+                            'الإجمالي',
+                            total.toString(),
+                            Icons.grid_view_rounded,
+                            compact: isCompact,
+                          ),
                         ),
-                        _summaryBadge(
-                          'تحت التنفيذ',
-                          inProgress.toString(),
-                          compact: isCompact,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _modernSummaryBadge(
+                            'قيد التنفيذ',
+                            inProgress.toString(),
+                            Icons.timelapse_rounded,
+                            compact: isCompact,
+                          ),
                         ),
-                        _summaryBadge(
-                          'مكتمل',
-                          completed.toString(),
-                          compact: isCompact,
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _modernSummaryBadge(
+                            'مكتمل',
+                            completed.toString(),
+                            Icons.check_circle_rounded,
+                            compact: isCompact,
+                          ),
                         ),
-                        _summaryBadge(
-                          'ملغي',
-                          canceled.toString(),
-                          compact: isCompact,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _modernSummaryBadge(
+                            'ملغي',
+                            canceled.toString(),
+                            Icons.cancel_rounded,
+                            compact: isCompact,
+                          ),
                         ),
                       ],
                     ),
@@ -626,42 +705,69 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              _sectionTitle('ابحث عن طلبك'),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 14 : 16,
+                  vertical: isCompact ? 12 : 14,
+                ),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
+                  borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
                   border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                    color: isDark ? Colors.white10 : const Color(0xFFE9E7F3),
+                    width: 1.5,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.1 : 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.search, color: Colors.grey),
-                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: _mainColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.search_rounded,
+                        color: _mainColor,
+                        size: isCompact ? 18 : 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
-                          hintText: 'بحث',
+                          hintText: 'ابحث عن طلب بالرقم أو العنوان...',
                           border: InputBorder.none,
                           isDense: true,
                           hintStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: isCompact ? 12 : 13,
+                            color: Colors.grey.shade500,
                           ),
                         ),
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: isCompact ? 12 : 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                     if (_searchController.text.trim().isNotEmpty)
                       IconButton(
                         onPressed: () => _searchController.clear(),
-                        icon: const Icon(Icons.close, color: Colors.grey),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: Colors.grey.shade600,
+                        ),
+                        iconSize: 20,
                         tooltip: 'مسح',
                       ),
                   ],
@@ -717,20 +823,27 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
     return InkWell(
       onTap: () => _openDetails(order),
-      borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
+      borderRadius: BorderRadius.circular(isCompact ? 16 : 18),
       child: Container(
-        padding: EdgeInsets.all(isCompact ? 12 : 14),
+        padding: EdgeInsets.all(isCompact ? 14 : 16),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
+          borderRadius: BorderRadius.circular(isCompact ? 16 : 18),
           border: Border.all(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
+            color: isDark ? Colors.white12 : const Color(0xFFE9E7F3),
+            width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+              spreadRadius: 1,
+            ),
+            BoxShadow(
+              color: _mainColor.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -882,6 +995,66 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     );
   }
 
+  Widget _modernSummaryBadge(
+    String title,
+    String value,
+    IconData icon, {
+    required bool compact,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 12,
+        vertical: compact ? 10 : 12,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: compact ? 16 : 18,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: compact ? 10 : 11,
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: compact ? 16 : 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _summaryBadge(String title, String value, {required bool compact}) {
     return Container(
       padding: EdgeInsets.symmetric(
@@ -918,11 +1091,4 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       ),
     );
   }
-}
-
-class _FilterOption {
-  const _FilterOption({required this.label, this.icon});
-
-  final String label;
-  final IconData? icon;
 }

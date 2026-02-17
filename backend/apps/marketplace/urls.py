@@ -11,6 +11,7 @@ from .views import (
     ProviderRequestDetailView,
     ProviderAssignedRequestAcceptView,
     ProviderAssignedRequestRejectView,
+    ProviderProgressUpdateView,
     ProviderInputsDecisionView,
     provider_requests,
     RequestCancelView,
@@ -59,6 +60,11 @@ urlpatterns = [
         "provider/requests/<int:request_id>/reject/",
         ProviderAssignedRequestRejectView.as_view(),
         name="provider_request_reject",
+    ),
+    path(
+        "provider/requests/<int:request_id>/progress-update/",
+        ProviderProgressUpdateView.as_view(),
+        name="provider_request_progress_update",
     ),
     # HTML view (keeps API route above intact)
     path(
