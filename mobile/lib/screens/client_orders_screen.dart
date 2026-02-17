@@ -181,35 +181,212 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     }
   }
 
+  void _setTypeFilter(String value) {
+    if (_selectedType == value) return;
+    setState(() => _selectedType = value);
+    _fetchOrders();
+  }
+
+  void _setStatusFilter(String value) {
+    if (_selectedFilter == value) return;
+    setState(() => _selectedFilter = value);
+    _fetchOrders();
+  }
+
+  void _resetFilters() {
+    final noChanges = _selectedType == 'الكل' &&
+        _selectedFilter == 'الكل' &&
+        _searchController.text.trim().isEmpty;
+    if (noChanges) return;
+    setState(() {
+      _selectedType = 'الكل';
+      _selectedFilter = 'الكل';
+      _searchController.clear();
+    });
+    _fetchOrders();
+  }
+
   Widget _filterChip({
     required String label,
+    IconData? icon,
     required bool selected,
     required VoidCallback onTap,
+    required bool compact,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 11 : 12,
+          vertical: compact ? 8 : 9,
+        ),
         decoration: BoxDecoration(
           color: selected
-              ? _mainColor.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(22),
+              ? _mainColor.withValues(alpha: 0.14)
+              : const Color(0xFFF7F7FC),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? _mainColor : Colors.grey.shade300,
+            color: selected ? _mainColor : const Color(0xFFE8E7F0),
           ),
         ),
-        child: Text(
-          label,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: compact ? 14 : 15,
+                color: selected ? _mainColor : Colors.black45,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: compact ? 11 : 12,
+                fontWeight: FontWeight.w700,
+                color: selected ? _mainColor : Colors.black54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _filterGroup({
+    required String title,
+    required List<_FilterOption> options,
+    required String selectedValue,
+    required ValueChanged<String> onChanged,
+    required bool compact,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
           style: TextStyle(
             fontFamily: 'Cairo',
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: selected ? _mainColor : Colors.black54,
+            fontSize: compact ? 12 : 13,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF4E4A6A),
           ),
         ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: List.generate(options.length, (index) {
+              final option = options[index];
+              return Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: index == 0 ? 0 : 8,
+                ),
+                child: _filterChip(
+                  label: option.label,
+                  icon: option.icon,
+                  selected: selectedValue == option.label,
+                  onTap: () => onChanged(option.label),
+                  compact: compact,
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _filterPanel({required bool isDark, required bool isCompact}) {
+    final typeOptions = const [
+      _FilterOption(label: 'الكل', icon: Icons.apps_rounded),
+      _FilterOption(label: 'عادي', icon: Icons.assignment_rounded),
+      _FilterOption(label: 'عاجل', icon: Icons.bolt_rounded),
+      _FilterOption(label: 'عروض', icon: Icons.request_quote_rounded),
+    ];
+    final statusOptions = const [
+      _FilterOption(label: 'الكل', icon: Icons.tune_rounded),
+      _FilterOption(label: 'جديد', icon: Icons.fiber_new_rounded),
+      _FilterOption(label: 'تحت التنفيذ', icon: Icons.timelapse_rounded),
+      _FilterOption(label: 'مكتمل', icon: Icons.task_alt_rounded),
+      _FilterOption(label: 'ملغي', icon: Icons.cancel_outlined),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        isCompact ? 10 : 12,
+        isCompact ? 10 : 12,
+        isCompact ? 10 : 12,
+        isCompact ? 10 : 12,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
+        border: Border.all(
+          color: isDark ? Colors.white10 : const Color(0xFFE9E7F3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.tune_rounded,
+                size: isCompact ? 17 : 18,
+                color: _mainColor,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'تصفية الطلبات',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: isCompact ? 12 : 13,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : const Color(0xFF3D395B),
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _resetFilters,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: _mainColor,
+                ),
+                icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                label: Text(
+                  'إعادة',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: isCompact ? 11 : 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: isCompact ? 8 : 10),
+          _filterGroup(
+            title: 'نوع الطلب',
+            options: typeOptions,
+            selectedValue: _selectedType,
+            onChanged: _setTypeFilter,
+            compact: isCompact,
+          ),
+          SizedBox(height: isCompact ? 10 : 12),
+          _filterGroup(
+            title: 'حالة الطلب',
+            options: statusOptions,
+            selectedValue: _selectedFilter,
+            onChanged: _setStatusFilter,
+            compact: isCompact,
+          ),
+        ],
       ),
     );
   }
@@ -491,102 +668,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              _sectionTitle('نوع الطلب'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _filterChip(
-                      label: 'الكل',
-                      selected: _selectedType == 'الكل',
-                      onTap: () {
-                        setState(() => _selectedType = 'الكل');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'عادي',
-                      selected: _selectedType == 'عادي',
-                      onTap: () {
-                        setState(() => _selectedType = 'عادي');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'عاجل',
-                      selected: _selectedType == 'عاجل',
-                      onTap: () {
-                        setState(() => _selectedType = 'عاجل');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'عروض',
-                      selected: _selectedType == 'عروض',
-                      onTap: () {
-                        setState(() => _selectedType = 'عروض');
-                        _fetchOrders();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              _sectionTitle('حالة الطلب'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _filterChip(
-                      label: 'الكل',
-                      selected: _selectedFilter == 'الكل',
-                      onTap: () {
-                        setState(() => _selectedFilter = 'الكل');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'جديد',
-                      selected: _selectedFilter == 'جديد',
-                      onTap: () {
-                        setState(() => _selectedFilter = 'جديد');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'تحت التنفيذ',
-                      selected: _selectedFilter == 'تحت التنفيذ',
-                      onTap: () {
-                        setState(() => _selectedFilter = 'تحت التنفيذ');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'مكتمل',
-                      selected: _selectedFilter == 'مكتمل',
-                      onTap: () {
-                        setState(() => _selectedFilter = 'مكتمل');
-                        _fetchOrders();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _filterChip(
-                      label: 'ملغي',
-                      selected: _selectedFilter == 'ملغي',
-                      onTap: () {
-                        setState(() => _selectedFilter = 'ملغي');
-                        _fetchOrders();
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              _filterPanel(isDark: isDark, isCompact: isCompact),
             ],
           ),
         ),
@@ -836,4 +918,11 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       ),
     );
   }
+}
+
+class _FilterOption {
+  const _FilterOption({required this.label, this.icon});
+
+  final String label;
+  final IconData? icon;
 }

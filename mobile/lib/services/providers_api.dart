@@ -357,6 +357,24 @@ class ProvidersApi {
     }
   }
 
+  Future<bool> followProvider(int providerId) async {
+    try {
+      await _dio.post('${ApiConfig.apiPrefix}/providers/$providerId/follow/');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> unfollowProvider(int providerId) async {
+    try {
+      await _dio.post('${ApiConfig.apiPrefix}/providers/$providerId/unfollow/');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> unlikeProvider(int providerId) async {
     try {
       await _dio.post('${ApiConfig.apiPrefix}/providers/$providerId/unlike/');

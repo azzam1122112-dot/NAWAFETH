@@ -59,7 +59,7 @@ class _AddServiceScreenState extends State<AddServiceScreen>
         appBar: const PreferredSize(
           preferredSize: Size.fromHeight(60),
           child: CustomAppBar(
-            title: 'اختيار نوع الخدمة',
+            title: 'نوع الخدمة',
             showSearchField: false,
             forceDrawerIcon: true,
           ),
@@ -107,83 +107,113 @@ class _AddServiceScreenState extends State<AddServiceScreen>
             ),
             SafeArea(
               top: false,
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _StaggeredEntrance(
-                      controller: _entranceController,
-                      begin: 0.00,
-                      end: 0.35,
-                      child: const _HeroPanel(),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final metrics = _ScreenMetrics.fromWidth(constraints.maxWidth);
+                  final options = <_ServiceOptionData>[
+                    _ServiceOptionData(
+                      title: 'البحث عن مزود خدمة',
+                      subtitle:
+                          'استعرض مزودي الخدمة حسب الموقع والتقييم وسابقة الأعمال.',
+                      badge: 'الأكثر استخداماً',
+                      icon: Icons.travel_explore_rounded,
+                      primary: const Color(0xFF5D4AA8),
+                      secondary: const Color(0xFF7B63D2),
+                      actionLabel: 'استعراض المزودين',
+                      detail: 'انطلاقة سريعة',
+                      onTap: () =>
+                          _navigate(context, const SearchProviderScreen()),
                     ),
-                    const SizedBox(height: 14),
-                    _StaggeredEntrance(
-                      controller: _entranceController,
-                      begin: 0.18,
-                      end: 0.54,
-                      child: _ServiceOptionCard(
-                        title: 'البحث عن مزود خدمة',
-                        subtitle:
-                            'استعرض مزودي الخدمة حسب الموقع، التقييم، وسابقة الأعمال ثم ابدأ مباشرة.',
-                        badge: 'الأكثر استخداماً',
-                        icon: Icons.travel_explore_rounded,
-                        primary: const Color(0xFF5D4AA8),
-                        secondary: const Color(0xFF7B63D2),
-                        actionLabel: 'استعراض المزودين',
-                        detail: 'انطلاقة سريعة',
-                        onTap: () =>
-                            _navigate(context, const SearchProviderScreen()),
+                    _ServiceOptionData(
+                      title: 'طلب خدمة عاجلة',
+                      subtitle:
+                          'أرسل طلبًا فوريًا ليصل إلى المزودين القريبين والمتاحين الآن.',
+                      badge: 'استجابة فورية',
+                      icon: Icons.bolt_rounded,
+                      primary: const Color(0xFFF1973D),
+                      secondary: const Color(0xFFDE6A22),
+                      actionLabel: 'إنشاء طلب عاجل',
+                      detail: 'للحالات المستعجلة',
+                      onTap: () => _navigate(
+                        context,
+                        const UrgentRequestScreen(),
+                        requireFullClient: true,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    _StaggeredEntrance(
-                      controller: _entranceController,
-                      begin: 0.34,
-                      end: 0.72,
-                      child: _ServiceOptionCard(
-                        title: 'طلب خدمة عاجلة',
-                        subtitle:
-                            'أرسل طلباً فورياً ليصل إلى مزودي الخدمة القريبين والمتاحين الآن.',
-                        badge: 'استجابة فورية',
-                        icon: Icons.bolt_rounded,
-                        primary: const Color(0xFFF1973D),
-                        secondary: const Color(0xFFDE6A22),
-                        actionLabel: 'إنشاء طلب عاجل',
-                        detail: 'للحالات المستعجلة',
-                        onTap: () => _navigate(
-                          context,
-                          const UrgentRequestScreen(),
-                          requireFullClient: true,
+                    _ServiceOptionData(
+                      title: 'طلب عروض أسعار',
+                      subtitle:
+                          'صف احتياجك مرة واحدة واستلم عروضًا متعددة للمقارنة بثقة.',
+                      badge: 'أفضل للتفاوض',
+                      icon: Icons.request_quote_rounded,
+                      primary: const Color(0xFF2D8B7B),
+                      secondary: const Color(0xFF1F6B5F),
+                      actionLabel: 'طلب عروض الآن',
+                      detail: 'مقارنة ذكية',
+                      onTap: () => _navigate(
+                        context,
+                        const RequestQuoteScreen(),
+                        requireFullClient: true,
+                      ),
+                    ),
+                  ];
+
+                  final optionWidgets = List<Widget>.generate(options.length, (
+                    index,
+                  ) {
+                    final item = options[index];
+                    final begin = 0.16 + (index * 0.18);
+                    final end = ((begin + 0.45).clamp(0.0, 1.0)).toDouble();
+
+                    return SizedBox(
+                      width: metrics.cardWidth(constraints.maxWidth),
+                      child: _StaggeredEntrance(
+                        controller: _entranceController,
+                        begin: begin,
+                        end: end,
+                        child: _ServiceOptionCard(
+                          compact: metrics.compact,
+                          title: item.title,
+                          subtitle: item.subtitle,
+                          badge: item.badge,
+                          icon: item.icon,
+                          primary: item.primary,
+                          secondary: item.secondary,
+                          actionLabel: item.actionLabel,
+                          detail: item.detail,
+                          onTap: item.onTap,
                         ),
                       ),
+                    );
+                  });
+
+                  return SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      metrics.horizontalPadding,
+                      12,
+                      metrics.horizontalPadding,
+                      24,
                     ),
-                    const SizedBox(height: 12),
-                    _StaggeredEntrance(
-                      controller: _entranceController,
-                      begin: 0.52,
-                      end: 1.00,
-                      child: _ServiceOptionCard(
-                        title: 'طلب عروض أسعار',
-                        subtitle:
-                            'صف احتياجك مرة واحدة واستلم عدة عروض لتقارن الجودة والتكلفة بثقة.',
-                        badge: 'أفضل للتفاوض',
-                        icon: Icons.request_quote_rounded,
-                        primary: const Color(0xFF2D8B7B),
-                        secondary: const Color(0xFF1F6B5F),
-                        actionLabel: 'طلب عروض الآن',
-                        detail: 'مقارنة ذكية',
-                        onTap: () => _navigate(
-                          context,
-                          const RequestQuoteScreen(),
-                          requireFullClient: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _StaggeredEntrance(
+                          controller: _entranceController,
+                          begin: 0.00,
+                          end: 0.34,
+                          child: _HeroPanel(compact: metrics.compact),
                         ),
-                      ),
+                        SizedBox(height: metrics.gap),
+                        Wrap(
+                          spacing: metrics.gap,
+                          runSpacing: metrics.gap,
+                          children: optionWidgets,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -225,14 +255,21 @@ class _StaggeredEntrance extends StatelessWidget {
 }
 
 class _HeroPanel extends StatelessWidget {
-  const _HeroPanel();
+  const _HeroPanel({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      padding: EdgeInsets.fromLTRB(
+        compact ? 14 : 16,
+        compact ? 14 : 16,
+        compact ? 14 : 16,
+        compact ? 12 : 14,
+      ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         gradient: const LinearGradient(
           colors: [Color(0xFF5B479D), Color(0xFF7A63CA)],
           begin: Alignment.topRight,
@@ -252,28 +289,28 @@ class _HeroPanel extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: compact ? 42 : 46,
+                height: compact ? 42 : 46,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.26),
                   ),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.add_circle_outline_rounded,
                   color: Colors.white,
-                  size: 28,
+                  size: compact ? 23 : 26,
                 ),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
+              SizedBox(width: compact ? 10 : 12),
+              Expanded(
                 child: Text(
                   'ابدأ طلبك بالطريقة الأنسب',
                   style: TextStyle(
                     fontFamily: 'Cairo',
-                    fontSize: 20,
+                    fontSize: compact ? 16 : 18,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                     height: 1.3,
@@ -282,20 +319,20 @@ class _HeroPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: compact ? 8 : 10),
           Text(
-            'اختر نوع الخدمة أولاً ثم أكمل الطلب بخطوات بسيطة. كل خيار مصمم لحالة استخدام مختلفة.',
+            'اختر نوع الخدمة وابدأ طلبك بخطوات واضحة وسريعة.',
             style: TextStyle(
               fontFamily: 'Cairo',
-              fontSize: 13,
+              fontSize: compact ? 12 : 13,
               color: Colors.white.withValues(alpha: 0.9),
-              height: 1.65,
+              height: 1.55,
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: compact ? 10 : 12),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: compact ? 6 : 8,
+            runSpacing: compact ? 6 : 8,
             children: const [
               _HeroChip(label: 'مسار واضح'),
               _HeroChip(label: 'سرعة في التنفيذ'),
@@ -337,6 +374,203 @@ class _HeroChip extends StatelessWidget {
 
 class _ServiceOptionCard extends StatelessWidget {
   const _ServiceOptionCard({
+    required this.compact,
+    required this.title,
+    required this.subtitle,
+    required this.badge,
+    required this.icon,
+    required this.primary,
+    required this.secondary,
+    required this.actionLabel,
+    required this.detail,
+    required this.onTap,
+  });
+
+  final bool compact;
+  final String title;
+  final String subtitle;
+  final String badge;
+  final IconData icon;
+  final Color primary;
+  final Color secondary;
+  final String actionLabel;
+  final String detail;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE7E3F4)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF251A4F).withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 12 : 13,
+                  compact ? 10 : 11,
+                  compact ? 12 : 13,
+                  compact ? 10 : 11,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    topRight: Radius.circular(18),
+                  ),
+                  gradient: LinearGradient(
+                    colors: [primary, secondary],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: compact ? 38 : 40,
+                      height: compact ? 38 : 40,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white.withValues(alpha: 0.2),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: Icon(icon, color: Colors.white, size: compact ? 20 : 22),
+                    ),
+                    SizedBox(width: compact ? 8 : 9),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: compact ? 14 : 15,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 8 : 9,
+                        vertical: compact ? 4 : 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: compact ? 10 : 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 12 : 13,
+                  compact ? 11 : 12,
+                  compact ? 12 : 13,
+                  compact ? 12 : 13,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: compact ? 12 : 13,
+                        color: Color(0xFF5B5670),
+                        height: 1.5,
+                      ),
+                    ),
+                    SizedBox(height: compact ? 10 : 11),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 9 : 10,
+                            vertical: compact ? 5 : 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F0FD),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            detail,
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: compact ? 11 : 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF5A489B),
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: onTap,
+                          style: TextButton.styleFrom(
+                            foregroundColor: primary,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            textStyle: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: compact ? 12 : 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          icon: Icon(
+                            Icons.arrow_back_rounded,
+                            size: compact ? 18 : 19,
+                          ),
+                          label: Text(actionLabel),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceOptionData {
+  const _ServiceOptionData({
     required this.title,
     required this.subtitle,
     required this.badge,
@@ -357,152 +591,35 @@ class _ServiceOptionCard extends StatelessWidget {
   final String actionLabel;
   final String detail;
   final VoidCallback onTap;
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0xFFE7E3F4)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF251A4F).withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(22),
-                    topRight: Radius.circular(22),
-                  ),
-                  gradient: LinearGradient(
-                    colors: [primary, secondary],
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: Colors.white.withValues(alpha: 0.2),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.28),
-                        ),
-                      ),
-                      child: Icon(icon, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.28),
-                        ),
-                      ),
-                      child: Text(
-                        badge,
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 13,
-                        color: Color(0xFF5B5670),
-                        height: 1.65,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3F0FD),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            detail,
-                            style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF5A489B),
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: onTap,
-                          style: TextButton.styleFrom(
-                            foregroundColor: primary,
-                            textStyle: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                          label: Text(actionLabel),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+class _ScreenMetrics {
+  const _ScreenMetrics({
+    required this.compact,
+    required this.twoColumns,
+    required this.horizontalPadding,
+    required this.gap,
+  });
+
+  final bool compact;
+  final bool twoColumns;
+  final double horizontalPadding;
+  final double gap;
+
+  static _ScreenMetrics fromWidth(double width) {
+    final compact = width < 360;
+    final twoColumns = width >= 700;
+    return _ScreenMetrics(
+      compact: compact,
+      twoColumns: twoColumns,
+      horizontalPadding: twoColumns ? 22 : (compact ? 12 : 16),
+      gap: twoColumns ? 14 : 12,
     );
+  }
+
+  double cardWidth(double maxWidth) {
+    if (!twoColumns) return maxWidth - (horizontalPadding * 2);
+    final available = maxWidth - (horizontalPadding * 2) - gap;
+    return available / 2;
   }
 }

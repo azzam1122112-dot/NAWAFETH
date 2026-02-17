@@ -18,10 +18,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static bool _introShownThisSession = false;
+  bool _isIntroDialogOpen = false;
+
   @override
   void initState() {
     super.initState();
     _warmupHomeFeed();
+    _showIntroDialogOnce();
   }
 
   void _warmupHomeFeed() {
@@ -33,6 +37,54 @@ class _HomeScreenState extends State<HomeScreen> {
         feed.getMediaItems(limit: 12),
         feed.getTestimonials(limit: 8),
       ]);
+    });
+  }
+
+  void _showIntroDialogOnce() {
+    if (_introShownThisSession) return;
+    _introShownThisSession = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      _isIntroDialogOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'مرحبًا بك في نوافذ',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'منصة تربطك بمقدمي الخدمات بسرعة وسهولة.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ).whenComplete(() {
+        _isIntroDialogOpen = false;
+      });
+
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!mounted || !_isIntroDialogOpen) return;
+        if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
+        Navigator.of(context, rootNavigator: true).pop();
+      });
     });
   }
 

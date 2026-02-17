@@ -170,8 +170,7 @@ class _NawafethAppState extends State<NawafethApp> {
         },
 
         // ✅ المسارات
-        initialRoute:
-            '/entry', // شاشة البداية (تحدد الوجهة حسب حالة تسجيل الدخول)
+        initialRoute: '/home', // بدء التطبيق مباشرة من الصفحة الرئيسية
         routes: {
           '/entry': (context) => const EntryScreen(),
           '/onboarding': (context) => const OnboardingScreen(),

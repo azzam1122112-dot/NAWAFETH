@@ -49,6 +49,8 @@ class _InteractiveScreenState extends State<InteractiveScreen>
   Future<List<ProviderProfile>>? _followingFuture;
   Future<List<UserSummary>>? _followersFuture;
   Future<List<ProviderPortfolioItem>>? _favoritesFuture;
+  final Set<int> _unfollowingProviderIds = <int>{};
+  final Set<int> _unfavoritingItemIds = <int>{};
 
   @override
   void initState() {
@@ -122,6 +124,51 @@ class _InteractiveScreenState extends State<InteractiveScreen>
       _followersFuture = _providersApi.getMyProviderFollowers();
       _favoritesFuture = _providersApi.getMyFavoriteMedia();
     });
+  }
+
+  Future<void> _refreshInteractiveData() async {
+    _reload();
+    final waiters = <Future<dynamic>>[];
+    if (_followingFuture != null) waiters.add(_followingFuture!);
+    if (_favoritesFuture != null) waiters.add(_favoritesFuture!);
+    if (_effectiveMode == InteractiveMode.provider && _followersFuture != null) {
+      waiters.add(_followersFuture!);
+    }
+    await Future.wait(waiters);
+  }
+
+  Future<void> _unfollowProvider(ProviderProfile provider) async {
+    if (_unfollowingProviderIds.contains(provider.id)) return;
+    setState(() => _unfollowingProviderIds.add(provider.id));
+    final ok = await _providersApi.unfollowProvider(provider.id);
+    if (!mounted) return;
+    setState(() => _unfollowingProviderIds.remove(provider.id));
+    if (ok) {
+      _reload();
+      _showSnack('تم إلغاء المتابعة');
+      return;
+    }
+    _showSnack('تعذر إلغاء المتابعة');
+  }
+
+  Future<void> _removeFavoriteMedia(ProviderPortfolioItem item) async {
+    if (_unfavoritingItemIds.contains(item.id)) return;
+    setState(() => _unfavoritingItemIds.add(item.id));
+    final ok = await _providersApi.unlikePortfolioItem(item.id);
+    if (!mounted) return;
+    setState(() => _unfavoritingItemIds.remove(item.id));
+    if (ok) {
+      _reload();
+      _showSnack('تمت الإزالة من المفضلة');
+      return;
+    }
+    _showSnack('تعذرت إزالة العنصر من المفضلة');
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message, style: const TextStyle(fontFamily: 'Cairo'))),
+    );
   }
 
   @override
@@ -353,14 +400,17 @@ class _InteractiveScreenState extends State<InteractiveScreen>
           );
         }
 
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          itemCount: list.length,
-          separatorBuilder: (context, _) => const SizedBox(height: 16),
-          itemBuilder: (context, index) {
-            final p = list[index];
-            return _buildFollowingCard(context, p);
-          },
+        return RefreshIndicator(
+          onRefresh: _refreshInteractiveData,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            itemCount: list.length,
+            separatorBuilder: (context, _) => const SizedBox(height: 16),
+            itemBuilder: (context, index) {
+              final p = list[index];
+              return _buildFollowingCard(context, p);
+            },
+          ),
         );
       },
     );
@@ -444,34 +494,78 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                       ),
                     ),
                     // Action Button
-                    InkWell(
-                      onTap: () {
-                         Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ServiceRequestFormScreen(
-                              providerId: p.id.toString(),
-                              providerName: name.isEmpty ? null : name,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ServiceRequestFormScreen(
+                                  providerId: p.id.toString(),
+                                  providerName: name.isEmpty ? null : name,
+                                ),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.deepPurple.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.deepPurple.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: const Text(
+                              'طلب خدمة',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.deepPurple,
+                              ),
                             ),
                           ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.deepPurple.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.3)),
                         ),
-                        child: const Text('طلب خدمة', style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.deepPurple
-                        )),
-                      ),
-                    )
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: _unfollowingProviderIds.contains(p.id)
+                              ? null
+                              : () => _unfollowProvider(p),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.red.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            child: _unfollowingProviderIds.contains(p.id)
+                                ? const Padding(
+                                    padding: EdgeInsets.all(8),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.red,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person_remove_outlined,
+                                    size: 18,
+                                    color: Colors.red,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
                 if (bio.isNotEmpty) ...[
@@ -541,14 +635,17 @@ class _InteractiveScreenState extends State<InteractiveScreen>
           );
         }
 
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          itemCount: list.length,
-          separatorBuilder: (context, _) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final u = list[index];
-            return _buildFollowerItem(u);
-          },
+        return RefreshIndicator(
+          onRefresh: _refreshInteractiveData,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            itemCount: list.length,
+            separatorBuilder: (context, _) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final u = list[index];
+              return _buildFollowerItem(u);
+            },
+          ),
         );
       },
     );
@@ -621,19 +718,22 @@ class _InteractiveScreenState extends State<InteractiveScreen>
           );
         }
 
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 0.85, // More vertical space for a nice card look
+        return RefreshIndicator(
+          onRefresh: _refreshInteractiveData,
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.85, // More vertical space for a nice card look
+            ),
+            itemCount: list.length,
+            itemBuilder: (context, index) {
+              final item = list[index];
+              return _buildFavoriteMediaCard(context, item);
+            },
           ),
-          itemCount: list.length,
-          itemBuilder: (context, index) {
-            final item = list[index];
-            return _buildFavoriteMediaCard(context, item);
-          },
         );
       },
     );
@@ -716,6 +816,40 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                         child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
                       ),
                     ),
+                  PositionedDirectional(
+                    top: 8,
+                    start: 8,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: _unfavoritingItemIds.contains(item.id)
+                            ? null
+                            : () => _removeFavoriteMedia(item),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            shape: BoxShape.circle,
+                          ),
+                          child: _unfavoritingItemIds.contains(item.id)
+                              ? const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.favorite,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

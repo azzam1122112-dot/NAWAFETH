@@ -7,12 +7,9 @@ import 'package:latlong2/latlong.dart';
 
 import '../widgets/app_bar.dart';
 import '../widgets/custom_drawer.dart';
-import '../widgets/auto_scrolling_reels_row.dart';
 import '../widgets/platform_report_dialog.dart';
-import '../widgets/video_reels.dart';
-import '../widgets/video_full_screen.dart';
-import '../widgets/video_thumbnail_widget.dart';
 import 'provider_dashboard/reviews_tab.dart';
+import 'network_video_player_screen.dart';
 import 'service_request_form_screen.dart';
 import 'provider_service_detail_screen.dart';
 import '../services/providers_api.dart'; // Added
@@ -54,40 +51,17 @@ class ProviderProfileScreen extends StatefulWidget {
   State<ProviderProfileScreen> createState() => _ProviderProfileScreenState();
 }
 
-enum _ServiceGeoScope {
-  city,
-  region,
-  country,
-  withinRadius,
-}
-
 class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   final Color mainColor = Colors.deepPurple;
 
-  static const int _dummyServiceRangeKm = 5;
-
-  // نطاق الخدمة الجغرافي (بيانات وهمية): يعرض خيارًا واحدًا فقط
-  // بناءً على طلبك سنعرض "ضمن نطاق محدد" مع دائرة 5 كم.
-  static const _ServiceGeoScope _dummyGeoScopeSelection = _ServiceGeoScope.withinRadius;
-
   int _selectedTabIndex = 0;
 
-  bool _isBookmarked = false;
+  bool _isFollowingProvider = false;
+  bool _isFollowBusy = false;
+  Set<int> _favoritePortfolioIds = <int>{};
+  final Set<int> _portfolioFavoriteBusyIds = <int>{};
+  final Set<int> _favoriteHighlightIndexes = <int>{};
   final bool _isOnline = true;
-
-  // لمحات مقدم الخدمة (وهمية طبقًا للمخطط)
-  final List<String> _highlightsVideos = [
-    'assets/videos/1.mp4',
-    'assets/videos/2.mp4',
-    'assets/videos/3.mp4',
-  ];
-
-  // صور/معاينات للّمحـات (مثل الصفحة الرئيسية)
-  final List<String> _highlightsLogos = [
-    'assets/images/32.jpeg',
-    'assets/images/841015.jpeg',
-    'assets/images/879797.jpeg',
-  ];
 
   // عدادات أعلى الصفحة (بدون بيانات وهمية)
   // ملاحظة: بعض العدادات لا يوجد لها مصدر API حالياً، لذلك تبقى null وتُعرض كـ "—".
@@ -124,7 +98,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   int get providerOperations => _fullProfile?.ratingCount ?? widget.providerOperations ?? 0;
 
-  String get providerImage => widget.providerImage ?? 'assets/images/8410.jpeg';
+  String get providerImage =>
+      _fullProfile?.imageUrl?.trim().isNotEmpty == true
+          ? _fullProfile!.imageUrl!.trim()
+          : (widget.providerImage ?? 'assets/images/8410.jpeg');
 
     bool get providerVerified =>
       (_fullProfile?.isVerifiedBlue ?? false) ||
@@ -160,118 +137,23 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   double? get providerLat => _fullProfile?.lat ?? widget.providerLat;
   double? get providerLng => _fullProfile?.lng ?? widget.providerLng;
 
-  String _extractSocialHandle(String url) {
-    final trimmed = url.trim();
-    if (trimmed.isEmpty) return '';
-
-    final uri = Uri.tryParse(trimmed);
-    if (uri == null) return trimmed;
-
-    final segments = uri.pathSegments.where((s) => s.trim().isNotEmpty).toList();
-    if (segments.isEmpty) return trimmed;
-    return '@${segments.last}';
+  bool _isRemoteImage(String path) {
+    final p = path.trim().toLowerCase();
+    return p.startsWith('http://') || p.startsWith('https://');
   }
 
-  String _geoScopeDisplayValue() {
-    switch (_dummyGeoScopeSelection) {
-      case _ServiceGeoScope.city:
-        return 'مدينتي: $providerCityName';
-      case _ServiceGeoScope.region:
-        return 'منطقتي: $providerRegionName';
-      case _ServiceGeoScope.country:
-        return 'دولتي: $providerCountryName';
-      case _ServiceGeoScope.withinRadius:
-        return 'ضمن نطاق محدد: $_dummyServiceRangeKm كم';
+  Widget _providerAvatar() {
+    if (_isRemoteImage(providerImage)) {
+      return Image.network(
+        providerImage,
+        fit: BoxFit.cover,
+        errorBuilder: (_, error, stackTrace) => const Icon(Icons.person, size: 36),
+      );
     }
-  }
-
-  Widget _serviceRangeMap({
-    required Color borderColor,
-    required bool isDark,
-  }) {
-    final lat = providerLat;
-    final lng = providerLng;
-    if (lat == null || lng == null) {
-      return const SizedBox.shrink();
-    }
-
-    final center = LatLng(lat, lng);
-    final radiusMeters = _dummyServiceRangeKm * 1000.0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'خريطة نطاق الخدمة (ضمن نطاق محدد)',
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: isDark ? Colors.grey[400]! : Colors.grey[700]!,
-          ),
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            height: 220,
-            decoration: BoxDecoration(
-              border: Border.all(color: borderColor),
-              color: isDark ? Colors.grey[900] : Colors.grey.shade50,
-            ),
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: center,
-                initialZoom: 12,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
-                ),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.nawafeth.app',
-                ),
-                CircleLayer(
-                  circles: [
-                    CircleMarker(
-                      point: center,
-                      radius: radiusMeters,
-                      useRadiusInMeter: true,
-                      color: mainColor.withAlpha(35),
-                      borderColor: mainColor.withAlpha(160),
-                      borderStrokeWidth: 2,
-                    ),
-                  ],
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: center,
-                      width: 44,
-                      height: 44,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
-                            )
-                          ],
-                        ),
-                        child: Icon(Icons.location_on, color: mainColor, size: 26),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+    return Image.asset(
+      providerImage,
+      fit: BoxFit.cover,
+      errorBuilder: (_, error, stackTrace) => const Icon(Icons.person, size: 36),
     );
   }
 
@@ -292,7 +174,107 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       _loadProviderData();
       _loadProviderServices();
       _loadProviderPortfolio();
+      _syncClientSocialState();
     }
+  }
+
+  Future<void> _syncClientSocialState() async {
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    if (providerId == null) return;
+    try {
+      final api = ProvidersApi();
+      final following = await api.getMyFollowingProviders();
+      final favorites = await api.getMyFavoriteMedia();
+      if (!mounted) return;
+      setState(() {
+        _isFollowingProvider = following.any((p) => p.id == providerId);
+        _favoritePortfolioIds = favorites.map((e) => e.id).toSet();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFollowProvider() async {
+    if (!await checkAuth(context)) return;
+    if (!mounted) return;
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    if (providerId == null || _isFollowBusy) return;
+
+    setState(() => _isFollowBusy = true);
+    final api = ProvidersApi();
+    final ok = _isFollowingProvider
+        ? await api.unfollowProvider(providerId)
+        : await api.followProvider(providerId);
+    if (!mounted) return;
+    setState(() => _isFollowBusy = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذرت العملية، حاول مرة أخرى')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isFollowingProvider = !_isFollowingProvider;
+      final current = _followersCount ?? 0;
+      _followersCount = _isFollowingProvider
+          ? current + 1
+          : (current > 0 ? current - 1 : 0);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _isFollowingProvider ? 'تمت المتابعة بنجاح' : 'تم إلغاء المتابعة',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _togglePortfolioFavorite(ProviderPortfolioItem item) async {
+    if (!await checkAuth(context)) return;
+    if (!mounted) return;
+    if (_portfolioFavoriteBusyIds.contains(item.id)) return;
+    setState(() => _portfolioFavoriteBusyIds.add(item.id));
+
+    final isFav = _favoritePortfolioIds.contains(item.id);
+    final api = ProvidersApi();
+    final ok = isFav
+        ? await api.unlikePortfolioItem(item.id)
+        : await api.likePortfolioItem(item.id);
+    if (!mounted) return;
+    setState(() => _portfolioFavoriteBusyIds.remove(item.id));
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديث التفضيل')),
+      );
+      return;
+    }
+    setState(() {
+      if (isFav) {
+        _favoritePortfolioIds.remove(item.id);
+      } else {
+        _favoritePortfolioIds.add(item.id);
+      }
+    });
+  }
+
+  void _toggleHighlightFavorite(int index) {
+    setState(() {
+      if (_favoriteHighlightIndexes.contains(index)) {
+        _favoriteHighlightIndexes.remove(index);
+      } else {
+        _favoriteHighlightIndexes.add(index);
+      }
+    });
+  }
+
+  List<ProviderPortfolioItem> get _highlightItems {
+    return _portfolioItems
+        .where(
+          (item) =>
+              item.fileType.toLowerCase() == 'video' &&
+              item.fileUrl.trim().isNotEmpty,
+        )
+        .toList();
   }
 
   Future<void> _loadProviderPortfolio() async {
@@ -463,21 +445,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _openExternalUrl(String rawUrl) async {
-    final url = rawUrl.trim();
-    if (url.isEmpty) return;
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تعذر فتح الرابط')),
     );
   }
 
@@ -772,7 +739,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: bgColor,
-        appBar: const CustomAppBar(title: 'مزود الخدمة'),
+        appBar: const CustomAppBar(title: 'المزود'),
         drawer: const CustomDrawer(),
         body: SingleChildScrollView(
           child: Column(
@@ -781,15 +748,15 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    height: 140,
+                    height: 128,
                     width: double.infinity,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topRight,
                         end: Alignment.bottomLeft,
                         colors: [
-                          mainColor.withValues(alpha: 0.85),
-                          mainColor.withValues(alpha: 0.55),
+                          const Color(0xFF8F6ED6),
+                          const Color(0xFF7F57CF),
                         ],
                       ),
                     ),
@@ -801,15 +768,25 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     child: Row(
                       children: [
                         IconButton(
-                          tooltip: 'إضافة لقائمة المتابعة',
-                          onPressed: () async {
-                            if (!await checkAuth(context)) return;
-                            setState(() => _isBookmarked = !_isBookmarked);
-                          },
-                          icon: Icon(
-                            _isBookmarked ? Icons.bookmark : Icons.bookmark_outline,
-                            color: Colors.white,
-                          ),
+                          tooltip: _isFollowingProvider
+                              ? 'إلغاء المتابعة'
+                              : 'متابعة',
+                          onPressed: _isFollowBusy ? null : _toggleFollowProvider,
+                          icon: _isFollowBusy
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  _isFollowingProvider
+                                      ? Icons.person_remove_alt_1_rounded
+                                      : Icons.person_add_alt_1_rounded,
+                                  color: Colors.white,
+                                ),
                         ),
                         const Spacer(),
                         IconButton(
@@ -821,24 +798,27 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     ),
                   ),
                   Positioned(
-                    bottom: -48,
-                    right: 16,
+                    bottom: -42,
+                    right: 18,
                     child: CircleAvatar(
-                      radius: 48,
+                      radius: 42,
                       backgroundColor: bgColor,
-                      child: CircleAvatar(
-                        radius: 44,
-                        backgroundImage: AssetImage(providerImage),
+                      child: ClipOval(
+                        child: SizedBox(
+                          width: 78,
+                          height: 78,
+                          child: _providerAvatar(),
+                        ),
                       ),
                     ),
                   ),
                   if (providerVerified)
                     Positioned(
-                      bottom: -16,
-                      right: 22,
+                      bottom: -12,
+                      right: 24,
                       child: Container(
-                        width: 22,
-                        height: 22,
+                        width: 20,
+                        height: 20,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
@@ -851,11 +831,11 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     ),
                   if (_isOnline)
                     Positioned(
-                      bottom: -16,
-                      right: 86,
+                      bottom: -12,
+                      right: 78,
                       child: Container(
-                        width: 14,
-                        height: 14,
+                        width: 13,
+                        height: 13,
                         decoration: BoxDecoration(
                           color: Colors.green,
                           shape: BoxShape.circle,
@@ -865,147 +845,65 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 58),
+              const SizedBox(height: 52),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  providerName,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: textColor,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (providerEnglishName.trim().isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Directionality(
-                              textDirection: TextDirection.ltr,
-                              child: Align(
-                                alignment: AlignmentDirectional.centerStart,
-                                child: Text(
-                                  providerEnglishName,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: secondaryTextColor,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 2),
-                          if (providerHandle.trim().isNotEmpty) ...[
-                            Text(
-                              providerHandle,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 12,
-                                color: secondaryTextColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                          ],
-                          if (providerAccountType.trim().isNotEmpty) ...[
-                            Row(
-                              children: [
-                                Icon(Icons.work_outline, size: 16, color: secondaryTextColor),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    providerAccountType,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 13,
-                                      color: secondaryTextColor,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                          ],
-                          if (providerCategory.trim().isNotEmpty || providerSubCategory.trim().isNotEmpty) ...[
-                            Text(
-                              providerSubCategory.trim().isNotEmpty && providerCategory.trim().isNotEmpty
-                                  ? '$providerCategory • $providerSubCategory'
-                                  : (providerCategory.trim().isNotEmpty ? providerCategory : providerSubCategory),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 13,
-                                color: secondaryTextColor,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          Row(
-                            children: [
-                              Icon(Icons.qr_code_2, size: 18, color: secondaryTextColor),
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.star,
-                                size: 18,
-                                color: Colors.amber.shade700,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                providerRating.toStringAsFixed(1),
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '(${_reviewersCount?.toString() ?? '—'})',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 12,
-                                  color: secondaryTextColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                '$providerOperations عملية',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
-                                  color: secondaryTextColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                    Text(
+                      providerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: textColor,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.qr_code_2, size: 14, color: secondaryTextColor),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.star,
+                          size: 17,
+                          color: Colors.amber.shade700,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          providerRating.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: textColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '(${_reviewersCount?.toString() ?? '0'})',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 12,
+                            color: secondaryTextColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '$providerOperations عملية',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 12,
+                            color: secondaryTextColor,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1013,7 +911,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _circleStat(
                       icon: Icons.home_repair_service_outlined,
@@ -1042,7 +940,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ],
                 ),
               ),
-              if (_highlightsVideos.isNotEmpty) ...[
+              if (_highlightItems.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1058,8 +956,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   child: ElevatedButton(
                     onPressed: () async {
                       if (!await checkFullClient(context)) return;
-                      Navigator.push(
-                        context,
+                      if (!context.mounted) return;
+                      Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ServiceRequestFormScreen(
                             providerName: providerName,
@@ -1110,7 +1008,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       onTap: () => setState(() => _selectedTabIndex = index),
                       borderRadius: BorderRadius.circular(14),
                       child: Container(
-                        width: 92,
+                        constraints: const BoxConstraints(minWidth: 98),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(
                           color: bg,
@@ -1124,8 +1022,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                             const SizedBox(height: 6),
                             Text(
                               tabs[index]['title'],
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 11,
@@ -1174,25 +1073,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               const SizedBox(height: 18),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _circleActionButton({
-    required IconData icon,
-    required Color color,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Tooltip(
-        message: tooltip,
-        child: CircleAvatar(
-          radius: 24,
-          backgroundColor: color.withValues(alpha: 0.1),
-          child: Icon(icon, color: color, size: 22),
         ),
       ),
     );
@@ -1251,9 +1131,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   }
 
   Widget _highlightsRow({required bool isDark}) {
+    final items = _highlightItems;
     final textColor = isDark ? Colors.white : Colors.black;
     final sub = isDark ? Colors.grey[400]! : Colors.grey.shade700;
-    final shouldAutoScroll = _highlightsVideos.length >= 9;
+    if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1282,62 +1163,90 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        if (shouldAutoScroll)
-          AutoScrollingReelsRow(
-            videoPaths: _highlightsVideos,
-            logos: _highlightsLogos,
-            onTap: _openHighlights,
-          )
-        else
-          SizedBox(
-            height: 110,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _highlightsVideos.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 14),
-              itemBuilder: (context, index) {
-                final logo = _highlightsLogos[index % _highlightsLogos.length];
-                return InkWell(
-                  onTap: () => _openHighlights(index),
-                  borderRadius: BorderRadius.circular(999),
-                  child: VideoThumbnailWidget(
-                    path: _highlightsVideos[index],
-                    logo: logo,
-                    onTap: () => _openHighlights(index),
-                  ),
-                );
-              },
-            ),
+        SizedBox(
+          height: 110,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final isFav = _favoriteHighlightIndexes.contains(index);
+              return InkWell(
+                onTap: () => _openHighlights(index),
+                borderRadius: BorderRadius.circular(999),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        image: DecorationImage(
+                          image: NetworkImage(item.fileUrl),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black.withValues(alpha: 0.18),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_fill,
+                            size: 34,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _toggleHighlightFavorite(index),
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              isFav ? Icons.favorite : Icons.favorite_border,
+                              size: 15,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
+        ),
       ],
     );
   }
 
   Future<void> _openHighlights(int initialIndex) async {
-    if (_highlightsVideos.isEmpty) return;
-
+    final items = _highlightItems;
+    if (items.isEmpty) return;
+    final safeIndex = initialIndex.clamp(0, items.length - 1);
+    final item = items[safeIndex];
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => VideoFullScreenPage(
-          videoPaths: List<String>.from(_highlightsVideos),
-          initialIndex: initialIndex,
-          onReportContent: (index) async {
-            if (!mounted) return;
-
-            final safeIndex = index.clamp(0, _highlightsVideos.length - 1);
-            final videoPath = _highlightsVideos.isEmpty ? '' : _highlightsVideos[safeIndex];
-
-            await showPlatformReportDialog(
-              context: context,
-              title: 'الإبلاغ عن المحتوى',
-              reportedEntityLabel: 'بيانات المبلغ عنه:',
-              reportedEntityValue: providerHandle.trim().isEmpty
-                  ? providerName
-                  : '$providerName ($providerHandle)',
-              contextLabel: 'اللمحة',
-              contextValue: '#${safeIndex + 1} • $videoPath',
-            );
-          },
+        builder: (_) => NetworkVideoPlayerScreen(
+          url: item.fileUrl,
+          title: providerName,
         ),
       ),
     );
@@ -1364,63 +1273,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       default:
         return const SizedBox.shrink();
     }
-  }
-
-  Widget _miniStat({
-    required IconData icon,
-    required int value,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? Colors.grey[850]! : Colors.white;
-    final border = isDark ? Colors.grey[700]! : Colors.grey.shade200;
-    final text = isDark ? Colors.white : Colors.black;
-    final sub = isDark ? Colors.grey[400]! : Colors.grey.shade700;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: border),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: mainColor, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$value',
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: text,
-                    ),
-                  ),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 11,
-                      color: sub,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _profileTab() {
@@ -1591,82 +1443,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     );
   }
 
-  Widget _socialAccountRow({
-    required IconData icon,
-    required String label,
-    required String url,
-    required Color borderColor,
-    required bool isDark,
-  }) {
-    final display = _extractSocialHandle(url);
-    final effectiveValue = display.isNotEmpty ? display : (url.trim().isEmpty ? 'غير متوفر' : url.trim());
-
-    final secondary = isDark ? Colors.grey[400]! : Colors.grey[700]!;
-    final valueColor = isDark ? Colors.white : Colors.black;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: mainColor, size: 18),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: secondary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                effectiveValue,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: valueColor,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        InkWell(
-          onTap: url.trim().isEmpty ? null : () => _openExternalUrl(url),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Icon(Icons.open_in_new, color: mainColor, size: 18),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _chip(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-      decoration: BoxDecoration(
-        color: mainColor,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontFamily: 'Cairo',
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
   Widget _formCard({
     required Color cardColor,
     required Color borderColor,
@@ -1729,72 +1505,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           trailing,
         ],
       ],
-    );
-  }
-
-  Widget _pill(String title, String value) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? Colors.grey[850]! : Colors.grey.shade100;
-    final text = isDark ? Colors.white : Colors.black;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$title: $value',
-        style: TextStyle(
-          fontFamily: 'Cairo',
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: text,
-        ),
-      ),
-    );
-  }
-
-  Widget _aboutTab() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? Colors.grey[850] : Colors.white;
-    final borderColor = isDark ? Colors.grey[700]! : Colors.grey.shade200;
-    final textColor = isDark ? Colors.white : Colors.black;
-    final secondaryTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
-
-    final bio = (_fullProfile?.bio ?? '').trim();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'نبذة عن مقدم الخدمة',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            bio.isEmpty ? 'لا توجد نبذة متاحة حالياً.' : bio,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 13,
-              color: secondaryTextColor,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1937,117 +1647,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     );
   }
 
-  Widget _serviceCard({
-    required String title,
-    required String imagePath,
-    required int likes,
-    required int files,
-    required int comments,
-    required bool isLiked,
-    required VoidCallback onToggleLike,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? Colors.grey[850] : Colors.white;
-    final borderColor = isDark ? Colors.grey[700]! : Colors.grey.shade200;
-    final textColor = isDark ? Colors.white : Colors.black;
-    final iconColor = isDark ? Colors.grey[400]! : Colors.grey.shade700;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.cover,
-                width: double.infinity,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    InkWell(
-                      onTap: onToggleLike,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isLiked ? Icons.thumb_up_alt : Icons.thumb_up_alt_outlined,
-                              size: 16,
-                              color: isLiked ? mainColor : iconColor,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '$likes',
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 12,
-                                color: isLiked ? mainColor : iconColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(Icons.photo_library_outlined, size: 16, color: iconColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$files',
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 12,
-                        color: iconColor,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(Icons.chat_bubble_outline, size: 16, color: iconColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$comments',
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 12,
-                        color: iconColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _galleryTab() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? Colors.grey[850]! : Colors.white;
@@ -2124,13 +1723,41 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             itemBuilder: (context, index) {
               final item = _portfolioItems[index];
               final isVideo = item.fileType.toLowerCase() == 'video';
+              final isFav = _favoritePortfolioIds.contains(item.id);
 
               return InkWell(
                 onTap: () async {
-                  final uri = Uri.tryParse(item.fileUrl);
-                  if (uri != null) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  if (isVideo) {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => NetworkVideoPlayerScreen(
+                          url: item.fileUrl,
+                          title: providerName,
+                        ),
+                      ),
+                    );
+                    return;
                   }
+                  if (!mounted) return;
+                  showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) {
+                      return Dialog(
+                        insetPadding: const EdgeInsets.all(12),
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        child: InteractiveViewer(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              item.fileUrl,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
                 },
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
@@ -2169,6 +1796,38 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                                   child: Icon(Icons.play_circle_fill, size: 46, color: Colors.white),
                                 ),
                               ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _togglePortfolioFavorite(item),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Container(
+                                    width: 30,
+                                    height: 30,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.45),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: _portfolioFavoriteBusyIds.contains(item.id)
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(8),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Icon(
+                                            isFav ? Icons.favorite : Icons.favorite_border,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -2197,181 +1856,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     );
   }
 
-  Widget _galleryMediaTile({
-    required Map<String, dynamic> item,
-    required Color cardColor,
-    required Color borderColor,
-    required Color? secondaryTextColor,
-    required Map<String, dynamic> section,
-    required int indexInSection,
-  }) {
-    final type = (item['type'] ?? 'image').toString();
-    final media = (item['media'] ?? '').toString();
-    final desc = (item['desc'] ?? '').toString();
-    final isVideo = type == 'video';
-
-    return InkWell(
-      onTap: () => _openGalleryItem(section: section, indexInSection: indexInSection),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                    child: Image.asset(
-                      isVideo ? 'assets/images/8410.jpeg' : media,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade200,
-                        child: const Center(
-                          child: Icon(Icons.image, size: 34, color: Colors.grey),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (isVideo)
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.28),
-                            ],
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.play_circle_fill, size: 46, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(isVideo ? Icons.videocam : Icons.photo, size: 14, color: mainColor),
-                          const SizedBox(width: 4),
-                          Text(
-                            isVideo ? 'فيديو' : 'صورة',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: mainColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: Text(
-                desc,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  color: secondaryTextColor,
-                  height: 1.25,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openGalleryItem({
-    required Map<String, dynamic> section,
-    required int indexInSection,
-  }) async {
-    final items = (section['items'] as List).cast<Map<String, dynamic>>();
-    final tapped = items[indexInSection];
-    final type = (tapped['type'] ?? 'image').toString();
-    final media = (tapped['media'] ?? '').toString();
-
-    if (type == 'video') {
-      final videoPaths = items
-          .where((e) => (e['type'] ?? '').toString() == 'video')
-          .map((e) => (e['media'] ?? '').toString())
-          .where((p) => p.isNotEmpty)
-          .toList();
-      final videoIndex = videoPaths.indexOf(media);
-
-      if (videoPaths.isEmpty) return;
-
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => VideoFullScreenPage(
-            videoPaths: videoPaths,
-            initialIndex: videoIndex < 0 ? 0 : videoIndex,
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.black,
-          insetPadding: const EdgeInsets.all(16),
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                child: Image.asset(
-                  media,
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Icon(Icons.broken_image, color: Colors.white70, size: 42),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 6,
-                left: 6,
-                child: IconButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  icon: const Icon(Icons.close, color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _DashedCirclePainter extends CustomPainter {
