@@ -314,11 +314,16 @@ class MarketplaceApi {
     final token = await _session.readAccessToken();
     if (token == null) return false;
 
+    final trimmed = (note ?? '').trim();
+    final safeNote = trimmed.isEmpty
+        ? null
+        : (trimmed.length > 255 ? trimmed.substring(0, 255) : trimmed);
+
     try {
       await _dio.post(
         '${ApiConfig.apiPrefix}/marketplace/requests/$requestId/reopen/',
         data: {
-          if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(),
+          if (safeNote != null) 'note': safeNote,
         },
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );

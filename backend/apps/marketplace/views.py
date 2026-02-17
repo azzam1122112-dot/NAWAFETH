@@ -992,15 +992,20 @@ class RequestReopenView(APIView):
 			if sr.client_id != request.user.id:
 				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
-			if sr.status != RequestStatus.CANCELLED:
+			if sr.status not in (RequestStatus.CANCELLED, RequestStatus.EXPIRED):
 				return Response(
-					{"detail": "يمكن إعادة فتح الطلبات الملغية فقط"},
+					{"detail": "يمكن إعادة فتح الطلبات الملغية أو المنتهية فقط"},
 					status=status.HTTP_400_BAD_REQUEST,
 				)
 
 			old = sr.status
 			sr.status = RequestStatus.SENT
 			sr.created_at = timezone.now()
+			if sr.request_type == RequestType.URGENT:
+				minutes = getattr(settings, "URGENT_REQUEST_EXPIRY_MINUTES", 15)
+				sr.expires_at = timezone.now() + timedelta(minutes=minutes)
+			else:
+				sr.expires_at = None
 			sr.canceled_at = None
 			sr.cancel_reason = ""
 			sr.delivered_at = None
@@ -1012,6 +1017,7 @@ class RequestReopenView(APIView):
 				update_fields=[
 					"status",
 					"created_at",
+					"expires_at",
 					"canceled_at",
 					"cancel_reason",
 					"delivered_at",

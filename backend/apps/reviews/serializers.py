@@ -91,6 +91,7 @@ class ReviewCreateSerializer(serializers.ModelSerializer):
 
 class ReviewListSerializer(serializers.ModelSerializer):
     client_phone = serializers.CharField(source="client.phone", read_only=True)
+    client_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
@@ -103,9 +104,21 @@ class ReviewListSerializer(serializers.ModelSerializer):
             "credibility",
             "on_time",
             "comment",
+            "client_name",
             "client_phone",
             "created_at",
         )
+
+    def get_client_name(self, obj):
+        first = (getattr(obj.client, "first_name", "") or "").strip()
+        last = (getattr(obj.client, "last_name", "") or "").strip()
+        full = f"{first} {last}".strip()
+        if full:
+            return full
+        username = (getattr(obj.client, "username", "") or "").strip()
+        if username:
+            return username
+        return "عميل"
 
 
 class ProviderRatingSummarySerializer(serializers.Serializer):

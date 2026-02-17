@@ -1,4 +1,5 @@
 import pytest
+from datetime import timedelta
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -469,3 +470,34 @@ def test_client_can_reopen_cancelled_request_as_new_with_new_created_at():
     assert sr.created_at >= old_created
     assert sr.canceled_at is None
     assert sr.cancel_reason == ""
+
+
+@pytest.mark.django_db
+def test_client_can_reopen_expired_request():
+    client_user = User.objects.create_user(phone="0500000503")
+
+    cat = Category.objects.create(name="نقل سريع")
+    sub = SubCategory.objects.create(category=cat, name="مستعجل")
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        subcategory=sub,
+        title="طلب منتهي",
+        description="وصف",
+        request_type=RequestType.URGENT,
+        status=RequestStatus.EXPIRED,
+        city="الرياض",
+        expires_at=timezone.now() - timedelta(minutes=5),
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    res = api.post(
+        f"/api/marketplace/requests/{sr.id}/reopen/",
+        {},
+        format="json",
+    )
+    assert res.status_code == 200
+    sr.refresh_from_db()
+    assert sr.status == RequestStatus.SENT
+    assert sr.expires_at is not None

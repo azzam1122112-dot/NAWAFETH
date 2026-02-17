@@ -148,7 +148,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       return;
     }
 
-    final requestId = int.tryParse(_order.id);
+    final requestId = _requestIdValue();
     if (requestId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -331,7 +331,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   }
 
   void _openChat() {
-    final requestId = int.tryParse(_order.id);
+    final requestId = _requestIdValue();
     if (requestId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

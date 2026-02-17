@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/providers_api.dart';
 import '../constants/colors.dart';
+import '../utils/auth_guard.dart';
+import 'provider_profile_screen.dart';
+import 'service_request_form_screen.dart';
 
 class UrgentProvidersMapScreen extends StatefulWidget {
   final int subcategoryId;
@@ -29,6 +34,8 @@ class _UrgentProvidersMapScreenState extends State<UrgentProvidersMapScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _providers = [];
+  int? _selectedProviderId;
+  int? _busyProviderId;
 
   double? _asDouble(dynamic value) {
     if (value == null) return null;
@@ -41,6 +48,164 @@ class _UrgentProvidersMapScreenState extends State<UrgentProvidersMapScreen> {
     final s = provider['display_name']?.toString().trim();
     if (s == null || s.isEmpty) return 'مزود خدمة';
     return s;
+  }
+
+  String? _asNonEmptyString(dynamic value) {
+    final s = value?.toString().trim();
+    if (s == null || s.isEmpty) return null;
+    return s;
+  }
+
+  String _formatPhoneE164(String rawPhone) {
+    final phone = rawPhone.replaceAll(RegExp(r'\s+'), '');
+    if (phone.startsWith('+')) return phone;
+    if (phone.startsWith('05') && phone.length == 10) return '+966${phone.substring(1)}';
+    if (phone.startsWith('5') && phone.length == 9) return '+966$phone';
+    return phone;
+  }
+
+  String _buildWhatsAppMessage(String providerName) {
+    final buffer = StringBuffer();
+    buffer.writeln('@${providerName.replaceAll(' ', '')}');
+    buffer.writeln('السلام عليكم');
+    buffer.writeln('أنا عميل في منصة (نوافذ)');
+    buffer.writeln('أتواصل معك بخصوص طلب عاجل');
+    buffer.writeln('المدينة: ${widget.city}');
+    buffer.writeln('التصنيف: ${widget.subcategoryName ?? 'خدمة عامة'}');
+    return buffer.toString().trim();
+  }
+
+  Future<void> _openPhoneCall(String rawPhone) async {
+    final e164 = _formatPhoneE164(rawPhone);
+    final uri = Uri(scheme: 'tel', path: e164);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تعذر فتح الاتصال')),
+    );
+  }
+
+  Future<void> _openWhatsApp({
+    required String providerName,
+    required String rawPhone,
+  }) async {
+    final e164 = _formatPhoneE164(rawPhone);
+    final waPhone = e164.replaceAll('+', '');
+    final encoded = Uri.encodeComponent(_buildWhatsAppMessage(providerName));
+    final appUri = Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded');
+    final webUri = Uri.parse('https://wa.me/$waPhone?text=$encoded');
+    if (await canLaunchUrl(appUri)) {
+      await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (await canLaunchUrl(webUri)) {
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تعذر فتح واتساب')),
+    );
+  }
+
+  Future<void> _openInAppChat({
+    required String providerName,
+    required String providerId,
+  }) async {
+    if (!await checkAuth(context)) return;
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('محادثة داخل التطبيق'),
+          content: const Text(
+            'لربط المحادثة بطلب فعلي، سيتم فتح نموذج طلب الخدمة لهذا المزود.',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceRequestFormScreen(
+                      providerName: providerName,
+                      providerId: providerId,
+                      initialSubcategoryId: widget.subcategoryId,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('متابعة'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openProviderProfile(Map<String, dynamic> provider) async {
+    final id = provider['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final name = _nameOf(provider);
+    final imageUrl = _asNonEmptyString(provider['image_url']);
+    final phone = _asNonEmptyString(provider['phone']);
+    final lat = _asDouble(provider['lat']);
+    final lng = _asDouble(provider['lng']);
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProviderProfileScreen(
+          providerId: id,
+          providerName: name,
+          providerImage: imageUrl,
+          providerPhone: phone,
+          providerLat: lat,
+          providerLng: lng,
+        ),
+      ),
+    );
+  }
+
+  void _selectProvider(Map<String, dynamic> provider) {
+    final providerId = (provider['id'] as num?)?.toInt();
+    final lat = _asDouble(provider['lat']);
+    final lng = _asDouble(provider['lng']);
+    if (providerId == null) return;
+    setState(() => _selectedProviderId = providerId);
+    if (lat != null && lng != null) {
+      _mapController.move(LatLng(lat, lng), 14.5);
+    }
+  }
+
+  Future<void> _requestServiceFromProvider(Map<String, dynamic> provider) async {
+    final providerId = (provider['id'] as num?)?.toInt();
+    if (providerId == null || _busyProviderId != null) return;
+    setState(() => _busyProviderId = providerId);
+    try {
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ServiceRequestFormScreen(
+            providerName: _nameOf(provider),
+            providerId: providerId.toString(),
+            initialSubcategoryId: widget.subcategoryId,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busyProviderId = null);
+    }
   }
 
   Future<void> _load() async {
@@ -57,6 +222,9 @@ class _UrgentProvidersMapScreenState extends State<UrgentProvidersMapScreen> {
       if (!mounted) return;
       setState(() {
         _providers = data;
+        _selectedProviderId = data.isEmpty
+            ? null
+            : ((data.first['id'] as num?)?.toInt());
         _loading = false;
       });
     } catch (e) {
@@ -183,14 +351,22 @@ class _UrgentProvidersMapScreenState extends State<UrgentProvidersMapScreen> {
                             .map((provider) {
                               final lat = _asDouble(provider['lat'])!;
                               final lng = _asDouble(provider['lng'])!;
+                              final providerId = (provider['id'] as num?)?.toInt();
+                              final isSelected =
+                                  providerId != null && providerId == _selectedProviderId;
                               return Marker(
                                 point: LatLng(lat, lng),
                                 width: 42,
                                 height: 42,
-                                child: const Icon(
-                                  Icons.location_on_rounded,
-                                  color: Color(0xFFE53935),
-                                  size: 40,
+                                child: GestureDetector(
+                                  onTap: () => _selectProvider(provider),
+                                  child: Icon(
+                                    Icons.location_on_rounded,
+                                    color: isSelected
+                                        ? const Color(0xFF6A1B9A)
+                                        : const Color(0xFFE53935),
+                                    size: isSelected ? 42 : 38,
+                                  ),
                                 ),
                               );
                             })
@@ -198,81 +374,312 @@ class _UrgentProvidersMapScreenState extends State<UrgentProvidersMapScreen> {
                       ),
                     ],
                   ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      constraints: const BoxConstraints(maxHeight: 240),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(18),
+                  DraggableScrollableSheet(
+                    initialChildSize: 0.30,
+                    minChildSize: 0.22,
+                    maxChildSize: 0.80,
+                    builder: (context, scrollController) {
+                      final selected = _providers.cast<Map<String, dynamic>>().firstWhere(
+                            (p) => ((p['id'] as num?)?.toInt()) == _selectedProviderId,
+                            orElse: () => _providers.first,
+                          );
+                      final selectedName = _nameOf(selected);
+                      final selectedCity = (selected['city'] ?? '').toString();
+                      final phone = _asNonEmptyString(selected['phone']);
+                      final whatsapp = _asNonEmptyString(selected['whatsapp']);
+                      final contact = whatsapp ?? phone;
+                      final canCall = phone != null;
+                      final canWhatsApp = contact != null;
+                      final providerId = (selected['id'] as num?)?.toInt();
+                      final isBusy = providerId != null && _busyProviderId == providerId;
+
+                      return Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                         ),
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            margin: const EdgeInsets.symmetric(vertical: 10),
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(2),
+                        child: Column(
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.symmetric(vertical: 10),
+                              width: 44,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
-                          ),
-                          Text(
-                            'العدد المتاح حالياً: ${_providers.length} مزود',
-                            style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: _providers.length,
-                              itemBuilder: (context, index) {
-                                final provider = _providers[index];
-                                final name = _nameOf(provider);
-                                final city = provider['city']?.toString() ?? '';
-                                return ListTile(
-                                  dense: true,
-                                  leading: const CircleAvatar(
-                                    backgroundColor: Color(0xFFFFE5E5),
-                                    child: Icon(
-                                      Icons.person,
-                                      color: Color(0xFFE53935),
-                                    ),
-                                  ),
-                                  title: Text(
-                                    name,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'العدد المتاح حالياً: ${_providers.length} مزود',
                                     style: const TextStyle(
                                       fontFamily: 'Cairo',
-                                      fontWeight: FontWeight.bold,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
                                     ),
                                   ),
-                                  subtitle: Text(
-                                    city,
-                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  const Spacer(),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF3E5F5),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Text(
+                                      'المزود المحدد',
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF6A1B9A),
+                                      ),
+                                    ),
                                   ),
-                                  onTap: () {
-                                    final lat = _asDouble(provider['lat']);
-                                    final lng = _asDouble(provider['lng']);
-                                    if (lat != null && lng != null) {
-                                      _mapController.move(LatLng(lat, lng), 14);
-                                    }
-                                  },
-                                );
-                              },
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF9F7FF),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE3D8FF)),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        InkWell(
+                                          onTap: () => _openProviderProfile(selected),
+                                          borderRadius: BorderRadius.circular(999),
+                                          child: CircleAvatar(
+                                            radius: 21,
+                                            backgroundColor: const Color(0xFFEDE7F6),
+                                            child: Text(
+                                              selectedName.isEmpty ? 'م' : selectedName.substring(0, 1),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF6A1B9A),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: InkWell(
+                                            onTap: () => _openProviderProfile(selected),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  selectedName,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  selectedCity.isEmpty ? widget.city : selectedCity,
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    fontSize: 12,
+                                                    color: Colors.black54,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  'وسيلة الاتصال: ${contact ?? 'غير متاحة'}',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    fontSize: 11.5,
+                                                    color: Colors.black45,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _QuickActionButton(
+                                          label: 'اتصال',
+                                          icon: Icons.call_rounded,
+                                          color: Colors.blue,
+                                          onTap: canCall ? () => _openPhoneCall(phone!) : null,
+                                        ),
+                                        _QuickActionButton(
+                                          label: 'واتساب',
+                                          iconData: FontAwesomeIcons.whatsapp,
+                                          color: const Color(0xFF25D366),
+                                          onTap: canWhatsApp
+                                              ? () => _openWhatsApp(
+                                                    providerName: selectedName,
+                                                    rawPhone: contact!,
+                                                  )
+                                              : null,
+                                        ),
+                                        _QuickActionButton(
+                                          label: 'محادثة',
+                                          icon: Icons.chat_bubble_outline_rounded,
+                                          color: const Color(0xFF6A1B9A),
+                                          onTap: providerId == null
+                                              ? null
+                                              : () => _openInAppChat(
+                                                    providerName: selectedName,
+                                                    providerId: providerId.toString(),
+                                                  ),
+                                        ),
+                                        _QuickActionButton(
+                                          label: isBusy ? 'جارٍ...' : 'اطلب خدمة',
+                                          icon: Icons.add_task_rounded,
+                                          color: const Color(0xFFE53935),
+                                          onTap: (providerId == null || isBusy)
+                                              ? null
+                                              : () => _requestServiceFromProvider(selected),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: ListView.separated(
+                                controller: scrollController,
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+                                itemCount: _providers.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                                itemBuilder: (context, index) {
+                                  final p = _providers[index];
+                                  final pid = (p['id'] as num?)?.toInt();
+                                  final isSelected = pid != null && pid == _selectedProviderId;
+                                  return Material(
+                                    color: isSelected ? const Color(0xFFF3E5F5) : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () => _selectProvider(p),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 16,
+                                              backgroundColor: isSelected
+                                                  ? const Color(0xFF6A1B9A)
+                                                  : const Color(0xFFFFE5E5),
+                                              child: Icon(
+                                                Icons.person,
+                                                size: 16,
+                                                color: isSelected ? Colors.white : const Color(0xFFE53935),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                _nameOf(p),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 13.5,
+                                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              (p['city'] ?? '').toString(),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontSize: 11.5,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                    },
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final IconData? iconData;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _QuickActionButton({
+    required this.label,
+    this.icon,
+    this.iconData,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: (disabled ? Colors.grey : color).withOpacity(0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: (disabled ? Colors.grey : color).withOpacity(0.26),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(iconData ?? icon, size: 15.5, color: disabled ? Colors.grey : color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: disabled ? Colors.grey : color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

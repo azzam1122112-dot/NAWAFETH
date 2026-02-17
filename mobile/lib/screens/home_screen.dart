@@ -8,6 +8,7 @@ import '../widgets/provider_media_grid.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
 import '../widgets/profiles_slider.dart' as profiles;
+import '../widgets/intro_welcome_dialog.dart';
 import '../services/home_feed_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -48,42 +49,23 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       _isIntroDialogOpen = true;
-      showDialog<void>(
+      showGeneralDialog(
         context: context,
         barrierDismissible: true,
-        builder: (dialogContext) {
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'مرحبًا بك في نوافذ',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'منصة تربطك بمقدمي الخدمات بسرعة وسهولة.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
+        barrierLabel: 'intro',
+        barrierColor: Colors.black54,
+        transitionDuration: const Duration(milliseconds: 400),
+        transitionBuilder: (ctx, anim, secondAnim, child) {
+          return ScaleTransition(
+            scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+            child: FadeTransition(opacity: anim, child: child),
           );
+        },
+        pageBuilder: (ctx, anim, secondAnim) {
+          return const IntroWelcomeDialog();
         },
       ).whenComplete(() {
         _isIntroDialogOpen = false;
-      });
-
-      Future.delayed(const Duration(seconds: 5), () {
-        if (!mounted || !_isIntroDialogOpen) return;
-        if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
-        Navigator.of(context, rootNavigator: true).pop();
       });
     });
   }
