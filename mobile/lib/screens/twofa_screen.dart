@@ -28,6 +28,9 @@ class TwoFAScreen extends StatefulWidget {
 }
 
 class _TwoFAScreenState extends State<TwoFAScreen> {
+  // Development mode: accept any 4-digit OTP when backend/SMS provider is not ready.
+  static const bool _devAllowAny4DigitsOtp = true;
+
   final TextEditingController _codeController = TextEditingController();
   bool _loading = false;
 
@@ -129,6 +132,11 @@ class _TwoFAScreenState extends State<TwoFAScreen> {
     setState(() => _loading = true);
 
     try {
+      if (_devAllowAny4DigitsOtp) {
+        await _completeDevLogin();
+        return;
+      }
+
       final result = await AuthApi().otpVerify(phone: widget.phone, code: code);
 
       await const SessionStorage().saveTokens(access: result.access, refresh: result.refresh);
@@ -184,6 +192,10 @@ class _TwoFAScreenState extends State<TwoFAScreen> {
         MaterialPageRoute(builder: (_) => widget.redirectTo ?? const HomeScreen()),
       );
     } catch (e) {
+      if (_devAllowAny4DigitsOtp && e is DioException && e.response?.statusCode == 400) {
+        await _completeDevLogin();
+        return;
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('رمز غير صحيح أو حدث خطأ: ${_formatError(e)}')),
@@ -191,6 +203,23 @@ class _TwoFAScreenState extends State<TwoFAScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _completeDevLogin() async {
+    // Store temporary tokens so app sessions depending on token presence can continue in dev.
+    await const SessionStorage().saveTokens(
+      access: 'dev_access_token',
+      refresh: 'dev_refresh_token',
+    );
+
+    await SessionStorage().saveProfile(phone: widget.phone);
+
+    if (!mounted) return;
+    AppSnackBar.success('تم تسجيل الدخول (وضع التطوير).');
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => widget.redirectTo ?? const HomeScreen()),
+    );
   }
 
   @override
