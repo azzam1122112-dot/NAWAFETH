@@ -49,6 +49,7 @@ class DeviceFeaturesApi {
   int? _cachedMaxUploadMb;
 
   static const int defaultMaxUploadBytes = 10 * 1024 * 1024; // 10MB fallback
+  static const int maxUploadBytes = defaultMaxUploadBytes;
 
   static const Set<String> _imageExtensions = {
     'jpg',

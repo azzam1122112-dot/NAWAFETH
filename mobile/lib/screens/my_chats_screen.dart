@@ -159,6 +159,40 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
       }
     }
 
+    // Load direct threads (no request required)
+    try {
+      final directThreads = await _messagingApi.getMyDirectThreads();
+      for (final dt in directThreads) {
+        final threadId = _asInt(dt['thread_id']);
+        if (threadId == null) continue;
+
+        final peerId = _asInt(dt['peer_id']);
+        final peerName = (dt['peer_name'] ?? '').toString();
+        final lastMessage = (dt['last_message'] ?? '').toString();
+        final lastMessageAt =
+            DateTime.tryParse((dt['last_message_at'] ?? '').toString()) ??
+            DateTime.now();
+        final unread = _asInt(dt['unread_count']) ?? 0;
+
+        chats.add({
+          'requestId': null,
+          'threadId': threadId,
+          'requestCode': null,
+          'requestTitle': null,
+          'name': peerName.isEmpty ? 'محادثة مباشرة' : peerName,
+          'lastMessage': lastMessage.isEmpty ? 'ابدأ المحادثة الآن' : lastMessage,
+          'time': DateFormat('hh:mm a', 'ar').format(lastMessageAt),
+          'timestamp': lastMessageAt,
+          'unread': unread,
+          'isOnline': false,
+          'favorite': false,
+          'isDirect': true,
+          'peerId': peerId,
+          'peerName': peerName,
+        });
+      }
+    } catch (_) {}
+
     chats.sort((a, b) {
       final da =
           (a['timestamp'] as DateTime?) ??
@@ -516,6 +550,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                               ],
                             ),
                             onTap: () {
+                              final isDirect = chat['isDirect'] == true;
                               if (threadId != null && requestId != null) {
                                 _updateChat(
                                   threadId: threadId,
@@ -536,6 +571,9 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                         .toString(),
                                     requestTitle: (chat['requestTitle'] ?? '')
                                         .toString(),
+                                    isDirect: isDirect,
+                                    peerId: isDirect ? chat['peerId'] as int? : null,
+                                    peerName: isDirect ? (chat['peerName'] ?? '').toString() : null,
                                   ),
                                 ),
                               ).then((_) => _reload());

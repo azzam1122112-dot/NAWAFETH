@@ -15,6 +15,7 @@ import '../../services/providers_api.dart';
 import '../../services/account_api.dart';
 import '../../services/role_controller.dart';
 import '../../services/session_storage.dart';
+import '../../utils/auth_guard.dart';
 
 import '../signup_screen.dart';
 
@@ -74,6 +75,13 @@ class _RegisterServiceProviderPageState
 
     _loadDraft();
     _prefillFromAccount();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ok = await checkFullClient(context);
+      if (!ok && mounted) {
+        Navigator.of(context).maybePop();
+      }
+    });
   }
 
   @override

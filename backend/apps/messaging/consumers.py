@@ -206,7 +206,16 @@ def _assert_thread_access(thread_id: int, user) -> Thread:
     if getattr(user, "is_staff", False):
         return thread
 
+    # Direct thread: check participant_1 / participant_2
+    if thread.is_direct:
+        if user.id in (thread.participant_1_id, thread.participant_2_id):
+            return thread
+        raise PermissionDenied("not_participant")
+
+    # Request-based thread
     sr = thread.request
+    if sr is None:
+        raise PermissionDenied("not_participant")
     is_client = sr.client_id == user.id
     is_provider = bool(sr.provider_id) and sr.provider.user_id == user.id
     if not (is_client or is_provider):

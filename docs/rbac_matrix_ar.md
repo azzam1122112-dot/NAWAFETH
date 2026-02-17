@@ -5,7 +5,7 @@
 | `POST /api/accounts/otp/send/` | AllowAny | No | No | Throttle otp |
 | `POST /api/accounts/otp/verify/` | AllowAny | No | No | يصدر JWT |
 | `POST /api/accounts/complete/` | Authenticated | N/A | Self | يرفع إلى client |
-| `POST /api/providers/register/` | `IsAtLeastPhoneOnly` | No (phone_only يكفي) | Self | يرفع إلى provider |
+| `POST /api/providers/register/` | `IsAtLeastClient` | Yes (requires complete registration) | Self | يرفع إلى provider |
 | `GET /api/providers/me/profile/` | `IsAtLeastClient` | Yes | Self provider profile | 404 إذا لا profile |
 | `POST /api/marketplace/requests/create/` | `IsAtLeastClient` | Yes | Self as client | إنشاء طلب |
 | `GET /api/marketplace/client/requests/` | `IsAtLeastClient` | Yes | Self as client | قائمة طلبات العميل |

@@ -12,6 +12,7 @@ import '../../../utils/user_scoped_prefs.dart';
 
 import '../../../services/account_api.dart';
 import '../../../services/providers_api.dart';
+import '../../../utils/whatsapp_helper.dart';
 
 class ContactInfoStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -202,7 +203,15 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         phoneController.text = normalizeLocal05(asString(data['phone']));
       }
       if (whatsappController.text.trim().isEmpty) {
-        whatsappController.text = asString(data['whatsapp']);
+        final savedWhatsApp = asString(data['whatsapp']).trim();
+        if (savedWhatsApp.isNotEmpty) {
+          whatsappController.text = savedWhatsApp;
+        } else {
+          final autoWa = WhatsAppHelper.toWaMeLink(phoneController.text);
+          if (autoWa != null) {
+            whatsappController.text = autoWa;
+          }
+        }
       }
       if (cityController.text.trim().isEmpty) {
         cityController.text = asString(data['city']);
@@ -342,6 +351,12 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       _lastPatchedWhatsapp = whatsapp;
       if (_ownsWhatsapp && whatsappController.text.trim().isEmpty && whatsapp.isNotEmpty) {
         whatsappController.text = whatsapp;
+      }
+      if (_ownsWhatsapp && whatsappController.text.trim().isEmpty) {
+        final autoWa = WhatsAppHelper.toWaMeLink(phoneController.text);
+        if (autoWa != null) {
+          whatsappController.text = autoWa;
+        }
       }
       if (websiteController.text.trim().isEmpty && website.isNotEmpty) {
         websiteController.text = website;

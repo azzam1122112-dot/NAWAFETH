@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/auth_guard.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -10,6 +11,18 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ok = await checkFullClient(context);
+      if (!ok && mounted) {
+        Navigator.of(context).maybePop();
+      }
+    });
+  }
+
   // ✅ حالة الاشتراك
   bool basicSubscribed = true;
   bool proSubscribed = false;

@@ -8,6 +8,7 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/service_provider_location.dart';
 import '../constants/colors.dart';
+import '../utils/whatsapp_helper.dart';
 import 'provider_profile_screen.dart';
 import 'service_request_form_screen.dart';
 
@@ -101,26 +102,10 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
   }
 
   Future<void> _openWhatsApp(ServiceProviderLocation provider) async {
-    final e164 = _formatPhoneE164(provider.phoneNumber);
-    final waPhone = e164.replaceAll('+', '');
-    final message = _buildWhatsAppMessage(provider);
-    final encoded = Uri.encodeComponent(message);
-
-    final appUri = Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded');
-    final webUri = Uri.parse('https://wa.me/$waPhone?text=$encoded');
-
-    if (await canLaunchUrl(appUri)) {
-      await launchUrl(appUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تعذر فتح واتساب')),
+    await WhatsAppHelper.open(
+      context: context,
+      contact: provider.phoneNumber,
+      message: _buildWhatsAppMessage(provider),
     );
   }
 

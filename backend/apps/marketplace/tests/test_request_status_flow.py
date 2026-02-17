@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import User, UserRole
 from apps.marketplace.models import RequestStatus, RequestStatusLog, RequestType, ServiceRequest
 from apps.notifications.models import Notification
 from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
@@ -11,7 +11,7 @@ from apps.providers.models import Category, ProviderCategory, ProviderProfile, S
 
 @pytest.mark.django_db
 def test_provider_start_and_complete_flow():
-    client_user = User.objects.create_user(phone="0500000001")
+    client_user = User.objects.create_user(phone="0500000001", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000002")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -89,7 +89,7 @@ def test_provider_start_and_complete_flow():
 
 @pytest.mark.django_db
 def test_client_cancel_allowed_only_before_in_progress():
-    client_user = User.objects.create_user(phone="0500000011")
+    client_user = User.objects.create_user(phone="0500000011", role_state=UserRole.CLIENT)
     other_user = User.objects.create_user(phone="0500000012")
 
     cat = Category.objects.create(name="برمجة")
@@ -181,7 +181,7 @@ def test_provider_reject_requires_cancel_fields_and_saves_them():
 
 @pytest.mark.django_db
 def test_client_can_decide_provider_inputs_when_accepted():
-    client_user = User.objects.create_user(phone="0500000101")
+    client_user = User.objects.create_user(phone="0500000101", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000102")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -229,7 +229,7 @@ def test_client_can_decide_provider_inputs_when_accepted():
 
 @pytest.mark.django_db
 def test_provider_progress_update_creates_log_and_client_notification():
-    client_user = User.objects.create_user(phone="0500000301")
+    client_user = User.objects.create_user(phone="0500000301", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000302")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -284,14 +284,18 @@ def test_provider_progress_update_creates_log_and_client_notification():
     assert log.to_status == RequestStatus.IN_PROGRESS
     assert "50" in (log.note or "")
 
-    notif = Notification.objects.filter(user=client_user, request_id=sr.id).order_by("-id").first()
+    notif = Notification.objects.filter(
+        user=client_user,
+        title="تحديث على الطلب",
+        url=f"/requests/{sr.id}",
+    ).order_by("-id").first()
     assert notif is not None
     assert notif.title == "تحديث على الطلب"
 
 
 @pytest.mark.django_db
 def test_client_can_patch_request_details_and_notify_provider():
-    client_user = User.objects.create_user(phone="0500000401")
+    client_user = User.objects.create_user(phone="0500000401", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000402")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -337,14 +341,18 @@ def test_client_can_patch_request_details_and_notify_provider():
     assert log.to_status == sr.status
     assert "تحديث بيانات الطلب من العميل" in (log.note or "")
 
-    notif = Notification.objects.filter(user=provider_user, request_id=sr.id).order_by("-id").first()
+    notif = Notification.objects.filter(
+        user=provider_user,
+        title="تحديث على الطلب",
+        url=f"/requests/{sr.id}",
+    ).order_by("-id").first()
     assert notif is not None
     assert notif.title == "تحديث على الطلب"
 
 
 @pytest.mark.django_db
 def test_client_cannot_patch_request_details_when_in_progress():
-    client_user = User.objects.create_user(phone="0500000411")
+    client_user = User.objects.create_user(phone="0500000411", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000412")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -385,7 +393,7 @@ def test_client_cannot_patch_request_details_when_in_progress():
 
 @pytest.mark.django_db
 def test_client_cannot_patch_request_details_when_accepted():
-    client_user = User.objects.create_user(phone="0500000413")
+    client_user = User.objects.create_user(phone="0500000413", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000414")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -426,7 +434,7 @@ def test_client_cannot_patch_request_details_when_accepted():
 
 @pytest.mark.django_db
 def test_client_can_reopen_cancelled_request_as_new_with_new_created_at():
-    client_user = User.objects.create_user(phone="0500000501")
+    client_user = User.objects.create_user(phone="0500000501", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000502")
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -474,7 +482,7 @@ def test_client_can_reopen_cancelled_request_as_new_with_new_created_at():
 
 @pytest.mark.django_db
 def test_client_can_reopen_expired_request():
-    client_user = User.objects.create_user(phone="0500000503")
+    client_user = User.objects.create_user(phone="0500000503", role_state=UserRole.CLIENT)
 
     cat = Category.objects.create(name="نقل سريع")
     sub = SubCategory.objects.create(category=cat, name="مستعجل")

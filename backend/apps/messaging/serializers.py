@@ -6,7 +6,17 @@ from .models import Message, Thread
 class ThreadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Thread
-        fields = ("id", "request", "created_at")
+        fields = ("id", "request", "is_direct", "created_at")
+        read_only_fields = ("id", "created_at")
+
+
+class DirectThreadSerializer(serializers.ModelSerializer):
+    participant_1_id = serializers.IntegerField(source="participant_1.id", read_only=True)
+    participant_2_id = serializers.IntegerField(source="participant_2.id", read_only=True)
+
+    class Meta:
+        model = Thread
+        fields = ("id", "is_direct", "participant_1_id", "participant_2_id", "created_at")
         read_only_fields = ("id", "created_at")
 
 

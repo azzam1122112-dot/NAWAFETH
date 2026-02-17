@@ -119,8 +119,25 @@ def _otp_test_authorized(request) -> bool:
 def _issue_tokens_for_phone(phone: str):
     user, created = User.objects.get_or_create(
         phone=phone,
-        defaults={"role_state": UserRole.PHONE_ONLY},
+        defaults={
+            "role_state": UserRole.PHONE_ONLY,
+            "username": f"@{phone}",
+        },
     )
+
+    # Ensure baseline "phone-only" identity for accounts that are still at
+    # pre-completion level, and backfill username for legacy rows.
+    update_fields: list[str] = []
+    if user.role_state in (UserRole.VISITOR, UserRole.PHONE_ONLY) and user.role_state != UserRole.PHONE_ONLY:
+        user.role_state = UserRole.PHONE_ONLY
+        update_fields.append("role_state")
+
+    if not (user.username or "").strip():
+        user.username = f"@{phone}"
+        update_fields.append("username")
+
+    if update_fields:
+        user.save(update_fields=update_fields)
 
     if not user.is_active:
         return None, created

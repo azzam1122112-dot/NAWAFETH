@@ -151,15 +151,21 @@ class _NawafethAppState extends State<NawafethApp> {
               final requestTitle = (args['requestTitle'] ?? '')
                   .toString()
                   .trim();
+              final isDirect = args['isDirect'] == true;
+              final peerId = (args['peerId'] ?? '').toString().trim();
+              final peerName = (args['peerName'] ?? '').toString().trim();
               if (requestId != null || threadId != null) {
                 return MaterialPageRoute(
                   builder: (_) => ChatDetailScreen(
-                    name: name.isEmpty ? 'محادثة الطلب' : name,
+                    name: name.isEmpty ? (isDirect ? 'محادثة مباشرة' : 'محادثة الطلب') : name,
                     isOnline: isOnline,
                     requestId: requestId,
                     threadId: threadId,
                     requestCode: requestCode.isEmpty ? null : requestCode,
                     requestTitle: requestTitle.isEmpty ? null : requestTitle,
+                    isDirect: isDirect,
+                    peerId: peerId.isEmpty ? null : peerId,
+                    peerName: peerName.isEmpty ? null : peerName,
                   ),
                 );
               }

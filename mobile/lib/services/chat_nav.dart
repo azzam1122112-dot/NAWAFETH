@@ -13,6 +13,9 @@ class ChatNav {
     bool isOnline = false,
     String? requestCode,
     String? requestTitle,
+    bool isDirect = false,
+    String? peerId,
+    String? peerName,
   }) {
     if (requestId == null && threadId == null) {
       return openInbox(context);
@@ -25,6 +28,9 @@ class ChatNav {
         if (threadId != null) 'threadId': threadId,
         'name': name,
         'isOnline': isOnline,
+        'isDirect': isDirect,
+        if (peerId != null) 'peerId': peerId,
+        if (peerName != null) 'peerName': peerName,
         if ((requestCode ?? '').trim().isNotEmpty)
           'requestCode': requestCode!.trim(),
         if ((requestTitle ?? '').trim().isNotEmpty)

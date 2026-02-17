@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../constants/colors.dart';
@@ -13,6 +14,7 @@ import '../services/role_controller.dart';
 import '../utils/local_user_state.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
+import 'terms_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -116,7 +118,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _submit();
   }
 
+  Future<void> _skipForNow() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تم المتابعة برقم الجوال فقط. يمكنك إكمال البيانات لاحقاً.'),
+      ),
+    );
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    );
+  }
+
   Future<void> _submit() async {
+    if (!_agreeToTerms) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يجب الموافقة على الشروط والأحكام لإكمال التسجيل')),
+      );
+      return;
+    }
+
     if (!_isAllValid) return;
 
     setState(() => _loading = true);
@@ -467,13 +490,34 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              "أوافق على الشروط والأحكام",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Cairo',
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black87,
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                                children: [
+                                  const TextSpan(text: 'أوافق على '),
+                                  TextSpan(
+                                    text: 'الشروط والأحكام',
+                                    style: const TextStyle(
+                                      color: Color(0xFF6366F1),
+                                      decoration: TextDecoration.underline,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    recognizer: TapGestureRecognizer()
+                                      ..onTap = () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => const TermsScreen(),
+                                          ),
+                                        );
+                                      },
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -554,6 +598,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     ],
                                   ),
                           ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: _loading ? null : _skipForNow,
+                      child: Text(
+                        "تخطي الآن والمتابعة برقم الجوال فقط",
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
+                          color: isDark ? Colors.grey[300] : Colors.black54,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ),

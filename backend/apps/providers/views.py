@@ -149,9 +149,9 @@ class CategoryListView(generics.ListAPIView):
 
 class ProviderCreateView(generics.CreateAPIView):
 	serializer_class = ProviderProfileSerializer
-	# Allow PHONE_ONLY users to become providers via OTP login without forcing
-	# complete_registration first.
-	permission_classes = [IsAtLeastPhoneOnly]
+	# Provider registration is allowed only after full basic registration
+	# (CLIENT or above), matching product permission matrix.
+	permission_classes = [IsAtLeastClient]
 
 	def perform_create(self, serializer):
 		profile = serializer.save(user=self.request.user)

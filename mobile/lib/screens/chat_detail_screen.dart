@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 
 import '../services/marketplace_api.dart';
 import '../services/messaging_api.dart';
+import '../services/role_controller.dart';
 import '../services/session_storage.dart';
+import 'service_request_form_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -15,6 +17,11 @@ class ChatDetailScreen extends StatefulWidget {
   final int? threadId;
   final String? requestCode;
   final String? requestTitle;
+  final bool isDirect;
+  /// Provider ID of the peer (used in direct chats to build service request link)
+  final String? peerId;
+  /// Provider display name of the peer
+  final String? peerName;
 
   const ChatDetailScreen({
     super.key,
@@ -24,6 +31,9 @@ class ChatDetailScreen extends StatefulWidget {
     this.threadId,
     this.requestCode,
     this.requestTitle,
+    this.isDirect = false,
+    this.peerId,
+    this.peerName,
   });
 
   @override
@@ -48,6 +58,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String? _requestTitle;
   int? _myUserId;
   bool _manualWsClose = false;
+  bool _isDirect = false;
+  bool _isProviderAccount = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 5;
 
@@ -63,6 +75,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _threadId = widget.threadId;
     _requestCode = widget.requestCode;
     _requestTitle = widget.requestTitle;
+    _isDirect = widget.isDirect;
+    _isProviderAccount = RoleController.instance.notifier.value.isProvider;
     _bootstrap();
   }
 
@@ -86,18 +100,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         return;
       }
 
-      if (_threadId == null && _requestId != null) {
-        final thread = await _api.getOrCreateThread(_requestId!);
-        _threadId = _asInt(thread['id']);
-      }
+      if (_isDirect && _threadId != null) {
+        // Direct thread: load messages by threadId
+        await _loadDirectMessages();
+        await _api.markDirectRead(threadId: _threadId!);
+        await _connectWs();
+      } else {
+        if (_threadId == null && _requestId != null) {
+          final thread = await _api.getOrCreateThread(_requestId!);
+          _threadId = _asInt(thread['id']);
+        }
 
-      if (_requestId != null) {
-        await _resolveRequestMeta();
-        await _loadMessages();
-        await _api.markRead(requestId: _requestId!);
-      }
+        if (_requestId != null) {
+          await _resolveRequestMeta();
+          await _loadMessages();
+          await _api.markRead(requestId: _requestId!);
+        }
 
-      await _connectWs();
+        await _connectWs();
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -149,6 +170,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _loadMessages() async {
     if (_requestId == null) return;
     final raw = await _api.getThreadMessages(_requestId!);
+    final items = raw
+        .map(
+          (m) => {
+            'id': _asInt(m['id']),
+            'senderId': _asInt(m['sender']),
+            'text': (m['body'] ?? '').toString(),
+            'sentAt':
+                DateTime.tryParse((m['created_at'] ?? '').toString()) ??
+                DateTime.now(),
+            'readByPeer': _isReadByPeer(m['read_by_ids']),
+          },
+        )
+        .toList();
+    items.sort(
+      (a, b) => (a['sentAt'] as DateTime).compareTo(b['sentAt'] as DateTime),
+    );
+    if (!mounted) return;
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(items);
+    });
+  }
+
+  Future<void> _loadDirectMessages() async {
+    if (_threadId == null) return;
+    final raw = await _api.getDirectThreadMessages(_threadId!);
     final items = raw
         .map(
           (m) => {
@@ -334,6 +382,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _sendReadIfPossible() async {
+    if (_isDirect && _threadId != null) {
+      try {
+        if (_wsConnected && _socket != null) {
+          _socket!.add(jsonEncode({'type': 'read'}));
+        } else {
+          await _api.markDirectRead(threadId: _threadId!);
+        }
+      } catch (_) {}
+      return;
+    }
     if (_requestId == null) return;
     try {
       if (_wsConnected && _socket != null) {
@@ -350,7 +408,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     if (_requestId == null && _threadId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('المحادثة متاحة بعد إنشاء طلب خدمة.')),
+        const SnackBar(content: Text('تعذر إرسال الرسالة.')),
       );
       return;
     }
@@ -362,13 +420,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         try {
           _socket!.add(jsonEncode({'type': 'message', 'text': text}));
         } catch (_) {
-          if (_requestId != null) {
+          if (_isDirect && _threadId != null) {
+            await _api.sendDirectMessage(threadId: _threadId!, body: text);
+            await _loadDirectMessages();
+          } else if (_requestId != null) {
             await _api.sendMessage(requestId: _requestId!, body: text);
             await _loadMessages();
           } else {
             rethrow;
           }
         }
+      } else if (_isDirect && _threadId != null) {
+        await _api.sendDirectMessage(threadId: _threadId!, body: text);
+        await _loadDirectMessages();
       } else if (_requestId != null) {
         await _api.sendMessage(requestId: _requestId!, body: text);
         await _loadMessages();
@@ -390,6 +454,50 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
+  /// Service request link marker
+  static const String _serviceRequestLinkMarker = '📋 __SERVICE_REQUEST_LINK__';
+
+  Future<void> _sendServiceRequestLink() async {
+    if (_isSending) return;
+    if (_threadId == null && _requestId == null) return;
+
+    setState(() => _isSending = true);
+    try {
+      final linkText = _serviceRequestLinkMarker;
+      if (_wsConnected && _socket != null) {
+        try {
+          _socket!.add(jsonEncode({'type': 'message', 'text': linkText}));
+        } catch (_) {
+          if (_isDirect && _threadId != null) {
+            await _api.sendDirectMessage(threadId: _threadId!, body: linkText);
+            await _loadDirectMessages();
+          } else if (_requestId != null) {
+            await _api.sendMessage(requestId: _requestId!, body: linkText);
+            await _loadMessages();
+          }
+        }
+      } else if (_isDirect && _threadId != null) {
+        await _api.sendDirectMessage(threadId: _threadId!, body: linkText);
+        await _loadDirectMessages();
+      } else if (_requestId != null) {
+        await _api.sendMessage(requestId: _requestId!, body: linkText);
+        await _loadMessages();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر إرسال رابط الطلب.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  bool _isServiceRequestLink(String text) {
+    return text.contains('__SERVICE_REQUEST_LINK__');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -409,8 +517,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             Text(
               _wsConnected
                   ? 'متصل الآن'
-                  : (widget.requestId == null && widget.threadId == null
-                        ? 'يتطلب طلب خدمة'
+                  : (_requestId == null && _threadId == null
+                        ? 'محادثة مباشرة'
                         : (_reconnectAttempts > 0
                               ? 'إعادة اتصال...'
                               : 'غير متصل')),
@@ -418,6 +526,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
           ],
         ),
+        actions: [
+          // Provider can send a service request link to the client
+          if (_isProviderAccount && _isDirect)
+            IconButton(
+              onPressed: _sendServiceRequestLink,
+              tooltip: 'إرسال رابط طلب خدمة',
+              icon: const Icon(Icons.add_shopping_cart_rounded),
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -494,6 +611,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           _myUserId != null && m['senderId'] == _myUserId;
                       final sentAt =
                           (m['sentAt'] as DateTime?) ?? DateTime.now();
+                      final text = (m['text'] ?? '').toString();
+
+                      // Service request link card
+                      if (_isServiceRequestLink(text)) {
+                        return _buildServiceRequestCard(
+                          isMe: isMe,
+                          sentAt: sentAt,
+                          readByPeer: m['readByPeer'] == true,
+                          senderId: _asInt(m['senderId']),
+                        );
+                      }
 
                       return Align(
                         alignment: isMe
@@ -613,6 +741,179 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Renders a service request link as a stylized card in the chat.
+  Widget _buildServiceRequestCard({
+    required bool isMe,
+    required DateTime sentAt,
+    required bool readByPeer,
+    int? senderId,
+  }) {
+    // The sender is the provider. If I'm the client, show a tappable link.
+    // If I'm the provider (sender), show a confirmation card.
+    final bool canTap = !isMe; // Client sees the actionable card
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        constraints: const BoxConstraints(maxWidth: 310),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isMe
+                ? [Colors.deepPurple, Colors.deepPurple.shade700]
+                : [Colors.white, Colors.deepPurple.shade50],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: isMe
+              ? null
+              : Border.all(color: Colors.deepPurple.withValues(alpha: 0.25)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.deepPurple.withValues(alpha: 0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: canTap
+                ? () {
+                    // Navigate to service request form with the provider
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ServiceRequestFormScreen(
+                          providerName: widget.peerName ?? widget.name,
+                          providerId: widget.peerId,
+                        ),
+                      ),
+                    );
+                  }
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: isMe
+                              ? Colors.white.withValues(alpha: 0.2)
+                              : Colors.deepPurple.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.assignment_outlined,
+                          color: isMe ? Colors.white : Colors.deepPurple,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              isMe
+                                  ? 'تم إرسال رابط طلب خدمة'
+                                  : 'رابط طلب خدمة',
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: isMe ? Colors.white : Colors.deepPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isMe
+                                  ? 'بانتظار العميل لتقديم الطلب'
+                                  : 'اضغط هنا لتقديم طلب خدمة',
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11.5,
+                                color: isMe
+                                    ? Colors.white70
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (canTap) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        textDirection: TextDirection.rtl,
+                        children: [
+                          Icon(Icons.open_in_new, color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'تقديم طلب الآن',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isMe ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                      if (isMe) ...[
+                        const SizedBox(width: 6),
+                        Icon(
+                          readByPeer ? Icons.done_all : Icons.done,
+                          size: 14,
+                          color: readByPeer
+                              ? Colors.lightBlueAccent
+                              : Colors.white70,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -18,7 +18,10 @@ import '../models/provider_portfolio_item.dart';
 import '../models/provider_service.dart';
 import '../models/user_summary.dart';
 import '../services/chat_nav.dart';
+import '../services/messaging_api.dart';
+import '../services/session_storage.dart';
 import '../utils/auth_guard.dart'; // Added
+import '../utils/whatsapp_helper.dart';
 
 class ProviderProfileScreen extends StatefulWidget {
   final String? providerId;
@@ -54,6 +57,7 @@ class ProviderProfileScreen extends StatefulWidget {
 
 class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   final Color mainColor = Colors.deepPurple;
+  String? _myPhone;
 
   int _selectedTabIndex = 0;
 
@@ -171,12 +175,19 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _loadMyPhone();
     if (widget.providerId != null) {
       _loadProviderData();
       _loadProviderServices();
       _loadProviderPortfolio();
       _syncClientSocialState();
     }
+  }
+
+  Future<void> _loadMyPhone() async {
+    final phone = await const SessionStorage().readPhone();
+    if (!mounted) return;
+    setState(() => _myPhone = phone?.trim());
   }
 
   Future<void> _syncClientSocialState() async {
@@ -384,23 +395,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final target = (_fullProfile?.whatsapp ?? '').trim().isNotEmpty
         ? _fullProfile!.whatsapp!.trim()
         : providerPhone;
-    final e164 = _formatPhoneE164(target);
-    final waPhone = e164.replaceAll('+', '');
-    final encoded = Uri.encodeComponent(_buildWhatsAppMessage());
-    final appUri = Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded');
-    final webUri = Uri.parse('https://wa.me/$waPhone?text=$encoded');
-
-    if (await canLaunchUrl(appUri)) {
-      await launchUrl(appUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تعذر فتح واتساب')),
+    await WhatsAppHelper.open(
+      context: context,
+      contact: target,
+      message: _buildWhatsAppMessage(),
     );
   }
 
@@ -415,39 +413,28 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       return;
     }
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('المحادثة تتطلب طلب خدمة'),
-          content: const Text(
-            'لبدء محادثة حقيقية يجب إنشاء طلب خدمة أولاً، ثم ستفتح المحادثة تلقائياً داخل الطلب.',
-            style: TextStyle(fontFamily: 'Cairo'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ServiceRequestFormScreen(
-                      providerName: providerName,
-                      providerId: providerId,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('إنشاء طلب'),
-            ),
-          ],
-        ),
-      ),
-    );
+
+    // Open direct chat with provider (no request required)
+    try {
+      final api = MessagingApi();
+      final thread = await api.getOrCreateDirectThread(int.parse(providerId));
+      final threadId = thread['id'] as int?;
+      if (threadId == null) throw Exception('no thread id');
+      if (!mounted) return;
+      ChatNav.openThread(
+        context,
+        threadId: threadId,
+        name: providerName,
+        isDirect: true,
+        peerId: providerId,
+        peerName: providerName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح المحادثة. حاول مرة أخرى.')),
+      );
+    }
   }
 
   Future<void> _showShareAndReportSheet() async {
@@ -1382,7 +1369,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final secondaryTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
     final hasPhone = providerPhone.trim().isNotEmpty;
-    final hasWhatsApp = ((_fullProfile?.whatsapp ?? '').trim().isNotEmpty) || hasPhone;
+    final hasWhatsApp =
+        ((_fullProfile?.whatsapp ?? '').trim().isNotEmpty) ||
+        hasPhone ||
+        (_myPhone?.isNotEmpty == true);
     final lat = providerLat;
     final lng = providerLng;
 

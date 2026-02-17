@@ -55,6 +55,68 @@ class MessagingApi {
 
   Future<String?> getAccessToken() => ApiDio.getAccess();
 
+  // ─── Direct Messaging (no request required) ───────────────────
+
+  /// Create or get a direct thread with a provider.
+  Future<Map<String, dynamic>> getOrCreateDirectThread(int providerId) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/direct/thread/',
+      data: {'provider_id': providerId},
+    );
+    return _asMap(res.data);
+  }
+
+  /// List messages in a direct thread.
+  Future<List<Map<String, dynamic>>> getDirectThreadMessages(int threadId) async {
+    final res = await _dio.get(
+      '${ApiConfig.apiPrefix}/messaging/direct/thread/$threadId/messages/',
+    );
+    final data = res.data;
+    if (data is List) {
+      return data.map((e) => _asMap(e)).toList();
+    }
+    if (data is Map) {
+      final results = data['results'];
+      if (results is List) {
+        return results.map((e) => _asMap(e)).toList();
+      }
+    }
+    return const [];
+  }
+
+  /// Send a message in a direct thread.
+  Future<Map<String, dynamic>> sendDirectMessage({
+    required int threadId,
+    required String body,
+  }) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/direct/thread/$threadId/messages/send/',
+      data: {'body': body},
+    );
+    return _asMap(res.data);
+  }
+
+  /// Mark all messages in a direct thread as read.
+  Future<Map<String, dynamic>> markDirectRead({required int threadId}) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/direct/thread/$threadId/messages/read/',
+      data: const {},
+    );
+    return _asMap(res.data);
+  }
+
+  /// List all direct threads for the current user.
+  Future<List<Map<String, dynamic>>> getMyDirectThreads() async {
+    final res = await _dio.get(
+      '${ApiConfig.apiPrefix}/messaging/direct/threads/',
+    );
+    final data = res.data;
+    if (data is List) {
+      return data.map((e) => _asMap(e)).toList();
+    }
+    return const [];
+  }
+
   Uri buildThreadWsUri({required int threadId, required String token}) {
     final base = Uri.parse(ApiConfig.baseUrl);
     final wsScheme = base.scheme == 'https' ? 'wss' : 'ws';

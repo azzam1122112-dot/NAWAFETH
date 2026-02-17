@@ -23,6 +23,7 @@ import '../widgets/profile_account_modes_panel.dart';
 import '../widgets/account_switch_sheet.dart';
 import '../widgets/profile_action_card.dart';
 import '../widgets/profile_quick_links_panel.dart';
+import '../utils/auth_guard.dart';
 
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
@@ -501,7 +502,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                     isProviderActive: RoleController.instance.notifier.value.isProvider,
                     isSwitching: _switchingAccount,
                     onSelectMode: _onSelectMode,
-                    onRegisterProvider: () {
+                    onRegisterProvider: () async {
+                      if (!await checkFullClient(context)) return;
+                      if (!context.mounted) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -612,20 +615,14 @@ class _MyProfileScreenState extends State<MyProfileScreen>
           );
         },
       ),
+      Container(width: 1, height: 40, color: Colors.grey[300]),
+      _statItem(
+        value: '0',
+        label: 'نقاطي',
+        icon: Icons.star_rounded,
+        onTap: () {},
+      ),
     ];
-
-    // Show points only for providers. Clients should not see this item.
-    if (isProviderAccount) {
-      items.addAll([
-        Container(width: 1, height: 40, color: Colors.grey[300]),
-        _statItem(
-          value: '0',
-          label: 'نقاطي',
-          icon: Icons.star_rounded,
-          onTap: () {},
-        ),
-      ]);
-    }
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -710,7 +707,9 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         ProfileQuickLinkItem(
           title: 'إعدادات التنبيهات',
           icon: Icons.notifications_outlined,
-          onTap: () {
+          onTap: () async {
+            if (!await checkFullClient(context)) return;
+            if (!context.mounted) return;
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()),

@@ -4,10 +4,13 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../utils/auth_guard.dart';
+import '../utils/whatsapp_helper.dart';
 import '../services/providers_api.dart';
 import '../services/marketplace_api.dart';
+import '../services/messaging_api.dart';
+import '../services/session_storage.dart';
+import '../services/chat_nav.dart';
 import 'provider_profile_screen.dart';
-import 'service_request_form_screen.dart';
 
 class ProviderMapSelectionScreen extends StatefulWidget {
   final int subcategoryId;
@@ -37,6 +40,7 @@ class _ProviderMapSelectionScreenState
   List<int> _selectedProviderIds = [];
   bool _submitting = false;
   int? _busyProviderId;
+  String? _myPhone;
 
   double? _asDouble(dynamic value) {
     if (value == null) return null;
@@ -100,24 +104,10 @@ class _ProviderMapSelectionScreenState
     required String providerName,
     required String rawPhone,
   }) async {
-    final e164 = _formatPhoneE164(rawPhone);
-    final waPhone = e164.replaceAll('+', '');
-    final encoded = Uri.encodeComponent(_buildWhatsAppMessage(providerName));
-    final appUri = Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded');
-    final webUri = Uri.parse('https://wa.me/$waPhone?text=$encoded');
-
-    if (await canLaunchUrl(appUri)) {
-      await launchUrl(appUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تعذر فتح واتساب')),
+    await WhatsAppHelper.open(
+      context: context,
+      contact: rawPhone,
+      message: _buildWhatsAppMessage(providerName),
     );
   }
 
@@ -126,44 +116,28 @@ class _ProviderMapSelectionScreenState
     required String providerId,
   }) async {
     if (!await checkAuth(context)) return;
-
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('المحادثة تتطلب طلب خدمة'),
-          content: const Text(
-            'لضمان صلاحيات صحيحة وربط المحادثة بالطلب، أنشئ طلب خدمة أولاً.',
-            style: TextStyle(fontFamily: 'Cairo'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ServiceRequestFormScreen(
-                      providerName: providerName,
-                      providerId: providerId,
-                      initialTitle: widget.title,
-                      initialDetails: widget.description,
-                      initialSubcategoryId: widget.subcategoryId,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('إنشاء طلب'),
-            ),
-          ],
-        ),
-      ),
-    );
+
+    try {
+      final api = MessagingApi();
+      final thread = await api.getOrCreateDirectThread(int.parse(providerId));
+      final threadId = thread['id'] as int?;
+      if (threadId == null) throw Exception('no thread id');
+      if (!mounted) return;
+      ChatNav.openThread(
+        context,
+        threadId: threadId,
+        name: providerName,
+        isDirect: true,
+        peerId: providerId,
+        peerName: providerName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح المحادثة. حاول مرة أخرى.')),
+      );
+    }
   }
 
   Future<void> _openProviderProfile(Map<String, dynamic> provider) async {
@@ -280,7 +254,14 @@ class _ProviderMapSelectionScreenState
   @override
   void initState() {
     super.initState();
+    _loadMyPhone();
     _loadProviders();
+  }
+
+  Future<void> _loadMyPhone() async {
+    final phone = await const SessionStorage().readPhone();
+    if (!mounted) return;
+    setState(() => _myPhone = phone?.trim());
   }
 
   Future<void> _loadProviders() async {
@@ -690,7 +671,8 @@ class _ProviderMapSelectionScreenState
                                           _asNonEmptyString(provider['image_url']);
                                       final canCall = phone != null;
                                       final canWhatsApp =
-                                          (whatsapp ?? phone)?.trim().isNotEmpty == true;
+                                          (whatsapp ?? phone)?.trim().isNotEmpty == true ||
+                                          (_myPhone?.isNotEmpty == true);
                                       final chatPhone = whatsapp ?? phone;
                                       final isBusy = _busyProviderId == providerId;
 
@@ -806,7 +788,7 @@ class _ProviderMapSelectionScreenState
                                                     onTap: canWhatsApp
                                                         ? () => _openWhatsApp(
                                                               providerName: name,
-                                                              rawPhone: chatPhone!,
+                                                              rawPhone: chatPhone ?? '',
                                                             )
                                                         : null,
                                                   ),

@@ -71,8 +71,8 @@ class _AddServiceScreenState extends State<AddServiceScreen>
               top: -120,
               right: -90,
               child: Container(
-                width: 260,
-                height: 260,
+                width: 220,
+                height: 220,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
@@ -90,8 +90,8 @@ class _AddServiceScreenState extends State<AddServiceScreen>
               bottom: -140,
               left: -80,
               child: Container(
-                width: 280,
-                height: 280,
+                width: 240,
+                height: 240,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
@@ -263,13 +263,13 @@ class _HeroPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-        compact ? 14 : 16,
-        compact ? 14 : 16,
-        compact ? 14 : 16,
         compact ? 12 : 14,
+        compact ? 12 : 14,
+        compact ? 12 : 14,
+        compact ? 10 : 12,
       ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         gradient: const LinearGradient(
           colors: [Color(0xFF5B479D), Color(0xFF7A63CA)],
           begin: Alignment.topRight,
@@ -289,8 +289,8 @@ class _HeroPanel extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: compact ? 42 : 46,
-                height: compact ? 42 : 46,
+                width: compact ? 36 : 40,
+                height: compact ? 36 : 40,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
@@ -301,35 +301,37 @@ class _HeroPanel extends StatelessWidget {
                 child: Icon(
                   Icons.add_circle_outline_rounded,
                   color: Colors.white,
-                  size: compact ? 23 : 26,
+                  size: compact ? 20 : 22,
                 ),
               ),
               SizedBox(width: compact ? 10 : 12),
               Expanded(
                 child: Text(
-                  'ابدأ طلبك بالطريقة الأنسب',
+                  'ابدأ طلبك',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'Cairo',
-                    fontSize: compact ? 16 : 18,
+                    fontSize: compact ? 14 : 15,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
-                    height: 1.3,
+                    height: 1.25,
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: compact ? 8 : 10),
+          SizedBox(height: compact ? 6 : 8),
           Text(
             'اختر نوع الخدمة وابدأ طلبك بخطوات واضحة وسريعة.',
             style: TextStyle(
               fontFamily: 'Cairo',
-              fontSize: compact ? 12 : 13,
+              fontSize: compact ? 11 : 12,
               color: Colors.white.withValues(alpha: 0.9),
-              height: 1.55,
+              height: 1.45,
             ),
           ),
-          SizedBox(height: compact ? 10 : 12),
+          SizedBox(height: compact ? 8 : 10),
           Wrap(
             spacing: compact ? 6 : 8,
             runSpacing: compact ? 6 : 8,
@@ -353,7 +355,7 @@ class _HeroChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
@@ -363,7 +365,7 @@ class _HeroChip extends StatelessWidget {
         label,
         style: const TextStyle(
           fontFamily: 'Cairo',
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
@@ -402,18 +404,18 @@ class _ServiceOptionCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFE7E3F4)),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF251A4F).withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -422,15 +424,15 @@ class _ServiceOptionCard extends StatelessWidget {
             children: [
               Container(
                 padding: EdgeInsets.fromLTRB(
-                  compact ? 12 : 13,
                   compact ? 10 : 11,
-                  compact ? 12 : 13,
+                  compact ? 8 : 9,
                   compact ? 10 : 11,
+                  compact ? 8 : 9,
                 ),
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(18),
-                    topRight: Radius.circular(18),
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
                   ),
                   gradient: LinearGradient(
                     colors: [primary, secondary],
@@ -441,8 +443,8 @@ class _ServiceOptionCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      width: compact ? 38 : 40,
-                      height: compact ? 38 : 40,
+                      width: compact ? 32 : 34,
+                      height: compact ? 32 : 34,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
                         color: Colors.white.withValues(alpha: 0.2),
@@ -450,15 +452,17 @@ class _ServiceOptionCard extends StatelessWidget {
                           color: Colors.white.withValues(alpha: 0.28),
                         ),
                       ),
-                      child: Icon(icon, color: Colors.white, size: compact ? 20 : 22),
+                      child: Icon(icon, color: Colors.white, size: compact ? 17 : 18),
                     ),
-                    SizedBox(width: compact ? 8 : 9),
+                    SizedBox(width: compact ? 7 : 8),
                     Expanded(
                       child: Text(
                         title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: 'Cairo',
-                          fontSize: compact ? 14 : 15,
+                          fontSize: compact ? 13 : 14,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                         ),
@@ -466,8 +470,8 @@ class _ServiceOptionCard extends StatelessWidget {
                     ),
                     Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: compact ? 8 : 9,
-                        vertical: compact ? 4 : 5,
+                        horizontal: compact ? 7 : 8,
+                        vertical: compact ? 3 : 4,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.22),
@@ -480,7 +484,7 @@ class _ServiceOptionCard extends StatelessWidget {
                         badge,
                         style: TextStyle(
                           fontFamily: 'Cairo',
-                          fontSize: compact ? 10 : 11,
+                          fontSize: compact ? 9 : 10,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
@@ -491,10 +495,10 @@ class _ServiceOptionCard extends StatelessWidget {
               ),
               Padding(
                 padding: EdgeInsets.fromLTRB(
-                  compact ? 12 : 13,
-                  compact ? 11 : 12,
-                  compact ? 12 : 13,
-                  compact ? 12 : 13,
+                  compact ? 10 : 11,
+                  compact ? 9 : 10,
+                  compact ? 10 : 11,
+                  compact ? 10 : 11,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -505,12 +509,12 @@ class _ServiceOptionCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontFamily: 'Cairo',
-                        fontSize: compact ? 12 : 13,
+                        fontSize: compact ? 11 : 12,
                         color: Color(0xFF5B5670),
-                        height: 1.5,
+                        height: 1.4,
                       ),
                     ),
-                    SizedBox(height: compact ? 10 : 11),
+                    SizedBox(height: compact ? 8 : 9),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -518,8 +522,8 @@ class _ServiceOptionCard extends StatelessWidget {
                       children: [
                         Container(
                           padding: EdgeInsets.symmetric(
-                            horizontal: compact ? 9 : 10,
-                            vertical: compact ? 5 : 6,
+                            horizontal: compact ? 8 : 9,
+                            vertical: compact ? 4 : 5,
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF3F0FD),
@@ -529,7 +533,7 @@ class _ServiceOptionCard extends StatelessWidget {
                             detail,
                             style: TextStyle(
                               fontFamily: 'Cairo',
-                              fontSize: compact ? 11 : 12,
+                              fontSize: compact ? 10 : 11,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF5A489B),
                             ),
@@ -546,13 +550,13 @@ class _ServiceOptionCard extends StatelessWidget {
                             ),
                             textStyle: TextStyle(
                               fontFamily: 'Cairo',
-                              fontSize: compact ? 12 : 13,
+                              fontSize: compact ? 11 : 12,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           icon: Icon(
                             Icons.arrow_back_rounded,
-                            size: compact ? 18 : 19,
+                            size: compact ? 16 : 17,
                           ),
                           label: Text(actionLabel),
                         ),
@@ -607,13 +611,13 @@ class _ScreenMetrics {
   final double gap;
 
   static _ScreenMetrics fromWidth(double width) {
-    final compact = width < 360;
+    final compact = width < 390;
     final twoColumns = width >= 700;
     return _ScreenMetrics(
       compact: compact,
       twoColumns: twoColumns,
-      horizontalPadding: twoColumns ? 22 : (compact ? 12 : 16),
-      gap: twoColumns ? 14 : 12,
+      horizontalPadding: twoColumns ? 20 : (compact ? 10 : 12),
+      gap: twoColumns ? 12 : 10,
     );
   }
 
