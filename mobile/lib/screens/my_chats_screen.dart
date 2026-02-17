@@ -572,7 +572,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                     requestTitle: (chat['requestTitle'] ?? '')
                                         .toString(),
                                     isDirect: isDirect,
-                                    peerId: isDirect ? chat['peerId'] as int? : null,
+                                    peerId: isDirect ? chat['peerId']?.toString() : null,
                                     peerName: isDirect ? (chat['peerName'] ?? '').toString() : null,
                                   ),
                                 ),
