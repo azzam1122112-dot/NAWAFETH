@@ -296,6 +296,36 @@ class ProvidersApi {
     }
   }
 
+  /// Get followers of any specific provider (public)
+  Future<List<UserSummary>> getProviderFollowers(int providerId) async {
+    try {
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/$providerId/followers/',
+      );
+      final list = (res.data as List)
+          .map((e) => UserSummary.fromJson(e))
+          .toList();
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get providers that a specific provider follows (public)
+  Future<List<ProviderProfile>> getProviderFollowing(int providerId) async {
+    try {
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/$providerId/following/',
+      );
+      final list = (res.data as List)
+          .map((e) => ProviderProfile.fromJson(e))
+          .toList();
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
   Future<List<ProviderPortfolioItem>> getMyFavoriteMedia() async {
     try {
       final res = await _dio.get(

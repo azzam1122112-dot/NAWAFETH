@@ -16,6 +16,7 @@ import '../services/providers_api.dart'; // Added
 import '../models/provider.dart'; // Added
 import '../models/provider_portfolio_item.dart';
 import '../models/provider_service.dart';
+import '../models/user_summary.dart';
 import '../services/chat_nav.dart';
 import '../utils/auth_guard.dart'; // Added
 
@@ -311,6 +312,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         setState(() {
           _fullProfile = profile;
           _followersCount = profile.followersCount;
+          _followingCount = profile.followingCount;
           _likesCount = profile.likesCount;
           _reviewersCount = profile.ratingCount;
         });
@@ -590,6 +592,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   }
 
   Future<void> _showFollowersList() async {
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    if (providerId == null) return;
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -637,16 +642,49 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ),
                 ),
                 const Divider(height: 1),
-                const Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'قائمة المتابعين ستتوفر بعد ربطها بواجهة الباكند.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
-                      ),
-                    ),
+                Expanded(
+                  child: FutureBuilder<List<UserSummary>>(
+                    future: ProvidersApi().getProviderFollowers(providerId),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final list = snapshot.data ?? [];
+                      if (list.isEmpty) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'لا يوجد متابعون حالياً',
+                              style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, i) {
+                          final user = list[i];
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Text(user.displayName[0].toUpperCase()),
+                            ),
+                            title: Text(
+                              user.displayName,
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            subtitle: user.username != null
+                                ? Text(
+                                    '@${user.username}',
+                                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                                  )
+                                : null,
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
               ],
@@ -658,6 +696,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   }
 
   Future<void> _showFollowingList() async {
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    if (providerId == null) return;
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -708,16 +749,73 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ),
                 ),
                 const Divider(height: 1),
-                const Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'قائمة "يتابع" غير متاحة حالياً في الباكند، وستظهر عند توفير API.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
-                      ),
-                    ),
+                Expanded(
+                  child: FutureBuilder<List<ProviderProfile>>(
+                    future: ProvidersApi().getProviderFollowing(providerId),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final list = snapshot.data ?? [];
+                      if (list.isEmpty) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'لا يتابع أحداً حالياً',
+                              style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, i) {
+                          final provider = list[i];
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundImage: provider.imageUrl != null && provider.imageUrl!.trim().isNotEmpty
+                                  ? NetworkImage(provider.imageUrl!)
+                                  : null,
+                              child: provider.imageUrl == null || provider.imageUrl!.trim().isEmpty
+                                  ? Text(provider.displayName[0].toUpperCase())
+                                  : null,
+                            ),
+                            title: Text(
+                              provider.displayName,
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            subtitle: provider.city != null
+                                ? Text(
+                                    provider.city!,
+                                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                                  )
+                                : null,
+                            trailing: provider.isVerifiedBlue || provider.isVerifiedGreen
+                                ? Icon(
+                                    Icons.verified,
+                                    size: 16,
+                                    color: provider.isVerifiedBlue ? Colors.blue : Colors.green,
+                                  )
+                                : null,
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ProviderProfileScreen(
+                                    providerId: provider.id.toString(),
+                                    providerName: provider.displayName,
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
               ],

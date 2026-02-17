@@ -357,6 +357,43 @@ class MyProviderLikersView(generics.ListAPIView):
 		)
 
 
+class ProviderFollowersView(generics.ListAPIView):
+	"""Public: Users who follow a specific provider."""
+	serializer_class = UserPublicSerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		provider_id = self.kwargs.get("provider_id")
+		return (
+			User.objects.filter(provider_follows__provider_id=provider_id)
+			.distinct()
+			.order_by("-id")
+		)
+
+
+class ProviderFollowingView(generics.ListAPIView):
+	"""Public: Providers that a specific provider follows (if any)."""
+	serializer_class = ProviderPublicSerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		provider_id = self.kwargs.get("provider_id")
+		try:
+			provider = ProviderProfile.objects.get(id=provider_id)
+			user = provider.user
+			return (
+				ProviderProfile.objects.filter(followers__user=user)
+				.annotate(
+					followers_count=Count("followers"),
+					likes_count=Count("likes"),
+				)
+				.distinct()
+				.order_by("-id")
+			)
+		except ProviderProfile.DoesNotExist:
+			return ProviderProfile.objects.none()
+
+
 class FollowProviderView(APIView):
 	permission_classes = [IsAtLeastPhoneOnly]
 

@@ -15,6 +15,7 @@ class ProviderProfile {
   final double ratingAvg;
   final int ratingCount;
   final int followersCount;
+  final int followingCount;
   final int likesCount;
 
   const ProviderProfile({
@@ -34,6 +35,7 @@ class ProviderProfile {
     this.ratingAvg = 0.0,
     this.ratingCount = 0,
     this.followersCount = 0,
+    this.followingCount = 0,
     this.likesCount = 0,
   });
 
@@ -82,6 +84,7 @@ class ProviderProfile {
       ratingAvg: parseDouble(json['rating_avg']),
       ratingCount: parseInt(json['rating_count']),
       followersCount: parseInt(json['followers_count']),
+      followingCount: parseInt(json['following_count']),
       likesCount: parseInt(json['likes_count']),
     );
   }

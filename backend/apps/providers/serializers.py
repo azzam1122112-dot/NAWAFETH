@@ -101,6 +101,7 @@ class ProviderProfileMeSerializer(serializers.ModelSerializer):
 class ProviderPublicSerializer(serializers.ModelSerializer):
     followers_count = serializers.IntegerField(read_only=True)
     likes_count = serializers.IntegerField(read_only=True)
+    following_count = serializers.SerializerMethodField()
     phone = serializers.CharField(source="user.phone", read_only=True)
 
     class Meta:
@@ -123,7 +124,15 @@ class ProviderPublicSerializer(serializers.ModelSerializer):
             "created_at",
             "followers_count",
             "likes_count",
+            "following_count",
         )
+
+    def get_following_count(self, obj):
+        # Count providers this provider's user follows (if any)
+        try:
+            return obj.user.provider_follows.count()
+        except Exception:
+            return 0
 
 
 class ProviderPortfolioItemSerializer(serializers.ModelSerializer):
