@@ -67,12 +67,11 @@ class _ReviewsTabState extends State<ReviewsTab> {
   Future<int> _resolveProviderId() async {
     final me = await AccountApi().me();
     final providerProfileId = me['provider_profile_id'];
-    if (providerProfileId is int) return providerProfileId;
-    if (providerProfileId is String) return int.parse(providerProfileId);
-
-    final fallbackId = me['id'];
-    if (fallbackId is int) return fallbackId;
-    if (fallbackId is String) return int.parse(fallbackId);
+    if (providerProfileId is int && providerProfileId > 0) return providerProfileId;
+    if (providerProfileId is String) {
+      final parsed = int.tryParse(providerProfileId);
+      if (parsed != null && parsed > 0) return parsed;
+    }
 
     throw StateError('Cannot resolve provider_profile_id from /accounts/me/.');
   }

@@ -203,7 +203,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
           ),
         ),
       );
-      await _save();
+      await _save(fromReviewFlow: true);
     } on DioException catch (e) {
       if (!mounted) return;
       final msg =
@@ -364,7 +364,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
     );
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool fromReviewFlow = false}) async {
     if (_isSaving) return;
     final requestId = _requestIdValue();
     if (requestId == null) {
@@ -527,7 +527,9 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       }
 
       if (!didAnyAction) {
-        successMessage = 'لا توجد تغييرات للحفظ';
+        successMessage = fromReviewFlow
+            ? 'تم إرسال التقييم بنجاح'
+            : 'لا توجد تغييرات للحفظ';
       }
 
       await _refreshFromBackend(silent: true);

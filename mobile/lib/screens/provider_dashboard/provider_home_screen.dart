@@ -50,6 +50,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   String? _providerShareLink;
   int? _followersCount;
   int? _likesReceivedCount;
+  int? _providerId;
   double _profileCompletion = 0.0;
 
   double _ratingAvg = 0.0;
@@ -164,6 +165,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
 
       if (!mounted) return;
       setState(() {
+        _providerId = providerId;
         _providerShareLink = link;
         _followersCount = followersCount;
         _likesReceivedCount = likesReceivedCount;
@@ -673,7 +675,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   void _navToReviews() {
      Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
       appBar: AppBar(title: const Text('التقييمات', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: providerPrimary, foregroundColor: Colors.white,),
-      body: const ReviewsTab(embedded: true),
+      body: ReviewsTab(
+        embedded: true,
+        providerId: _providerId,
+      ),
     )));
   }
 
