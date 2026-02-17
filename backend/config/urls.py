@@ -20,6 +20,7 @@ from django.contrib import admin
 from apps.core.health import HealthCheckView, HealthLiveView, HealthReadyView
 
 urlpatterns = [
+    path("", HealthLiveView.as_view(), name="root"),
     path("health/", HealthCheckView.as_view(), name="health"),
     path("health/live/", HealthLiveView.as_view(), name="health_live"),
     path("health/ready/", HealthReadyView.as_view(), name="health_ready"),
