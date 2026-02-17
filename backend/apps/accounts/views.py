@@ -117,11 +117,14 @@ def _otp_test_authorized(request) -> bool:
 
 
 def _issue_tokens_for_phone(phone: str):
+    normalized_phone = (phone or "").strip()
+    phone_username = normalized_phone.lstrip("@")
+
     user, created = User.objects.get_or_create(
-        phone=phone,
+        phone=normalized_phone,
         defaults={
             "role_state": UserRole.PHONE_ONLY,
-            "username": f"@{phone}",
+            "username": phone_username,
         },
     )
 
@@ -132,8 +135,13 @@ def _issue_tokens_for_phone(phone: str):
         user.role_state = UserRole.PHONE_ONLY
         update_fields.append("role_state")
 
-    if not (user.username or "").strip():
-        user.username = f"@{phone}"
+    current_username = (user.username or "").strip()
+    if not current_username:
+        user.username = phone_username
+        update_fields.append("username")
+    elif current_username == f"@{phone_username}":
+        # Auto-fix accounts created with legacy phone username format.
+        user.username = phone_username
         update_fields.append("username")
 
     if update_fields:
