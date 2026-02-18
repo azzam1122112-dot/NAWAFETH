@@ -16,6 +16,7 @@ import '../../services/account_api.dart';
 import '../../services/role_controller.dart';
 import '../../services/session_storage.dart';
 import '../../utils/auth_guard.dart';
+import '../../core/api/api_error.dart';
 
 import '../signup_screen.dart';
 
@@ -351,14 +352,13 @@ class _RegisterServiceProviderPageState
         _showSuccessOverlay = true;
       });
     } on DioException catch (e) {
-      String msg = 'تعذر التسجيل كمقدم خدمة. حاول مرة أخرى.';
-      final data = e.response?.data;
-      if (data is Map) {
-        final detail = (data['detail'] ?? '').toString().trim();
-        if (detail.isNotEmpty) {
-          msg = detail;
+        final apiErr = ApiError.fromDio(e);
+        String msg = apiErr.messageAr;
+
+        // Keep old behavior: if backend blocks by role, guide user to complete registration.
+        if ((e.response?.statusCode ?? 0) == 403) {
+          msg = 'يلزم إكمال تسجيل الحساب أولاً قبل التسجيل كمقدم خدمة.';
         }
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 

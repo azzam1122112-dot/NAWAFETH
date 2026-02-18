@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_api.dart';
+import 'providers_api.dart';
 import 'session_storage.dart';
 import '../utils/local_user_state.dart';
 
@@ -34,10 +35,34 @@ class RoleSync {
     }
 
     final hasProviderProfile = me['has_provider_profile'] == true;
+    final roleState = (me['role_state'] ?? '').toString().trim().toLowerCase();
+    final isProviderByRole = me['is_provider'] == true || roleState == 'provider';
+    final providerProfileIdRaw = me['provider_profile_id'];
+    final providerProfileId = providerProfileIdRaw is int
+        ? providerProfileIdRaw
+        : int.tryParse((providerProfileIdRaw ?? '').toString());
+
+    bool hasProviderProfileFallback = false;
+    if (!hasProviderProfile && providerProfileId == null && !isProviderByRole) {
+      try {
+        final profile = await ProvidersApi().getMyProviderProfile();
+        final profileIdRaw = profile?['id'];
+        final profileId = profileIdRaw is int
+            ? profileIdRaw
+            : int.tryParse((profileIdRaw ?? '').toString());
+        hasProviderProfileFallback = profileId != null || (profile != null && profile.isNotEmpty);
+      } catch (_) {
+        hasProviderProfileFallback = false;
+      }
+    }
 
     // Only consider the user "provider-registered" if a provider profile exists.
     // This keeps pure-client accounts from seeing/entering provider mode.
-    final isProviderRegistered = hasProviderProfile;
+    final isProviderRegistered =
+        hasProviderProfile ||
+        providerProfileId != null ||
+        isProviderByRole ||
+        hasProviderProfileFallback;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isProviderRegistered', isProviderRegistered);

@@ -84,8 +84,32 @@ class _MyProfileScreenState extends State<MyProfileScreen>
 
       final me = await AccountApi().me();
       final hasProviderProfile = me['has_provider_profile'] == true;
+      final roleState = (me['role_state'] ?? '').toString().trim().toLowerCase();
+      final isProviderByRole = me['is_provider'] == true || roleState == 'provider';
+      final providerProfileIdRaw = me['provider_profile_id'];
+      final providerProfileId = providerProfileIdRaw is int
+          ? providerProfileIdRaw
+          : int.tryParse((providerProfileIdRaw ?? '').toString());
 
-      final isProviderRegisteredBackend = hasProviderProfile;
+      bool hasProviderProfileFallback = false;
+      if (!hasProviderProfile && providerProfileId == null && !isProviderByRole) {
+        try {
+          final profile = await ProvidersApi().getMyProviderProfile();
+          final profileIdRaw = profile?['id'];
+          final profileId = profileIdRaw is int
+              ? profileIdRaw
+              : int.tryParse((profileIdRaw ?? '').toString());
+          hasProviderProfileFallback = profileId != null || (profile != null && profile.isNotEmpty);
+        } catch (_) {
+          hasProviderProfileFallback = false;
+        }
+      }
+
+      final isProviderRegisteredBackend =
+          hasProviderProfile ||
+          providerProfileId != null ||
+          isProviderByRole ||
+          hasProviderProfileFallback;
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isProviderRegistered', isProviderRegisteredBackend);
@@ -128,10 +152,10 @@ class _MyProfileScreenState extends State<MyProfileScreen>
         return int.tryParse(s);
       }
 
-      int? likesCount = asInt(me['likes_count']);
+      int? likesCount = asInt(me['favorites_media_count']);
       if (likesCount == null) {
         try {
-          likesCount = (await ProvidersApi().getMyLikedProviders()).length;
+          likesCount = (await ProvidersApi().getMyFavoriteMedia()).length;
         } catch (_) {
           likesCount = null;
         }
