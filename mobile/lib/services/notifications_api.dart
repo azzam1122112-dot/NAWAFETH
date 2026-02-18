@@ -45,6 +45,45 @@ class NotificationsApi {
     await _dio.post('${ApiConfig.apiPrefix}/notifications/mark-all-read/');
   }
 
+  Future<void> togglePin(int notificationId) async {
+    await _dio.post(
+      '${ApiConfig.apiPrefix}/notifications/actions/$notificationId/',
+      data: {'action': 'pin'},
+    );
+  }
+
+  Future<void> toggleFollowUp(int notificationId) async {
+    await _dio.post(
+      '${ApiConfig.apiPrefix}/notifications/actions/$notificationId/',
+      data: {'action': 'follow_up'},
+    );
+  }
+
+  Future<void> deleteNotification(int notificationId) async {
+    await _dio.delete('${ApiConfig.apiPrefix}/notifications/actions/$notificationId/');
+  }
+
+  Future<Map<String, dynamic>> getPreferences() async {
+    final res = await _dio.get('${ApiConfig.apiPrefix}/notifications/preferences/');
+    if (res.data is Map<String, dynamic>) {
+      return res.data as Map<String, dynamic>;
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> updatePreferences({
+    required List<Map<String, dynamic>> updates,
+  }) async {
+    final res = await _dio.patch(
+      '${ApiConfig.apiPrefix}/notifications/preferences/',
+      data: {'updates': updates},
+    );
+    if (res.data is Map<String, dynamic>) {
+      return res.data as Map<String, dynamic>;
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
   Future<void> registerDeviceToken({
     required String token,
     required String platform,

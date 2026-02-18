@@ -2,7 +2,11 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.accounts.models import User
-from apps.marketplace.models import Offer, OfferStatus, ServiceRequest, RequestStatusLog
+from apps.marketplace.models import (
+    Offer,
+    OfferStatus,
+    RequestStatusLog,
+)
 from apps.messaging.models import Message
 
 from .models import EventType
@@ -36,6 +40,7 @@ def notify_offer_created(sender, instance: Offer, created, **kwargs):
         url=f"/requests/{sr.id}",
         actor=instance.provider.user,
         event_type=EventType.OFFER_CREATED,
+        pref_key="service_reply",
         request_id=sr.id,
         offer_id=instance.id,
         meta={"price": str(instance.price), "duration_days": instance.duration_days},
@@ -56,6 +61,7 @@ def notify_offer_selected(sender, instance: Offer, created, **kwargs):
         url=f"/requests/{sr.id}",
         actor=sr.client,
         event_type=EventType.OFFER_SELECTED,
+        pref_key="service_reply",
         request_id=sr.id,
         offer_id=instance.id,
     )
@@ -91,6 +97,7 @@ def notify_new_message(sender, instance: Message, created, **kwargs):
             url=f"/threads/{thread.id}/chat",
             actor=instance.sender,
             event_type=EventType.MESSAGE_NEW,
+            pref_key="new_chat_message",
             message_id=instance.id,
             meta={"thread_id": thread.id, "is_direct": True},
         )
@@ -116,6 +123,7 @@ def notify_new_message(sender, instance: Message, created, **kwargs):
         url=f"/requests/{sr.id}/chat",
         actor=instance.sender,
         event_type=EventType.MESSAGE_NEW,
+        pref_key="new_chat_message",
         request_id=sr.id,
         message_id=instance.id,
         meta={"thread_id": thread.id, "is_direct": False},
@@ -158,6 +166,7 @@ def notify_request_status_changed(sender, instance: RequestStatusLog, created, *
         url=f"/requests/{sr.id}",
         actor=instance.actor,
         event_type=EventType.STATUS_CHANGED,
+        pref_key="request_status_change",
         request_id=sr.id,
         meta={
             "from_status": instance.from_status,

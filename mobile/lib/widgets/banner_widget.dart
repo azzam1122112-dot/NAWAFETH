@@ -90,14 +90,29 @@ class _BannerWidgetState extends State<BannerWidget> {
           ),
         ),
         child: const Center(
-          child: Text(
-            'مرحباً بك في نوافذ',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'مساحة إعلانية',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'ستُدار من قبل مدير النظام لاحقاً',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white70,
+                ),
+              ),
+            ],
           ),
         ),
       );

@@ -66,3 +66,29 @@ class MessageRead(models.Model):
         indexes = [
             models.Index(fields=["user", "read_at"]),
         ]
+
+
+class ThreadUserState(models.Model):
+    thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name="user_states")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="thread_states")
+
+    is_favorite = models.BooleanField(default=False)
+    is_archived = models.BooleanField(default=False)
+    is_blocked = models.BooleanField(default=False)
+
+    blocked_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("thread", "user")
+        indexes = [
+            models.Index(fields=["user", "is_favorite"], name="messaging_t_user_id_439020_idx"),
+            models.Index(fields=["user", "is_archived"], name="messaging_t_user_id_a56866_idx"),
+            models.Index(fields=["user", "is_blocked"], name="messaging_t_user_id_b28302_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"ThreadUserState thread={self.thread_id} user={self.user_id}"

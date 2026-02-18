@@ -4,9 +4,9 @@ import '../utils/auth_guard.dart';
 import '../models/app_notification.dart';
 import '../services/notifications_api.dart';
 import '../services/notifications_badge_controller.dart';
-import '../services/notification_link_handler.dart';
 import '../services/role_controller.dart';
 import '../services/session_storage.dart';
+import 'notification_details_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -27,6 +27,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   int _offset = 0;
   String? _error;
   bool _loginRequired = false;
+  int? _lastUnreadCount;
+  bool _showNewNotificationsBanner = false;
 
   static const int _limit = 20;
 
@@ -48,11 +50,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
     _scroll.addListener(_onScroll);
     RoleController.instance.notifier.addListener(_onRoleChanged);
+    NotificationsBadgeController.instance.unreadNotifier.addListener(_onUnreadChanged);
+    _lastUnreadCount = NotificationsBadgeController.instance.unreadNotifier.value;
   }
 
   @override
   void dispose() {
     RoleController.instance.notifier.removeListener(_onRoleChanged);
+    NotificationsBadgeController.instance.unreadNotifier.removeListener(_onUnreadChanged);
     _scroll.dispose();
     super.dispose();
   }
@@ -60,6 +65,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void _onRoleChanged() {
     // Refresh list when switching client/provider.
     _loadInitial();
+  }
+
+  void _onUnreadChanged() {
+    final current = NotificationsBadgeController.instance.unreadNotifier.value;
+    final previous = _lastUnreadCount;
+    _lastUnreadCount = current;
+    if (current == null) return;
+    if (previous == null) return;
+    if (current <= previous) return;
+    _refreshTopSilently();
   }
 
   void _onScroll() {
@@ -179,6 +194,157 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _refreshTopSilently() async {
+    if (_loading || _loadingMore) return;
+    try {
+      final previousTopId = _items.isNotEmpty ? _items.first.id : -1;
+      final page = await _api.list(limit: _limit, offset: 0);
+      final results = (page['results'] as List?) ?? const [];
+      final fresh = results
+          .whereType<Map>()
+          .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      if (!mounted || fresh.isEmpty) return;
+
+      final merged = <AppNotification>[...fresh];
+      final existingIds = fresh.map((e) => e.id).toSet();
+      for (final old in _items) {
+        if (!existingIds.contains(old.id)) {
+          merged.add(old);
+        }
+      }
+
+      merged.sort((a, b) {
+        final ap = (a.isPinned ? 2 : 0) + (a.isUrgent ? 1 : 0);
+        final bp = (b.isPinned ? 2 : 0) + (b.isUrgent ? 1 : 0);
+        if (ap != bp) return bp.compareTo(ap);
+        return b.id.compareTo(a.id);
+      });
+
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(merged);
+        _offset = _items.length;
+        _hasMore = fresh.length >= _limit;
+        if (_items.isNotEmpty && _items.first.id > previousTopId) {
+          _showNewNotificationsBanner = true;
+        }
+      });
+    } catch (_) {
+      // Best-effort live refresh.
+    }
+  }
+
+  Widget _newNotificationsBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active_rounded, size: 18, color: Colors.deepPurple),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'وصلت تنبيهات جديدة',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              setState(() => _showNewNotificationsBanner = false);
+              if (_scroll.hasClients) {
+                await _scroll.animateTo(
+                  0,
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            child: const Text(
+              'عرض الآن',
+              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w900),
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(() => _showNewNotificationsBanner = false),
+            icon: const Icon(Icons.close, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _togglePin(AppNotification notification) async {
+    await _api.togglePin(notification.id);
+    if (!mounted) return;
+    setState(() {
+      final idx = _items.indexWhere((n) => n.id == notification.id);
+      if (idx >= 0) {
+        final n = _items[idx];
+        _items[idx] = AppNotification(
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          kind: n.kind,
+          url: n.url,
+          isRead: n.isRead,
+          isPinned: !n.isPinned,
+          isFollowUp: n.isFollowUp,
+          isUrgent: n.isUrgent,
+          createdAt: n.createdAt,
+        );
+      }
+    });
+    _items.sort((a, b) {
+      final ap = (a.isPinned ? 2 : 0) + (a.isUrgent ? 1 : 0);
+      final bp = (b.isPinned ? 2 : 0) + (b.isUrgent ? 1 : 0);
+      if (ap != bp) return bp.compareTo(ap);
+      return b.id.compareTo(a.id);
+    });
+  }
+
+  Future<void> _toggleFollowUp(AppNotification notification) async {
+    await _api.toggleFollowUp(notification.id);
+    if (!mounted) return;
+    setState(() {
+      final idx = _items.indexWhere((n) => n.id == notification.id);
+      if (idx >= 0) {
+        final n = _items[idx];
+        _items[idx] = AppNotification(
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          kind: n.kind,
+          url: n.url,
+          isRead: n.isRead,
+          isPinned: n.isPinned,
+          isFollowUp: !n.isFollowUp,
+          isUrgent: n.isUrgent,
+          createdAt: n.createdAt,
+        );
+      }
+    });
+  }
+
+  Future<void> _deleteNotification(AppNotification notification) async {
+    await _api.deleteNotification(notification.id);
+    if (!mounted) return;
+    setState(() {
+      _items.removeWhere((n) => n.id == notification.id);
+    });
+  }
+
   Future<void> _markAllRead() async {
     final loggedIn = await _session.isLoggedIn();
     if (!loggedIn) {
@@ -201,6 +367,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               kind: n.kind,
               url: n.url,
               isRead: true,
+              isPinned: n.isPinned,
+              isFollowUp: n.isFollowUp,
+              isUrgent: n.isUrgent,
               createdAt: n.createdAt,
             );
           }
@@ -230,6 +399,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           kind: n.kind,
           url: n.url,
           isRead: true,
+          isPinned: n.isPinned,
+          isFollowUp: n.isFollowUp,
+          isUrgent: n.isUrgent,
           createdAt: n.createdAt,
         );
       }
@@ -240,7 +412,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _notificationCard(AppNotification notification) {
     final isUnread = !notification.isRead;
     final theme = Theme.of(context);
-    final bg = theme.cardColor;
+    final bg = notification.isUrgent
+        ? theme.colorScheme.error.withValues(alpha: 0.06)
+        : theme.cardColor;
 
     return InkWell(
       onTap: () async {
@@ -248,13 +422,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           await _markReadIfNeeded(notification);
           if (!mounted) return;
 
-          final opened = await NotificationLinkHandler.openFromNotification(context, notification);
-          if (!mounted) return;
-          if (!opened && notification.url != null && notification.url!.trim().isNotEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم فتح الإشعار كمقروء، لكن لا يوجد مسار مدعوم حالياً.')),
-            );
-          }
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => NotificationDetailsScreen(notification: notification),
+            ),
+          );
         } catch (_) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -269,7 +441,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           color: bg,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isUnread ? theme.colorScheme.primary.withOpacity(0.35) : Colors.transparent,
+            color: isUnread
+                ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                : Colors.transparent,
             width: isUnread ? 1.2 : 1,
           ),
           boxShadow: const [
@@ -283,7 +457,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.10),
+                color: theme.colorScheme.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -311,6 +485,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                         ),
                       ),
+                      PopupMenuButton<String>(
+                        onSelected: (value) async {
+                          try {
+                            if (value == 'follow_up') {
+                              await _toggleFollowUp(notification);
+                            } else if (value == 'pin') {
+                              await _togglePin(notification);
+                            } else if (value == 'delete') {
+                              await _deleteNotification(notification);
+                            }
+                          } catch (_) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('تعذر تنفيذ الإجراء')),
+                            );
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'follow_up',
+                            child: Text(
+                              notification.isFollowUp ? 'إلغاء المتابعة' : 'تمييز للمتابعة',
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'pin',
+                            child: Text(
+                              notification.isPinned ? 'إلغاء التثبيت' : 'تثبيت بالأعلى',
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('حذف', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                        ],
+                      ),
                       if (isUnread)
                         Container(
                           width: 10,
@@ -323,6 +535,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
+                  if (notification.isPinned || notification.isFollowUp || notification.isUrgent) ...[
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (notification.isUrgent)
+                          _flagChip('عاجل', theme.colorScheme.error),
+                        if (notification.isPinned)
+                          _flagChip('مثبّت', theme.colorScheme.primary),
+                        if (notification.isFollowUp)
+                          _flagChip('للمتابعة', Colors.orange),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Text(
                     notification.body,
                     maxLines: 3,
@@ -330,7 +557,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 12.5,
-                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -339,7 +566,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 11.5,
-                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.70),
+                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.70),
                     ),
                   ),
                 ],
@@ -435,17 +662,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       : ListView.builder(
                           controller: _scroll,
                           padding: const EdgeInsets.all(16),
-                          itemCount: _items.length + (_loadingMore ? 1 : 0),
+                          itemCount: _items.length + (_loadingMore ? 1 : 0) + (_showNewNotificationsBanner ? 1 : 0),
                           itemBuilder: (context, index) {
-                            if (index >= _items.length) {
+                            if (_showNewNotificationsBanner && index == 0) {
+                              return _newNotificationsBanner();
+                            }
+                            final adjustedIndex = index - (_showNewNotificationsBanner ? 1 : 0);
+                            if (adjustedIndex >= _items.length) {
                               return const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 16),
                                 child: Center(child: CircularProgressIndicator()),
                               );
                             }
-                            return _notificationCard(_items[index]);
+                            return _notificationCard(_items[adjustedIndex]);
                           },
                         ),
+        ),
+      ),
+    );
+  }
+
+  Widget _flagChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+          color: color,
         ),
       ),
     );

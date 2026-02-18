@@ -11,6 +11,12 @@ from .views import (
     DirectThreadSendMessageView,
     DirectThreadMarkReadView,
     MyDirectThreadsListView,
+    MyThreadStatesListView,
+    ThreadStateDetailView,
+    ThreadFavoriteView,
+    ThreadArchiveView,
+    ThreadBlockView,
+    ThreadReportView,
 )
 
 app_name = "messaging"
@@ -30,4 +36,12 @@ urlpatterns = [
     path("direct/thread/<int:thread_id>/messages/send/", DirectThreadSendMessageView.as_view(), name="direct_message_send"),
     path("direct/thread/<int:thread_id>/messages/read/", DirectThreadMarkReadView.as_view(), name="direct_thread_mark_read"),
     path("direct/threads/", MyDirectThreadsListView.as_view(), name="direct_threads_list"),
+
+    # Per-user thread state (favorite / block / archive)
+    path("threads/states/", MyThreadStatesListView.as_view(), name="my_thread_states"),
+    path("thread/<int:thread_id>/state/", ThreadStateDetailView.as_view(), name="thread_state"),
+    path("thread/<int:thread_id>/favorite/", ThreadFavoriteView.as_view(), name="thread_favorite"),
+    path("thread/<int:thread_id>/archive/", ThreadArchiveView.as_view(), name="thread_archive"),
+    path("thread/<int:thread_id>/block/", ThreadBlockView.as_view(), name="thread_block"),
+    path("thread/<int:thread_id>/report/", ThreadReportView.as_view(), name="thread_report"),
 ]

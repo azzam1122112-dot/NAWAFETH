@@ -32,6 +32,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
   static const Color _mainColor = Colors.deepPurple;
 
   String _selectedAssignedStatus = 'جديد';
+  String _selectedUrgentStatus = 'جديد';
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -136,8 +137,36 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
     if (!mounted) return;
     setState(() => _loadingUrgent = true);
     try {
-      final list = await MarketplaceApi()
-          .getAvailableUrgentRequestsForProvider();
+      List<dynamic> list;
+      if (_selectedUrgentStatus == 'جديد') {
+        // الطلبات العاجلة الجديدة المتاحة للمزود
+        list = await MarketplaceApi().getAvailableUrgentRequestsForProvider();
+      } else {
+        // الحالات الأخرى تأتي من الطلبات المسندة للمزود ثم نفلتر العاجل
+        String statusGroup;
+        switch (_selectedUrgentStatus) {
+          case 'تحت التنفيذ':
+            statusGroup = 'in_progress';
+            break;
+          case 'مكتمل':
+            statusGroup = 'completed';
+            break;
+          case 'ملغي':
+            statusGroup = 'cancelled';
+            break;
+          default:
+            statusGroup = 'new';
+            break;
+        }
+        final all = await MarketplaceApi().getMyProviderRequests(
+          statusGroup: statusGroup,
+        );
+        list = all.where((e) {
+          if (e is! Map) return false;
+          final type = (e['request_type'] ?? '').toString().trim().toLowerCase();
+          return type == 'urgent';
+        }).toList();
+      }
       if (!mounted) return;
       setState(() {
         _urgent = list.cast<Map<String, dynamic>>();
@@ -399,6 +428,51 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
     );
   }
 
+  Widget _urgentStatusChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _chip(
+            label: 'جديد',
+            selected: _selectedUrgentStatus == 'جديد',
+            onTap: () {
+              setState(() => _selectedUrgentStatus = 'جديد');
+              _fetchUrgent();
+            },
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: 'تحت التنفيذ',
+            selected: _selectedUrgentStatus == 'تحت التنفيذ',
+            onTap: () {
+              setState(() => _selectedUrgentStatus = 'تحت التنفيذ');
+              _fetchUrgent();
+            },
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: 'مكتمل',
+            selected: _selectedUrgentStatus == 'مكتمل',
+            onTap: () {
+              setState(() => _selectedUrgentStatus = 'مكتمل');
+              _fetchUrgent();
+            },
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: 'ملغي',
+            selected: _selectedUrgentStatus == 'ملغي',
+            onTap: () {
+              setState(() => _selectedUrgentStatus = 'ملغي');
+              _fetchUrgent();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _requestCard(Map<String, dynamic> req, {required bool urgentTab}) {
     final statusLabel = (req['status_label'] ?? '').toString().trim();
     final statusAr = statusLabel.isNotEmpty
@@ -578,7 +652,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
                     ),
                     icon: const Icon(Icons.article_outlined, size: 18),
                     label: const Text(
-                      'شرح الطلب',
+                      'تفاصيل الطلب',
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontWeight: FontWeight.bold,
@@ -802,6 +876,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
           if (!widget.embedded) const SizedBox(height: 12),
           if (isAssigned) _assignedStatusChips(),
           if (isAssigned) const SizedBox(height: 12),
+          if (isUrgent) _urgentStatusChips(),
+          if (isUrgent) const SizedBox(height: 12),
           if (filtered.isEmpty)
             _emptyState(
               isUrgent

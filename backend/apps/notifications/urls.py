@@ -5,6 +5,8 @@ from .views import (
     UnreadCountView,
     MarkReadView,
     MarkAllReadView,
+    NotificationActionView,
+    NotificationPreferencesView,
     RegisterDeviceTokenView,
     DeleteOldNotificationsView,
 )
@@ -16,6 +18,8 @@ urlpatterns = [
     path("unread-count/", UnreadCountView.as_view(), name="unread_count"),
     path("mark-read/<int:notif_id>/", MarkReadView.as_view(), name="mark_read"),
     path("mark-all-read/", MarkAllReadView.as_view(), name="mark_all_read"),
+    path("actions/<int:notif_id>/", NotificationActionView.as_view(), name="actions"),
+    path("preferences/", NotificationPreferencesView.as_view(), name="preferences"),
     path("delete-old/", DeleteOldNotificationsView.as_view(), name="delete_old"),
     path("device-token/", RegisterDeviceTokenView.as_view(), name="device_token"),
 ]

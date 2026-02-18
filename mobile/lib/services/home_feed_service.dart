@@ -108,8 +108,10 @@ class HomeFeedService {
     int limit = 6,
     bool forceRefresh = false,
   }) async {
-    final pool = await _getPortfolioPool(forceRefresh: forceRefresh);
-    return pool.take(limit).toList();
+    // مكان الإعلانات في الصفحة الرئيسية يجب أن يأتي من نظام إعلانات (يديره مدير النظام)
+    // وليس من معرض أعمال مقدمي الخدمة.
+    // حالياً لا يوجد API للإعلانات العامة، لذا نُرجع قائمة فارغة ليظهر Placeholder في BannerWidget.
+    return <ProviderPortfolioItem>[];
   }
 
   Future<List<ProviderPortfolioItem>> getMediaItems({

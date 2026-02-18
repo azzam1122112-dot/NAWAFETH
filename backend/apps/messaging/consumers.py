@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 
 from apps.marketplace.models import ServiceRequest
-from .models import Thread, Message, MessageRead
+from .models import Thread, Message, MessageRead, ThreadUserState
 
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,39 @@ def create_message(thread: Thread, sender_id: int, body: str):
     if len(body) > 2000:
         raise ValueError("too_long")
 
+    # Blocked by peer?
+    t = (
+        Thread.objects.select_related(
+            "request",
+            "request__client",
+            "request__provider__user",
+            "participant_1",
+            "participant_2",
+        )
+        .filter(id=thread.id)
+        .first()
+    )
+    if t:
+        participant_ids = []
+        if t.is_direct:
+            participant_ids = [pid for pid in [t.participant_1_id, t.participant_2_id] if pid]
+        elif t.request_id and t.request:
+            participant_ids = [t.request.client_id]
+            if getattr(t.request, "provider_id", None) and getattr(t.request.provider, "user_id", None):
+                participant_ids.append(t.request.provider.user_id)
+
+        other_ids = [pid for pid in participant_ids if pid and pid != sender_id]
+        if other_ids and ThreadUserState.objects.filter(thread_id=t.id, user_id__in=other_ids, is_blocked=True).exists():
+            raise ValueError("blocked")
+
     msg = Message.objects.create(thread=thread, sender_id=sender_id, body=body)
+
+    # Unarchive for participants when a new message arrives
+    if t and participant_ids:
+        ThreadUserState.objects.filter(thread_id=t.id, user_id__in=participant_ids, is_archived=True).update(
+            is_archived=False,
+            archived_at=None,
+        )
     return msg
 
 
@@ -117,7 +149,11 @@ class RequestChatConsumer(AsyncWebsocketConsumer):
                 thread, _ = await get_or_create_thread(self.sr)
                 msg = await create_message(thread, user.id, body)
             except ValueError as e:
-                await self.send_json({"type": "error", "code": str(e)})
+                code = str(e)
+                if code == "blocked":
+                    await self.send_json({"type": "error", "code": "blocked", "error": "تم حظرك من الطرف الآخر"})
+                else:
+                    await self.send_json({"type": "error", "code": code})
                 return
             except Exception:
                 await self.send_json({"type": "error", "code": "server_error"})
@@ -196,7 +232,13 @@ def _assert_thread_access(thread_id: int, user) -> Thread:
         raise PermissionDenied("anon")
 
     thread = (
-        Thread.objects.select_related("request", "request__client", "request__provider__user")
+        Thread.objects.select_related(
+            "request",
+            "request__client",
+            "request__provider__user",
+            "participant_1",
+            "participant_2",
+        )
         .filter(id=thread_id)
         .first()
     )
@@ -205,6 +247,19 @@ def _assert_thread_access(thread_id: int, user) -> Thread:
 
     if getattr(user, "is_staff", False):
         return thread
+
+    # If the other participant blocked this thread, forbid WS access
+    participant_ids = []
+    if thread.is_direct:
+        participant_ids = [pid for pid in [thread.participant_1_id, thread.participant_2_id] if pid]
+    elif thread.request_id and thread.request:
+        participant_ids = [thread.request.client_id]
+        if getattr(thread.request, "provider_id", None) and getattr(thread.request.provider, "user_id", None):
+            participant_ids.append(thread.request.provider.user_id)
+
+    other_ids = [pid for pid in participant_ids if pid and pid != user.id]
+    if other_ids and ThreadUserState.objects.filter(thread_id=thread.id, user_id__in=other_ids, is_blocked=True).exists():
+        raise PermissionDenied("blocked")
 
     # Direct thread: check participant_1 / participant_2
     if thread.is_direct:
@@ -232,8 +287,35 @@ def _create_message_for_thread(thread_id: int, sender_id: int, body: str) -> Mes
     if len(body) > MAX_MESSAGE_LEN:
         raise ValueError("too_long")
 
-    thread = Thread.objects.get(id=thread_id)
-    return Message.objects.create(thread=thread, sender_id=sender_id, body=body)
+    thread = Thread.objects.select_related(
+        "request",
+        "request__client",
+        "request__provider__user",
+        "participant_1",
+        "participant_2",
+    ).get(id=thread_id)
+
+    participant_ids = []
+    if thread.is_direct:
+        participant_ids = [pid for pid in [thread.participant_1_id, thread.participant_2_id] if pid]
+    elif thread.request_id and thread.request:
+        participant_ids = [thread.request.client_id]
+        if getattr(thread.request, "provider_id", None) and getattr(thread.request.provider, "user_id", None):
+            participant_ids.append(thread.request.provider.user_id)
+
+    other_ids = [pid for pid in participant_ids if pid and pid != sender_id]
+    if other_ids and ThreadUserState.objects.filter(thread_id=thread.id, user_id__in=other_ids, is_blocked=True).exists():
+        raise ValueError("blocked")
+
+    msg = Message.objects.create(thread=thread, sender_id=sender_id, body=body)
+
+    if participant_ids:
+        ThreadUserState.objects.filter(thread_id=thread.id, user_id__in=participant_ids, is_archived=True).update(
+            is_archived=False,
+            archived_at=None,
+        )
+
+    return msg
 
 
 @database_sync_to_async
@@ -264,6 +346,8 @@ class ThreadConsumer(AsyncJsonWebsocketConsumer):
             # Map common cases to codes
             if str(e) == "anon":
                 await self.close(code=4401)
+            elif str(e) == "blocked":
+                await self.close(code=4403)
             else:
                 await self.close(code=4403)
             return
@@ -354,6 +438,8 @@ class ThreadConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_json({"type": "error", "error": "الرسالة فارغة"})
             elif code == "too_long":
                 await self.send_json({"type": "error", "error": "الرسالة طويلة جدًا"})
+            elif code == "blocked":
+                await self.send_json({"type": "error", "code": "blocked", "error": "تم حظرك من الطرف الآخر"})
             else:
                 await self.send_json({"type": "error", "error": "بيانات غير صالحة"})
             return
@@ -405,3 +491,14 @@ class ThreadConsumer(AsyncJsonWebsocketConsumer):
                 "message_ids": event.get("message_ids", []),
             }
         )
+
+    async def broadcast_blocked(self, event):
+        blocked_by = event.get("blocked_by")
+        # Close connections for the other participant immediately
+        if blocked_by and self.user and getattr(self.user, "id", None) != blocked_by:
+            await self.send_json({"type": "error", "code": "blocked", "error": "تم حظرك من الطرف الآخر"})
+            await self.close(code=4403)
+
+    async def broadcast_unblocked(self, event):
+        # Inform clients; they may choose to re-enable UI
+        await self.send_json({"type": "unblocked"})

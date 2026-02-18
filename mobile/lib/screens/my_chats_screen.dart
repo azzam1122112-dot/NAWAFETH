@@ -219,6 +219,28 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
       return db.compareTo(da);
     });
 
+    // Merge per-user thread state (favorite / block / archive)
+    try {
+      final states = await _messagingApi.getMyThreadStates();
+      final Map<int, Map<String, dynamic>> byThreadId = {};
+      for (final s in states) {
+        final tid = _asInt(s['thread']);
+        if (tid != null) byThreadId[tid] = s;
+      }
+
+      for (final c in chats) {
+        final tid = _asInt(c['threadId']);
+        if (tid == null) continue;
+        final st = byThreadId[tid];
+        if (st == null) continue;
+        c['favorite'] = st['is_favorite'] == true;
+        c['blocked'] = st['is_blocked'] == true;
+        c['archived'] = st['is_archived'] == true;
+      }
+    } catch (_) {}
+
+    chats.removeWhere((c) => c['archived'] == true || c['blocked'] == true);
+
     return chats;
   }
 
@@ -403,6 +425,11 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   List<Map<String, dynamic>> _filteredChats(List<Map<String, dynamic>> source) {
     var filtered = [...source];
 
+    // Hide archived/blocked chats by default
+    filtered = filtered
+        .where((c) => c['archived'] != true && c['blocked'] != true)
+        .toList();
+
     if (_searchQuery.trim().isNotEmpty) {
       filtered = filtered
           .where(
@@ -426,6 +453,172 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     }
 
     return filtered;
+  }
+
+  Future<void> _toggleFavorite(Map<String, dynamic> chat) async {
+    final threadId = _asInt(chat['threadId']);
+    if (threadId == null) return;
+
+    final current = chat['favorite'] == true;
+    try {
+      await _messagingApi.setThreadFavorite(threadId: threadId, favorite: !current);
+      if (!mounted) return;
+      setState(() {
+        final idx = _allChats.indexWhere((c) => _asInt(c['threadId']) == threadId);
+        if (idx >= 0) {
+          final updated = Map<String, dynamic>.from(_allChats[idx]);
+          updated['favorite'] = !current;
+          _allChats[idx] = updated;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديث المفضلة.')),
+      );
+    }
+  }
+
+  Future<void> _archiveChat(Map<String, dynamic> chat) async {
+    final threadId = _asInt(chat['threadId']);
+    if (threadId == null) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+        content: const Text('سيتم إخفاء هذه المحادثة من قائمتك.', style: TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await _messagingApi.setThreadArchived(threadId: threadId, archived: true);
+      _socketSubs[threadId]?.cancel();
+      _sockets[threadId]?.close();
+      _reconnectTimers[threadId]?.cancel();
+      _socketSubs.remove(threadId);
+      _sockets.remove(threadId);
+      _reconnectTimers.remove(threadId);
+      _reconnectAttempts.remove(threadId);
+
+      if (!mounted) return;
+      setState(() {
+        _allChats.removeWhere((c) => _asInt(c['threadId']) == threadId);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حذف المحادثة.')),
+      );
+    }
+  }
+
+  Future<void> _blockChat(Map<String, dynamic> chat) async {
+    final threadId = _asInt(chat['threadId']);
+    if (threadId == null) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+        content: const Text('سيتم إخفاء هذه المحادثة ولن تتمكن من إرسال رسائل إليها.', style: TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حظر')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await _messagingApi.setThreadBlocked(threadId: threadId, blocked: true);
+
+      _socketSubs[threadId]?.cancel();
+      _sockets[threadId]?.close();
+      _reconnectTimers[threadId]?.cancel();
+      _socketSubs.remove(threadId);
+      _sockets.remove(threadId);
+      _reconnectTimers.remove(threadId);
+      _reconnectAttempts.remove(threadId);
+
+      if (!mounted) return;
+      setState(() {
+        _allChats.removeWhere((c) => _asInt(c['threadId']) == threadId);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر الحظر.')),
+      );
+    }
+  }
+
+  Future<void> _reportChat(Map<String, dynamic> chat) async {
+    final threadId = _asInt(chat['threadId']);
+    if (threadId == null) return;
+
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
+        content: TextField(
+          controller: controller,
+          maxLength: 300,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'اكتب تفاصيل البلاغ (حتى 300 حرف)',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('إرسال'),
+          ),
+        ],
+      ),
+    );
+    if (text == null || text.trim().isEmpty) return;
+
+    try {
+      final res = await _messagingApi.reportThread(threadId: threadId, description: text.trim());
+      final code = (res['ticket_code'] ?? '').toString();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(code.isEmpty ? 'تم إرسال البلاغ.' : 'تم إرسال البلاغ: $code')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال البلاغ.')),
+      );
+    }
+  }
+
+  Future<void> _onChatMenuAction(String action, Map<String, dynamic> chat) async {
+    if (action == 'favorite') {
+      await _toggleFavorite(chat);
+      return;
+    }
+    if (action == 'report') {
+      await _reportChat(chat);
+      return;
+    }
+    if (action == 'block') {
+      await _blockChat(chat);
+      return;
+    }
+    if (action == 'archive') {
+      await _archiveChat(chat);
+      return;
+    }
   }
 
   @override
@@ -540,35 +733,65 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontFamily: 'Cairo'),
                             ),
-                            trailing: Column(
+                            trailing: Row(
                               mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Text(
-                                  chat['time'].toString(),
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                if (unread > 0) ...[
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 7,
-                                      vertical: 2,
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      chat['time'].toString(),
+                                      style: const TextStyle(fontSize: 12),
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red.shade500,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      unread > 99 ? '99+' : unread.toString(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
+                                    if (unread > 0) ...[
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade500,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          unread > 99 ? '99+' : unread.toString(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ],
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(width: 6),
+                                PopupMenuButton<String>(
+                                  onSelected: (v) => _onChatMenuAction(v, chat),
+                                  itemBuilder: (_) {
+                                    final isFav = chat['favorite'] == true;
+                                    return [
+                                      PopupMenuItem(
+                                        value: 'favorite',
+                                        child: Text(isFav ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة', style: const TextStyle(fontFamily: 'Cairo')),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'report',
+                                        child: Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'block',
+                                        child: Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'archive',
+                                        child: Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+                                      ),
+                                    ];
+                                  },
+                                ),
                               ],
                             ),
                             onTap: () {

@@ -1,12 +1,12 @@
 from django.contrib import admin
 
-from .models import Notification, DeviceToken, EventLog
+from .models import Notification, DeviceToken, EventLog, NotificationPreference
 
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-	list_display = ("id", "user", "title", "kind", "is_read", "created_at")
-	list_filter = ("kind", "is_read")
+	list_display = ("id", "user", "title", "kind", "is_read", "is_pinned", "is_follow_up", "is_urgent", "created_at")
+	list_filter = ("kind", "is_read", "is_pinned", "is_follow_up", "is_urgent")
 	search_fields = ("title", "body", "user__phone")
 
 
@@ -21,3 +21,10 @@ class DeviceTokenAdmin(admin.ModelAdmin):
 class EventLogAdmin(admin.ModelAdmin):
 	list_display = ("id", "event_type", "actor", "target_user", "request_id", "created_at")
 	list_filter = ("event_type",)
+
+
+@admin.register(NotificationPreference)
+class NotificationPreferenceAdmin(admin.ModelAdmin):
+	list_display = ("id", "user", "key", "enabled", "tier", "updated_at")
+	list_filter = ("tier", "enabled")
+	search_fields = ("user__phone", "key")

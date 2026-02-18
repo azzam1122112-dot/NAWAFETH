@@ -68,6 +68,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   bool _isFollowingProvider = false;
   bool _isFollowBusy = false;
+
+  bool _isProviderLiked = false;
+  bool _isLikeBusy = false;
+
   Set<int> _favoritePortfolioIds = <int>{};
   final Set<int> _portfolioFavoriteBusyIds = <int>{};
   final Set<int> _favoriteHighlightIndexes = <int>{};
@@ -226,14 +230,61 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     if (providerId == null) return;
     try {
       final api = ProvidersApi();
-      final following = await api.getMyFollowingProviders();
-      final favorites = await api.getMyFavoriteMedia();
+      final results = await Future.wait([
+        api.getMyFollowingProviders(),
+        api.getMyLikedProviders(),
+        api.getMyFavoriteMedia(),
+      ]);
+      final following = results[0] as List<ProviderProfile>;
+      final likedProviders = results[1] as List<ProviderProfile>;
+      final favorites = results[2] as List<ProviderPortfolioItem>;
       if (!mounted) return;
       setState(() {
         _isFollowingProvider = following.any((p) => p.id == providerId);
+        _isProviderLiked = likedProviders.any((p) => p.id == providerId);
         _favoritePortfolioIds = favorites.map((e) => e.id).toSet();
       });
     } catch (_) {}
+  }
+
+  Future<void> _toggleProviderLike() async {
+    if (!await checkAuth(context)) return;
+    if (!mounted) return;
+
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    if (providerId == null || _isLikeBusy) return;
+
+    setState(() => _isLikeBusy = true);
+
+    final wasLiked = _isProviderLiked;
+    final api = ProvidersApi();
+    final ok = wasLiked
+        ? await api.unlikeProvider(providerId)
+        : await api.likeProvider(providerId);
+
+    if (!mounted) return;
+    setState(() => _isLikeBusy = false);
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذرت العملية، حاول مرة أخرى')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isProviderLiked = !wasLiked;
+      final current = _likesCount ?? 0;
+      _likesCount = _isProviderLiked
+          ? current + 1
+          : (current > 0 ? current - 1 : 0);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_isProviderLiked ? 'تم الإعجاب' : 'تم إلغاء الإعجاب'),
+      ),
+    );
   }
 
   Future<void> _toggleFollowProvider() async {
@@ -433,6 +484,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         context,
         threadId: threadId,
         name: providerName,
+        isOnline: _fullProfile?.isOnline == true,
         isDirect: true,
         peerId: providerId,
         peerName: providerName,
@@ -1026,9 +1078,13 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       isDark: isDark,
                     ),
                     _circleStat(
-                      icon: Icons.thumb_up_alt_outlined,
+                      icon: _isLikeBusy
+                          ? Icons.hourglass_top_rounded
+                          : (_isProviderLiked
+                              ? Icons.thumb_up_alt
+                              : Icons.thumb_up_alt_outlined),
                       value: _likesCount,
-                      onTap: () {},
+                      onTap: _isLikeBusy ? () {} : _toggleProviderLike,
                       isDark: isDark,
                     ),
                   ],
@@ -1392,6 +1448,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final borderColor = isDark ? Colors.grey[700]! : Colors.grey.shade200;
     final textColor = isDark ? Colors.white : Colors.black;
     final secondaryTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
+    final subtleColor = isDark ? Colors.grey[800]! : const Color(0xFFF7F4FB);
 
     final hasPhone = providerPhone.trim().isNotEmpty;
     final hasWhatsApp =
@@ -1399,101 +1456,287 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         hasPhone;
     final lat = providerLat;
     final lng = providerLng;
+    final city = providerCityName.trim().isEmpty ? '—' : providerCityName;
+    final aboutText = providerServicesDetails.trim().isEmpty
+        ? 'لا توجد نبذة مضافة حالياً'
+        : providerServicesDetails.trim();
+    final yearsText = providerExperienceYears.trim().isEmpty
+        ? '—'
+        : providerExperienceYears.trim();
+
+    Widget infoTile({
+      required IconData icon,
+      required String title,
+      required String value,
+    }) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: subtleColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: mainColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: secondaryTextColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget actionButton({
+      required VoidCallback? onPressed,
+      required Widget icon,
+      required String label,
+      required Color backgroundColor,
+      required Color foregroundColor,
+    }) {
+      return FilledButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.w800,
+            fontSize: 12.5,
+          ),
+        ),
+        style: FilledButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          disabledBackgroundColor: Colors.grey.shade300,
+          disabledForegroundColor: Colors.grey.shade600,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+              colors: [
+                mainColor.withValues(alpha: 0.18),
+                mainColor.withValues(alpha: 0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: mainColor.withValues(alpha: 0.24)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: mainColor.withValues(alpha: 0.25)),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: _providerAvatar(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      providerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          providerHandle,
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: secondaryTextColor,
+                          ),
+                        ),
+                        if (providerVerified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: mainColor.withValues(alpha: 0.35)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.verified_rounded, size: 13, color: mainColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'موثق',
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: mainColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         _formCard(
           cardColor: cardColor,
           borderColor: borderColor,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'نبذة عن مقدم الخدمة',
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: textColor,
-                ),
+              Row(
+                children: [
+                  Icon(Icons.badge_outlined, size: 18, color: mainColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'نبذة عن مقدم الخدمة',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: textColor,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               Text(
-                providerServicesDetails,
+                aboutText,
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 12,
                   color: secondaryTextColor,
-                  height: 1.6,
+                  height: 1.7,
                 ),
               ),
             ],
           ),
         ),
-
-        const SizedBox(height: 12),
-        _formCard(
-          cardColor: cardColor,
-          borderColor: borderColor,
-          child: Column(
-            children: [
-              _labeledField(
-                label: 'المدينة',
-                value: providerCityName.trim().isEmpty ? '—' : providerCityName,
-                borderColor: borderColor,
-                isDark: isDark,
-              ),
-              const Divider(height: 18),
-              _labeledField(
-                label: 'سنوات الخبرة',
-                value: providerExperienceYears,
-                borderColor: borderColor,
-                isDark: isDark,
-              ),
-            ],
-          ),
-        ),
-
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: hasPhone ? _openPhoneCall : null,
-                icon: const Icon(Icons.call_rounded, size: 18),
-                label: Text(
-                  hasPhone ? 'اتصال' : 'لا يوجد رقم اتصال',
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
-                ),
+              child: infoTile(
+                icon: Icons.location_on_outlined,
+                title: 'المدينة',
+                value: city,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: hasWhatsApp ? _openWhatsApp : null,
-                icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18, color: Color(0xFF25D366)),
-                label: const Text(
-                  'واتساب',
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF25D366), width: 1.2),
-                ),
+              child: infoTile(
+                icon: Icons.workspace_premium_outlined,
+                title: 'سنوات الخبرة',
+                value: yearsText,
               ),
             ),
           ],
         ),
-
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: actionButton(
+                onPressed: hasPhone ? _openPhoneCall : null,
+                icon: const Icon(Icons.call_rounded, size: 18),
+                label: hasPhone ? 'اتصال' : 'رقم غير متاح',
+                backgroundColor: mainColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: actionButton(
+                onPressed: hasWhatsApp ? _openWhatsApp : null,
+                icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 17),
+                label: 'واتساب',
+                backgroundColor: const Color(0xFF25D366),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: _openInAppChat,
-            icon: const Icon(Icons.forum_outlined, size: 18),
-            label: const Text(
+            icon: Icon(Icons.forum_outlined, size: 18, color: mainColor),
+            label: Text(
               'محادثة داخل التطبيق',
-              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+                color: mainColor,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: mainColor.withValues(alpha: 0.35)),
+              backgroundColor: mainColor.withValues(alpha: 0.06),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
         ),
@@ -1506,14 +1749,20 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'موقع مقدم الخدمة',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    color: textColor,
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.map_outlined, size: 18, color: mainColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      'موقع مقدم الخدمة',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 ClipRRect(
@@ -1570,54 +1819,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         border: Border.all(color: borderColor),
       ),
       child: child,
-    );
-  }
-
-  Widget _labeledField({
-    required String label,
-    required String value,
-    required Color borderColor,
-    required bool isDark,
-    Widget? trailing,
-  }) {
-    final secondary = isDark ? Colors.grey[400]! : Colors.grey[700]!;
-    final valueColor = isDark ? Colors.white : Colors.black;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: secondary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                value.trim().isEmpty ? '—' : value.trim(),
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: valueColor,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (trailing != null) ...[
-          const SizedBox(width: 8),
-          trailing,
-        ],
-      ],
     );
   }
 
@@ -1776,19 +1977,68 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final borderColor = isDark ? Colors.grey[700]! : Colors.grey.shade200;
     final textColor = isDark ? Colors.white : Colors.black;
     final secondaryTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final videosCount = _portfolioItems
+        .where((e) => e.fileType.toLowerCase() == 'video')
+        .length;
+    final imagesCount = _portfolioItems.length - videosCount;
+
+    Widget statChip({
+      required IconData icon,
+      required String label,
+      required String value,
+    }) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[800] : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: borderColor),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: mainColor),
+            const SizedBox(width: 6),
+            Text(
+              '$label: $value',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: mainColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              colors: [
+                mainColor.withValues(alpha: isDark ? 0.28 : 0.18),
+                mainColor.withValues(alpha: isDark ? 0.16 : 0.09),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: mainColor.withValues(alpha: 0.22)),
           ),
           child: Row(
             children: [
-              Icon(Icons.photo_library, color: mainColor, size: 24),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: isDark ? 0.10 : 0.8),
+                ),
+                child: Icon(Icons.photo_library_outlined, color: mainColor, size: 22),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1798,16 +2048,17 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       'معرض خدماتي',
                       style: TextStyle(
                         fontFamily: 'Cairo',
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
                         color: textColor,
                       ),
                     ),
                     Text(
-                      'الأقسام التي أضافها مقدم الخدمة مع المحتوى والوصف',
+                      'صور وفيديوهات أعمال مقدم الخدمة',
                       style: TextStyle(
                         fontFamily: 'Cairo',
-                        fontSize: 12,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                         color: secondaryTextColor,
                       ),
                     ),
@@ -1818,160 +2069,355 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           ),
         ),
         const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            statChip(
+              icon: Icons.grid_view_rounded,
+              label: 'الكل',
+              value: _portfolioItems.length.toString(),
+            ),
+            statChip(
+              icon: Icons.image_outlined,
+              label: 'صور',
+              value: imagesCount.toString(),
+            ),
+            statChip(
+              icon: Icons.videocam_outlined,
+              label: 'فيديو',
+              value: videosCount.toString(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (_portfolioLoading)
-          const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(),
+            ),
+          )
         else if (_portfolioItems.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'لا يوجد محتوى في المعرض حالياً',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 13,
-                color: secondaryTextColor,
-              ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.perm_media_outlined,
+                  color: mainColor.withValues(alpha: 0.75),
+                  size: 34,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'لا يوجد محتوى في المعرض حالياً',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'سيظهر هنا ما يضيفه المزود من صور وفيديوهات.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: secondaryTextColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _loadProviderPortfolio,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text(
+                    'تحديث',
+                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
             ),
           )
         else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _portfolioItems.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.86,
-            ),
-            itemBuilder: (context, index) {
-              final item = _portfolioItems[index];
-              final isVideo = item.fileType.toLowerCase() == 'video';
-              final isFav = _favoritePortfolioIds.contains(item.id);
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final crossAxisCount = constraints.maxWidth >= 640 ? 3 : 2;
+              final itemWidth =
+                  (constraints.maxWidth - ((crossAxisCount - 1) * 12)) /
+                  crossAxisCount;
+              final itemHeight = crossAxisCount == 3 ? 220.0 : 240.0;
+              final ratio = itemWidth / itemHeight;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _portfolioItems.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: ratio,
+                ),
+                itemBuilder: (context, index) {
+                  final item = _portfolioItems[index];
+                  final isVideo = item.fileType.toLowerCase() == 'video';
+                  final isFav = _favoritePortfolioIds.contains(item.id);
 
-              return InkWell(
-                onTap: () async {
-                  if (isVideo) {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => NetworkVideoPlayerScreen(
-                          url: item.fileUrl,
-                          title: providerName,
-                        ),
-                      ),
-                    );
-                    return;
-                  }
-                  if (!mounted) return;
-                  showDialog<void>(
-                    context: context,
-                    builder: (dialogContext) {
-                      return Dialog(
-                        insetPadding: const EdgeInsets.all(12),
-                        backgroundColor: Colors.transparent,
-                        elevation: 0,
-                        child: InteractiveViewer(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              item.fileUrl,
-                              fit: BoxFit.contain,
+                  return InkWell(
+                    onTap: () async {
+                      if (isVideo) {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => NetworkVideoPlayerScreen(
+                              url: item.fileUrl,
+                              title: providerName,
                             ),
                           ),
-                        ),
+                        );
+                        return;
+                      }
+                      if (!mounted) return;
+                      showDialog<void>(
+                        context: context,
+                        builder: (dialogContext) {
+                          return Dialog(
+                            insetPadding: const EdgeInsets.all(12),
+                            backgroundColor: Colors.transparent,
+                            elevation: 0,
+                            child: InteractiveViewer(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  item.fileUrl,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: borderColor),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.10 : 0.06),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                                  child: Image.network(
+                                    item.fileUrl,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      color: Colors.grey.shade200,
+                                      child: Center(
+                                        child: Icon(
+                                          isVideo ? Icons.videocam_rounded : Icons.image,
+                                          size: 34,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (isVideo)
+                                  const Positioned.fill(
+                                    child: Center(
+                                      child: Icon(Icons.play_circle_fill, size: 46, color: Colors.white),
+                                    ),
+                                  ),
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => _togglePortfolioFavorite(item),
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: Container(
+                                        width: 30,
+                                        height: 30,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.45),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: _portfolioFavoriteBusyIds.contains(item.id)
+                                            ? const Padding(
+                                                padding: EdgeInsets.all(8),
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : Icon(
+                                                isFav ? Icons.favorite : Icons.favorite_border,
+                                                color: Colors.white,
+                                                size: 18,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.caption.trim().isEmpty ? (isVideo ? 'فيديو' : 'صورة') : item.caption,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: textColor,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  height: 1,
+                                  color: borderColor,
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: _isLikeBusy ? null : _toggleProviderLike,
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 4),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              if (_isLikeBusy)
+                                                const SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                )
+                                              else
+                                                Icon(
+                                                  _isProviderLiked ? Icons.favorite : Icons.favorite_border,
+                                                  size: 16,
+                                                  color: _isProviderLiked ? Colors.red : mainColor,
+                                                ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'إعجاب',
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: textColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () => _togglePortfolioFavorite(item),
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 4),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                isFav ? Icons.bookmark : Icons.bookmark_border,
+                                                size: 16,
+                                                color: isFav ? mainColor : secondaryTextColor,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'المفضلة',
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: textColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () => setState(() => _selectedTabIndex = 0),
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 4),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              CircleAvatar(
+                                                radius: 8,
+                                                backgroundColor: Colors.grey.shade200,
+                                                child: ClipOval(
+                                                  child: SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child: _providerAvatar(),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'حساب المزود',
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: textColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                              child: Image.network(
-                                item.fileUrl,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: Colors.grey.shade200,
-                                  child: Center(
-                                    child: Icon(
-                                      isVideo ? Icons.videocam_rounded : Icons.image,
-                                      size: 34,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (isVideo)
-                              const Positioned.fill(
-                                child: Center(
-                                  child: Icon(Icons.play_circle_fill, size: 46, color: Colors.white),
-                                ),
-                              ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () => _togglePortfolioFavorite(item),
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: Container(
-                                    width: 30,
-                                    height: 30,
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.45),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: _portfolioFavoriteBusyIds.contains(item.id)
-                                        ? const Padding(
-                                            padding: EdgeInsets.all(8),
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : Icon(
-                                            isFav ? Icons.favorite : Icons.favorite_border,
-                                            color: Colors.white,
-                                            size: 18,
-                                          ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Text(
-                          item.caption.trim().isEmpty ? (isVideo ? 'فيديو' : 'صورة') : item.caption,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: textColor,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               );
             },
           ),

@@ -14,6 +14,30 @@ class NotificationLinkHandler {
   static final RegExp _requestPath = RegExp(r'^/?requests/(\d+)/?$', caseSensitive: false);
   static final RegExp _threadPath = RegExp(r'^/?thread[s]?/(\d+)(?:/chat)?/?$', caseSensitive: false);
 
+  static int? tryExtractRequestId({
+    required String kind,
+    required String? url,
+    required String title,
+    required String body,
+    Map<String, dynamic>? payload,
+  }) {
+    final target = _resolveTarget(
+      kind: kind,
+      url: url,
+      title: title,
+      body: body,
+      payload: payload,
+    );
+    return target?.requestId;
+  }
+
+  static Future<bool> openRequestDetails(
+    BuildContext context, {
+    required int requestId,
+  }) {
+    return _openRequestDetails(context, requestId: requestId);
+  }
+
   static Future<bool> openFromNotification(BuildContext context, AppNotification notification) async {
     final target = _resolveTarget(
       kind: notification.kind,

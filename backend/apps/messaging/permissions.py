@@ -2,6 +2,8 @@ from rest_framework.permissions import BasePermission
 
 from apps.marketplace.models import ServiceRequest
 
+from .models import Thread
+
 
 class IsRequestParticipant(BasePermission):
     """
@@ -29,3 +31,22 @@ class IsRequestParticipant(BasePermission):
             return True
 
         return False
+
+
+class IsThreadParticipant(BasePermission):
+    """Allows only participants of a thread (direct or request-based)."""
+
+    def has_permission(self, request, view):
+        thread_id = view.kwargs.get("thread_id")
+        if not thread_id:
+            return True
+
+        thread = (
+            Thread.objects.select_related("request", "request__client", "request__provider__user", "participant_1", "participant_2")
+            .filter(id=thread_id)
+            .first()
+        )
+        if not thread:
+            return False
+
+        return bool(thread.is_participant(request.user))

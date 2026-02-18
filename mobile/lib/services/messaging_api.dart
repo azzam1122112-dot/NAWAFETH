@@ -55,6 +55,54 @@ class MessagingApi {
 
   Future<String?> getAccessToken() => ApiDio.getAccess();
 
+  // ─── Thread State (favorite / block / archive) ─────────────────
+
+  Future<List<Map<String, dynamic>>> getMyThreadStates() async {
+    final res = await _dio.get('${ApiConfig.apiPrefix}/messaging/threads/states/');
+    final data = res.data;
+    if (data is List) {
+      return data.map((e) => _asMap(e)).toList();
+    }
+    return const [];
+  }
+
+  Future<Map<String, dynamic>> getThreadState({required int threadId}) async {
+    final res = await _dio.get('${ApiConfig.apiPrefix}/messaging/thread/$threadId/state/');
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> setThreadFavorite({required int threadId, required bool favorite}) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/favorite/',
+      data: favorite ? const {} : const {'action': 'remove'},
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> setThreadArchived({required int threadId, required bool archived}) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/archive/',
+      data: archived ? const {} : const {'action': 'remove'},
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> setThreadBlocked({required int threadId, required bool blocked}) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/block/',
+      data: blocked ? const {} : const {'action': 'remove'},
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> reportThread({required int threadId, required String description}) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/report/',
+      data: {'description': description},
+    );
+    return _asMap(res.data);
+  }
+
   // ─── Direct Messaging (no request required) ───────────────────
 
   /// Create or get a direct thread with a provider.

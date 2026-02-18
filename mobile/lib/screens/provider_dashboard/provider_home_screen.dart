@@ -903,12 +903,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('أكمل ملفك التعريفي', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text('الملف التعريفي', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
                   Text('زيادة اكتمال الملف تزيد من ظهورك في البحث', style: TextStyle(fontFamily: 'Cairo', color: Colors.white70, fontSize: 11)),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+            const Icon(Icons.person_outline_rounded, color: Colors.white, size: 18),
           ],
         ),
       ),
@@ -1143,30 +1143,58 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   Widget _buildTopShortcutRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _circleShortcut(
-          icon: Icons.rate_review_outlined,
-          label: 'المراجعات',
-          onTap: _navToReviews,
-        ),
-        _circleShortcut(
-          icon: Icons.design_services_outlined,
-          label: 'خدماتي',
-          onTap: _navToServices,
-        ),
-        _circleShortcut(
-          icon: Icons.person_outline_rounded,
-          label: 'الملف الشخصي',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()),
-            ).then((_) => _loadProviderData());
-          },
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = (constraints.maxWidth - 24) / 4;
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            SizedBox(
+              width: itemWidth,
+              child: _circleShortcut(
+                icon: Icons.person_outline_rounded,
+                label: 'الملف الشخصي',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()),
+                  ).then((_) => _loadProviderData());
+                },
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _circleShortcut(
+                icon: Icons.design_services_outlined,
+                label: 'خدماتي',
+                onTap: _navToServices,
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _circleShortcut(
+                icon: Icons.photo_library_outlined,
+                label: 'معرض الخدمات',
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProviderPortfolioManageScreen()),
+                  );
+                  await _loadMySpotlights();
+                },
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _circleShortcut(
+                icon: Icons.rate_review_outlined,
+                label: 'المراجعات',
+                onTap: _navToReviews,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1230,8 +1258,8 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       child: Column(
         children: [
           Container(
-            width: 58,
-            height: 58,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.70), width: 2),
@@ -1249,9 +1277,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           const SizedBox(height: 6),
           Text(
             label,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontFamily: 'Cairo',
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
               color: AppColors.deepPurple,
             ),
@@ -1539,17 +1570,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     return ProfileQuickLinksPanel(
       title: 'إعدادات سريعة',
       items: [
-        ProfileQuickLinkItem(
-          title: 'معرض الخدمات',
-          icon: Icons.photo_library_outlined,
-          onTap: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProviderPortfolioManageScreen()),
-            );
-            await _loadMySpotlights();
-          },
-        ),
         ProfileQuickLinkItem(
           title: 'إدارة الباقات والاشتراك',
           icon: Icons.card_membership,

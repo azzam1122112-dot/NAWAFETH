@@ -45,6 +45,9 @@ class Notification(models.Model):
 	kind = models.CharField(max_length=50, default="info")  # info/success/warn/error
 	url = models.CharField(max_length=300, blank=True)  # deep link اختياري
 	is_read = models.BooleanField(default=False)
+	is_pinned = models.BooleanField(default=False)
+	is_follow_up = models.BooleanField(default=False)
+	is_urgent = models.BooleanField(default=False)
 
 	created_at = models.DateTimeField(default=timezone.now)
 
@@ -53,6 +56,36 @@ class Notification(models.Model):
 
 	def __str__(self):
 		return f"{self.user_id}: {self.title}"
+
+
+class NotificationTier(models.TextChoices):
+	BASIC = "basic", "الباقة الأساسية"
+	LEADING = "leading", "الباقة الريادية"
+	PROFESSIONAL = "professional", "الباقة الاحترافية"
+	EXTRA = "extra", "الخدمات الإضافية"
+
+
+class NotificationPreference(models.Model):
+	user = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name="notification_preferences",
+	)
+	key = models.CharField(max_length=80)
+	enabled = models.BooleanField(default=True)
+	tier = models.CharField(max_length=20, choices=NotificationTier.choices)
+	created_at = models.DateTimeField(default=timezone.now)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		unique_together = ("user", "key")
+		indexes = [
+			models.Index(fields=["user", "tier"]),
+			models.Index(fields=["user", "key"]),
+		]
+
+	def __str__(self):
+		return f"{self.user_id}: {self.key}={self.enabled}"
 
 
 class DeviceToken(models.Model):

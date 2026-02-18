@@ -60,6 +60,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _manualWsClose = false;
   bool _isDirect = false;
   bool _isProviderAccount = false;
+  bool _peerOnline = false;
+  bool _isFavorite = false;
+  bool _isBlocked = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 5;
 
@@ -77,6 +80,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _requestTitle = widget.requestTitle;
     _isDirect = widget.isDirect;
     _isProviderAccount = RoleController.instance.notifier.value.isProvider;
+    _peerOnline = widget.isOnline;
     _bootstrap();
   }
 
@@ -104,6 +108,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         // Direct thread: load messages by threadId
         await _loadDirectMessages();
         await _api.markDirectRead(threadId: _threadId!);
+		await _loadThreadState();
         await _connectWs();
       } else {
         if (_threadId == null && _requestId != null) {
@@ -116,6 +121,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           await _loadMessages();
           await _api.markRead(requestId: _requestId!);
         }
+		await _loadThreadState();
 
         await _connectWs();
       }
@@ -130,6 +136,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _loadThreadState() async {
+    if (_threadId == null) return;
+    try {
+      final st = await _api.getThreadState(threadId: _threadId!);
+      if (!mounted) return;
+      setState(() {
+        _isFavorite = st['is_favorite'] == true;
+        _isBlocked = st['is_blocked'] == true || st['blocked_by_other'] == true;
+      });
+    } catch (_) {}
   }
 
   Future<void> _resolveRequestMeta() async {
@@ -223,6 +241,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<void> _connectWs() async {
     if (_threadId == null || _connectingWs) return;
+    if (_isBlocked) return;
 
     final token = await _api.getAccessToken();
     if (token == null || token.trim().isEmpty) return;
@@ -278,6 +297,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final payload = _api.decodeWsPayload(raw);
     final type = (payload['type'] ?? '').toString();
 
+    if (type == 'error') {
+      final code = (payload['code'] ?? '').toString();
+      final msg = (payload['error'] ?? payload['message'] ?? '').toString();
+      if (mounted && msg.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
+      if (code == 'blocked' && mounted) {
+        setState(() => _isBlocked = true);
+        _manualWsClose = true;
+        _reconnectTimer?.cancel();
+        try {
+          _socketSub?.cancel();
+          _socket?.close();
+        } catch (_) {}
+      }
+      return;
+    }
+
     if (type == 'connected') {
       if (mounted) setState(() => _wsConnected = true);
       return;
@@ -287,7 +326,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final userId = _asInt(payload['user_id']);
       if (_myUserId != null && userId == _myUserId) return;
       if (mounted) {
-        setState(() => _peerTyping = payload['is_typing'] == true);
+        setState(() {
+          _peerTyping = payload['is_typing'] == true;
+          if (_peerTyping) _peerOnline = true;
+        });
       }
       return;
     }
@@ -321,7 +363,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       };
 
       if (mounted) {
-        setState(() => _messages.add(msg));
+        setState(() {
+          _messages.add(msg);
+          if (_myUserId == null || msg['senderId'] != _myUserId) {
+            _peerOnline = true;
+          }
+        });
       }
       _sendReadIfPossible();
       return;
@@ -403,6 +450,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isBlocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكنك إرسال رسائل في هذه المحادثة.')),
+      );
+      return;
+    }
     final text = _controller.text.trim();
     if (text.isEmpty || _isSending) return;
 
@@ -459,6 +512,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   static const String _serviceRequestLinkMarker = '📋 __SERVICE_REQUEST_LINK__';
 
   Future<void> _sendServiceRequestLink() async {
+    if (_isBlocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكنك إرسال رسائل في هذه المحادثة.')),
+      );
+      return;
+    }
     if (_isSending) return;
     if (_threadId == null && _requestId == null) return;
 
@@ -548,18 +607,145 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
             Text(
-              _wsConnected
-                  ? 'متصل الآن'
-                  : (_requestId == null && _threadId == null
-                        ? 'محادثة مباشرة'
-                        : (_reconnectAttempts > 0
-                              ? 'إعادة اتصال...'
-                              : 'غير متصل')),
+              _peerTyping
+                  ? 'يكتب الآن...'
+                  : (_peerOnline ? 'متصل' : 'غير متصل'),
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
             ),
           ],
         ),
         actions: [
+          PopupMenuButton<String>(
+            onSelected: (v) async {
+              if (_threadId == null) return;
+              if (v == 'favorite') {
+                try {
+                  await _api.setThreadFavorite(threadId: _threadId!, favorite: !_isFavorite);
+                  await _loadThreadState();
+                } catch (_) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تعذر تحديث المفضلة.')),
+                  );
+                }
+                return;
+              }
+
+              if (v == 'report') {
+                final controller = TextEditingController();
+                final text = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
+                    content: TextField(
+                      controller: controller,
+                      maxLength: 300,
+                      minLines: 2,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        hintText: 'اكتب تفاصيل البلاغ (حتى 300 حرف)',
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('إلغاء')),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                        child: const Text('إرسال'),
+                      ),
+                    ],
+                  ),
+                );
+                if (text == null || text.trim().isEmpty) return;
+                try {
+                  final res = await _api.reportThread(threadId: _threadId!, description: text.trim());
+                  final code = (res['ticket_code'] ?? '').toString();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(code.isEmpty ? 'تم إرسال البلاغ.' : 'تم إرسال البلاغ: $code')),
+                  );
+                } catch (_) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تعذر إرسال البلاغ.')),
+                  );
+                }
+                return;
+              }
+
+              if (v == 'block') {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+                    content: const Text('سيتم إخفاء هذه المحادثة ولن تتمكن من إرسال رسائل إليها.', style: TextStyle(fontFamily: 'Cairo')),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                      ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حظر')),
+                    ],
+                  ),
+                );
+                if (ok != true) return;
+                try {
+                  await _api.setThreadBlocked(threadId: _threadId!, blocked: true);
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                } catch (_) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تعذر الحظر.')),
+                  );
+                }
+                return;
+              }
+
+              if (v == 'archive') {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+                    content: const Text('سيتم إخفاء هذه المحادثة من قائمتك.', style: TextStyle(fontFamily: 'Cairo')),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                      ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+                    ],
+                  ),
+                );
+                if (ok != true) return;
+                try {
+                  await _api.setThreadArchived(threadId: _threadId!, archived: true);
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                } catch (_) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تعذر حذف المحادثة.')),
+                  );
+                }
+                return;
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'favorite',
+                child: Text(
+                  _isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'report',
+                child: Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+              const PopupMenuItem(
+                value: 'block',
+                child: Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+              const PopupMenuItem(
+                value: 'archive',
+                child: Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+            ],
+          ),
           // Provider can send a service request link to the client
           if (_isProviderAccount && _isDirect)
             IconButton(
@@ -737,8 +923,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     onChanged: _onInputChanged,
                     minLines: 1,
                     maxLines: 4,
+                    enabled: !_isBlocked,
                     decoration: InputDecoration(
-                      hintText: 'اكتب رسالتك',
+                      hintText: _isBlocked ? 'تم حظر هذه المحادثة' : 'اكتب رسالتك',
                       hintStyle: const TextStyle(fontFamily: 'Cairo'),
                       filled: true,
                       fillColor: Colors.grey.shade100,
@@ -751,7 +938,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: _isSending ? null : _sendMessage,
+                  onPressed: (_isSending || _isBlocked) ? null : _sendMessage,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     shape: RoundedRectangleBorder(

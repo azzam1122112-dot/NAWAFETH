@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import OTP
 from apps.marketplace.models import RequestStatus, ServiceRequest
+from apps.notifications.models import Notification
 from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
 
 
@@ -331,3 +332,90 @@ def test_create_urgent_allows_blank_city_when_dispatch_all():
     sr = ServiceRequest.objects.get(id=res.json()["id"])
     assert sr.city == ""
     assert sr.request_type == "urgent"
+
+
+@pytest.mark.django_db
+def test_create_urgent_creates_urgent_notifications_for_matching_providers_only():
+    from apps.accounts.models import User
+
+    cat = Category.objects.create(name="خدمات", is_active=True)
+    sub_match = SubCategory.objects.create(category=cat, name="كهرباء", is_active=True)
+    sub_other = SubCategory.objects.create(category=cat, name="سباكة", is_active=True)
+
+    provider_user_match = User.objects.create(phone="0507777001", username="prov_match")
+    provider_match = ProviderProfile.objects.create(
+        user=provider_user_match,
+        provider_type="individual",
+        display_name="مزود مطابق",
+        bio="bio",
+        years_experience=2,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=provider_match, subcategory=sub_match)
+
+    provider_user_other = User.objects.create(phone="0507777002", username="prov_other")
+    provider_other = ProviderProfile.objects.create(
+        user=provider_user_other,
+        provider_type="individual",
+        display_name="مزود غير مطابق",
+        bio="bio",
+        years_experience=2,
+        city="جدة",
+        accepts_urgent=True,
+    )
+    ProviderCategory.objects.get_or_create(provider=provider_other, subcategory=sub_other)
+
+    client = APIClient()
+    send = client.post("/api/accounts/otp/send/", {"phone": "0507777000"}, format="json")
+    assert send.status_code == 200
+    payload = send.json()
+    dev_code = payload.get("dev_code") or OTP.objects.filter(phone="0507777000").order_by("-id").values_list(
+        "code", flat=True
+    ).first()
+    assert dev_code
+
+    verify = client.post(
+        "/api/accounts/otp/verify/",
+        {"phone": "0507777000", "code": dev_code},
+        format="json",
+    )
+    assert verify.status_code == 200
+    access = verify.json()["access"]
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    complete = client.post(
+        "/api/accounts/complete/",
+        {
+            "first_name": "عميل",
+            "last_name": "عاجل",
+            "username": "user_0507777000",
+            "email": "0507777000@example.com",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+            "accept_terms": True,
+        },
+        format="json",
+    )
+    assert complete.status_code == 200
+
+    res = client.post(
+        "/api/marketplace/requests/create/",
+        {
+            "subcategory": sub_match.id,
+            "title": "عاجل كهرباء",
+            "description": "أحتاج كهربائي الآن",
+            "request_type": "urgent",
+            "city": "الرياض",
+        },
+        format="json",
+    )
+    assert res.status_code == 201
+
+    n_match = Notification.objects.filter(user=provider_user_match, kind="urgent").first()
+    assert n_match is not None
+    assert n_match.is_urgent is True
+    assert "عاجل" in n_match.title
+
+    n_other = Notification.objects.filter(user=provider_user_other, kind="urgent").first()
+    assert n_other is None

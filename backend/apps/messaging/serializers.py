@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Message, Thread
+from .models import Message, Thread, ThreadUserState
 
 
 class ThreadSerializer(serializers.ModelSerializer):
@@ -48,3 +48,17 @@ class MessageListSerializer(serializers.ModelSerializer):
             return list(obj.reads.values_list("user_id", flat=True))
         except Exception:
             return []
+
+
+class ThreadUserStateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ThreadUserState
+        fields = (
+            "thread",
+            "is_favorite",
+            "is_archived",
+            "is_blocked",
+            "blocked_at",
+            "archived_at",
+        )
+        read_only_fields = fields

@@ -1,14 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/session_storage.dart';
 
 class WhatsAppHelper {
+  static String _normalizeDigits(String input) {
+    const map = {
+      '٠': '0',
+      '١': '1',
+      '٢': '2',
+      '٣': '3',
+      '٤': '4',
+      '٥': '5',
+      '٦': '6',
+      '٧': '7',
+      '٨': '8',
+      '٩': '9',
+      '۰': '0',
+      '۱': '1',
+      '۲': '2',
+      '۳': '3',
+      '۴': '4',
+      '۵': '5',
+      '۶': '6',
+      '۷': '7',
+      '۸': '8',
+      '۹': '9',
+    };
+    return input.split('').map((c) => map[c] ?? c).join();
+  }
+
   static String? normalizePhone(String? raw) {
     final extracted = _extractContact(raw);
     if (extracted == null) return null;
 
-    var digits = extracted.replaceAll(RegExp(r'[^0-9+]'), '');
+    var digits = _normalizeDigits(extracted).replaceAll(RegExp(r'[^0-9+]'), '');
     if (digits.startsWith('00')) {
       digits = digits.substring(2);
     }
@@ -58,24 +85,32 @@ class WhatsAppHelper {
     final appUri = Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded');
     final webUri = Uri.parse('https://wa.me/$waPhone?text=$encoded');
 
-    if (await canLaunchUrl(appUri)) {
-      await launchUrl(appUri, mode: LaunchMode.externalApplication);
-      return true;
-    }
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-      return true;
-    }
+    try {
+      if (await canLaunchUrl(appUri)) {
+        await launchUrl(appUri, mode: LaunchMode.externalApplication);
+        return true;
+      }
+    } catch (_) {}
+
+    try {
+      if (await launchUrl(webUri, mode: LaunchMode.externalApplication)) {
+        return true;
+      }
+    } catch (_) {}
+
+    try {
+      await Clipboard.setData(ClipboardData(text: webUri.toString()));
+    } catch (_) {}
 
     if (!context.mounted) return false;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تعذر فتح واتساب')),
+      const SnackBar(content: Text('تعذر فتح واتساب، تم نسخ الرابط')),
     );
     return false;
   }
 
   static String? _extractContact(String? raw) {
-    final text = (raw ?? '').trim();
+    final text = _normalizeDigits((raw ?? '').trim());
     if (text.isEmpty) return null;
 
     final decoded = Uri.decodeFull(text);
@@ -96,4 +131,3 @@ class WhatsAppHelper {
     return decoded;
   }
 }
-

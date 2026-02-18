@@ -116,3 +116,141 @@ def test_direct_thread_requires_phone_only_or_higher():
         format="json",
     )
     assert ok.status_code == 200
+
+
+@pytest.mark.django_db
+def test_thread_user_state_favorite_archive_and_unarchive_on_message():
+    client_user = User.objects.create_user(phone="0502000001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0502000002", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="تصميم")
+    sub = SubCategory.objects.create(category=cat, name="شعار")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+
+    r1 = api.post(f"/api/messaging/requests/{sr.id}/thread/", {}, format="json")
+    assert r1.status_code == 200
+    thread_id = r1.data.get("id")
+    assert thread_id is not None
+
+    fav = api.post(f"/api/messaging/thread/{thread_id}/favorite/", {}, format="json")
+    assert fav.status_code == 200
+    assert fav.data.get("is_favorite") is True
+
+    states = api.get("/api/messaging/threads/states/")
+    assert states.status_code == 200
+    assert any(s.get("thread") == thread_id and s.get("is_favorite") is True for s in states.data)
+
+    arch = api.post(f"/api/messaging/thread/{thread_id}/archive/", {}, format="json")
+    assert arch.status_code == 200
+    assert arch.data.get("is_archived") is True
+
+    # Sending a message should unarchive for participants
+    send = api.post(
+        f"/api/messaging/requests/{sr.id}/messages/send/",
+        {"body": "مرحبا"},
+        format="json",
+    )
+    assert send.status_code == 201
+
+    state_after = api.get(f"/api/messaging/thread/{thread_id}/state/")
+    assert state_after.status_code == 200
+    assert state_after.data.get("is_archived") is False
+
+
+@pytest.mark.django_db
+def test_block_prevents_peer_sending_request_and_direct():
+    client_user = User.objects.create_user(phone="0503000001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0503000002", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    cat = Category.objects.create(name="تصميم")
+    sub = SubCategory.objects.create(category=cat, name="شعار")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+
+    # Request thread block
+    api.force_authenticate(user=client_user)
+    r1 = api.post(f"/api/messaging/requests/{sr.id}/thread/", {}, format="json")
+    assert r1.status_code == 200
+    thread_id = r1.data.get("id")
+    assert thread_id is not None
+
+    b1 = api.post(f"/api/messaging/thread/{thread_id}/block/", {}, format="json")
+    assert b1.status_code == 200
+    assert b1.data.get("is_blocked") is True
+
+    api.force_authenticate(user=provider_user)
+    blocked_send = api.post(
+        f"/api/messaging/requests/{sr.id}/messages/send/",
+        {"body": "رسالة"},
+        format="json",
+    )
+    assert blocked_send.status_code == 403
+
+    # Direct thread block
+    api.force_authenticate(user=client_user)
+    d1 = api.post(
+        "/api/messaging/direct/thread/",
+        {"provider_id": provider.id},
+        format="json",
+    )
+    assert d1.status_code == 200
+    direct_thread_id = d1.data.get("id")
+    assert direct_thread_id is not None
+
+    b2 = api.post(f"/api/messaging/thread/{direct_thread_id}/block/", {}, format="json")
+    assert b2.status_code == 200
+    assert b2.data.get("is_blocked") is True
+
+    api.force_authenticate(user=provider_user)
+    blocked_direct_send = api.post(
+        f"/api/messaging/direct/thread/{direct_thread_id}/messages/send/",
+        {"body": "رسالة"},
+        format="json",
+    )
+    assert blocked_direct_send.status_code == 403

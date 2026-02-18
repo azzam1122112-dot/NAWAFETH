@@ -7,6 +7,8 @@ from django.views.decorators.http import require_POST
 from django.utils.html import strip_tags
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,11 +16,18 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import IsAtLeastPhoneOnly, ROLE_LEVELS, role_level
 from apps.marketplace.models import ServiceRequest
 from apps.providers.models import ProviderProfile
+from apps.support.models import SupportTicket, SupportTicketType, SupportPriority
 
-from .models import Message, MessageRead, Thread
+from .models import Message, MessageRead, Thread, ThreadUserState
 from .pagination import MessagePagination
-from .permissions import IsRequestParticipant
-from .serializers import MessageCreateSerializer, MessageListSerializer, ThreadSerializer, DirectThreadSerializer
+from .permissions import IsRequestParticipant, IsThreadParticipant
+from .serializers import (
+	MessageCreateSerializer,
+	MessageListSerializer,
+	ThreadSerializer,
+	DirectThreadSerializer,
+	ThreadUserStateSerializer,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +43,43 @@ def _can_access_request(user, sr: ServiceRequest) -> bool:
 	is_client = sr.client_id == user.id
 	is_provider = bool(sr.provider_id) and sr.provider.user_id == user.id
 	return bool(is_client or is_provider)
+
+
+def _thread_participant_users(thread: Thread):
+	"""Return participants as user objects for direct and request threads."""
+	if thread.is_direct:
+		users = []
+		if thread.participant_1_id:
+			users.append(thread.participant_1)
+		if thread.participant_2_id:
+			users.append(thread.participant_2)
+		return [u for u in users if u is not None]
+
+	if thread.request_id and thread.request:
+		users = [thread.request.client]
+		if getattr(thread.request, "provider_id", None) and getattr(thread.request.provider, "user", None):
+			users.append(thread.request.provider.user)
+		return [u for u in users if u is not None]
+
+	return []
+
+
+def _unarchive_for_participants(thread: Thread):
+	participants = _thread_participant_users(thread)
+	if not participants:
+		return
+	ThreadUserState.objects.filter(thread=thread, user__in=participants, is_archived=True).update(
+		is_archived=False,
+		archived_at=None,
+	)
+
+
+def _is_blocked_by_other(thread: Thread, sender_user_id: int) -> bool:
+	participants = _thread_participant_users(thread)
+	other_ids = [u.id for u in participants if u and u.id and u.id != sender_user_id]
+	if not other_ids:
+		return False
+	return ThreadUserState.objects.filter(thread=thread, user_id__in=other_ids, is_blocked=True).exists()
 
 
 @require_POST
@@ -70,6 +116,9 @@ def post_message(request, thread_id: int):
 		else:
 			return JsonResponse({"ok": False, "error": "غير مصرح"}, status=403)
 
+		if _is_blocked_by_other(thread, user.id):
+			return JsonResponse({"ok": False, "error": "تم حظرك من الطرف الآخر"}, status=403)
+
 		# Accept form-encoded or JSON
 		text = ""
 		if (request.content_type or "").startswith("application/json"):
@@ -88,6 +137,7 @@ def post_message(request, thread_id: int):
 			return JsonResponse({"ok": False, "error": "الرسالة طويلة جدًا"}, status=400)
 
 		msg = Message.objects.create(thread=thread, sender=user, body=text, created_at=timezone.now())
+		_unarchive_for_participants(thread)
 
 		get_full_name = getattr(user, "get_full_name", None)
 		if callable(get_full_name):
@@ -150,6 +200,9 @@ class SendMessageView(APIView):
 		service_request = get_object_or_404(ServiceRequest, id=request_id)
 		thread, _ = Thread.objects.get_or_create(request=service_request)
 
+		if _is_blocked_by_other(thread, request.user.id):
+			return Response({"detail": "تم حظرك من الطرف الآخر"}, status=status.HTTP_403_FORBIDDEN)
+
 		serializer = MessageCreateSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 
@@ -159,6 +212,8 @@ class SendMessageView(APIView):
 			body=serializer.validated_data["body"],
 			created_at=timezone.now(),
 		)
+		_unarchive_for_participants(thread)
+		_unarchive_for_participants(thread)
 
 		return Response(
 			{"ok": True, "message_id": message.id},
@@ -265,6 +320,9 @@ class DirectThreadSendMessageView(APIView):
 		if not thread.is_participant(request.user):
 			return Response({"error": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
+		if _is_blocked_by_other(thread, request.user.id):
+			return Response({"detail": "تم حظرك من الطرف الآخر"}, status=status.HTTP_403_FORBIDDEN)
+
 		serializer = MessageCreateSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 
@@ -355,3 +413,153 @@ class MyDirectThreadsListView(APIView):
 			})
 
 		return Response(result, status=status.HTTP_200_OK)
+
+
+class MyThreadStatesListView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly]
+
+	def get(self, request):
+		from django.db.models import Q
+		me = request.user
+
+		thread_ids = list(
+			Thread.objects.filter(
+				Q(is_direct=True, participant_1=me)
+				| Q(is_direct=True, participant_2=me)
+				| Q(request__client=me)
+				| Q(request__provider__user=me)
+			)
+			.values_list("id", flat=True)
+		)
+
+		states = ThreadUserState.objects.filter(user=me, thread_id__in=thread_ids)
+		return Response(ThreadUserStateSerializer(states, many=True).data, status=status.HTTP_200_OK)
+
+
+class ThreadStateDetailView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def get(self, request, thread_id: int):
+		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
+		thread = (
+			Thread.objects.select_related(
+				"request",
+				"request__client",
+				"request__provider__user",
+				"participant_1",
+				"participant_2",
+			)
+			.filter(id=thread_id)
+			.first()
+		)
+		data = ThreadUserStateSerializer(obj).data
+		data["blocked_by_other"] = bool(thread and _is_blocked_by_other(thread, request.user.id))
+		return Response(data, status=status.HTTP_200_OK)
+
+
+class ThreadFavoriteView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def post(self, request, thread_id: int):
+		action = (request.data.get("action") or "").strip().lower()
+		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
+		obj.is_favorite = action != "remove"
+		obj.save(update_fields=["is_favorite", "updated_at"])
+		return Response({"ok": True, "is_favorite": obj.is_favorite}, status=status.HTTP_200_OK)
+
+
+class ThreadArchiveView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def post(self, request, thread_id: int):
+		action = (request.data.get("action") or "").strip().lower()
+		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
+
+		if action == "remove":
+			obj.is_archived = False
+			obj.archived_at = None
+		else:
+			obj.is_archived = True
+			obj.archived_at = timezone.now()
+
+		obj.save(update_fields=["is_archived", "archived_at", "updated_at"])
+		return Response({"ok": True, "is_archived": obj.is_archived}, status=status.HTTP_200_OK)
+
+
+class ThreadBlockView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def post(self, request, thread_id: int):
+		channel_layer = get_channel_layer()
+		action = (request.data.get("action") or "").strip().lower()
+		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
+
+		if action == "remove":
+			obj.is_blocked = False
+			obj.blocked_at = None
+		else:
+			obj.is_blocked = True
+			obj.blocked_at = timezone.now()
+
+		obj.save(update_fields=["is_blocked", "blocked_at", "updated_at"])
+
+		# Notify any active WS connections for this thread
+		try:
+			if channel_layer is not None:
+				group = f"thread_{thread_id}"
+				if obj.is_blocked:
+					async_to_sync(channel_layer.group_send)(
+						group,
+						{
+							"type": "broadcast.blocked",
+							"thread_id": thread_id,
+							"blocked_by": request.user.id,
+						},
+					)
+				else:
+					async_to_sync(channel_layer.group_send)(
+						group,
+						{
+							"type": "broadcast.unblocked",
+							"thread_id": thread_id,
+							"unblocked_by": request.user.id,
+						},
+					)
+		except Exception:
+			# Best-effort only
+			pass
+		return Response({"ok": True, "is_blocked": obj.is_blocked}, status=status.HTTP_200_OK)
+
+
+class ThreadReportView(APIView):
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def post(self, request, thread_id: int):
+		thread = get_object_or_404(
+			Thread.objects.select_related(
+				"request",
+				"request__client",
+				"request__provider__user",
+				"participant_1",
+				"participant_2",
+			),
+			id=thread_id,
+		)
+
+		description = (request.data.get("description") or request.data.get("text") or "").strip()
+		if not description:
+			return Response({"detail": "description مطلوب"}, status=status.HTTP_400_BAD_REQUEST)
+
+		prefix = f"بلاغ محادثة (Thread#{thread.id})"
+		if thread.request_id:
+			prefix += f" طلب#{thread.request_id}"
+		full = f"{prefix}: {description}".strip()[:300]
+
+		ticket = SupportTicket.objects.create(
+			requester=request.user,
+			ticket_type=SupportTicketType.COMPLAINT,
+			priority=SupportPriority.NORMAL,
+			description=full,
+		)
+
+		return Response({"ok": True, "ticket_id": ticket.id, "ticket_code": ticket.code}, status=status.HTTP_201_CREATED)

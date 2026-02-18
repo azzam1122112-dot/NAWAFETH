@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'app_navigation.dart';
 import 'notification_link_handler.dart';
 import 'notifications_api.dart';
+import 'notifications_badge_controller.dart';
 import 'session_storage.dart';
 
 class FcmNotificationService {
@@ -25,6 +26,11 @@ class FcmNotificationService {
     try {
       await _configurePermissionsAndToken();
       FirebaseMessaging.instance.onTokenRefresh.listen(_registerTokenSafely);
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        // Foreground push: refresh unread badge immediately so UI screens can react.
+        await NotificationsBadgeController.instance.refresh();
+      });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
         await _openFromRemoteMessage(message);

@@ -19,6 +19,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.providers.models import ProviderCategory, ProviderProfile
+from apps.notifications.models import EventType
+from apps.notifications.services import create_notification
 
 from .models import (
 	Offer,
@@ -96,12 +98,46 @@ def _expire_urgent_requests() -> None:
 	).update(status=RequestStatus.EXPIRED)
 
 
+def _notify_urgent_request_to_matching_providers(service_request: ServiceRequest) -> None:
+	if service_request.request_type != RequestType.URGENT:
+		return
+
+	provider_ids = ProviderCategory.objects.filter(
+		subcategory_id=service_request.subcategory_id
+	).values_list("provider_id", flat=True)
+
+	qs = ProviderProfile.objects.select_related("user").filter(
+		id__in=provider_ids,
+		accepts_urgent=True,
+	)
+	city = (service_request.city or "").strip()
+	if city:
+		qs = qs.filter(city=city)
+
+	for provider in qs:
+		if not provider.user_id:
+			continue
+		create_notification(
+			user=provider.user,
+			title="طلب خدمة عاجلة جديد",
+			body=f"يوجد طلب عاجل جديد في تخصصك: {service_request.title}",
+			kind="urgent",
+			url=f"/requests/{service_request.id}",
+			actor=service_request.client,
+			event_type=EventType.REQUEST_CREATED,
+			pref_key="urgent_request",
+			request_id=service_request.id,
+			is_urgent=True,
+		)
+
+
 class ServiceRequestCreateView(generics.CreateAPIView):
 	serializer_class = ServiceRequestCreateSerializer
 	permission_classes = [IsAtLeastClient]
 
 	def perform_create(self, serializer):
 		request_type = serializer.validated_data["request_type"]
+		dispatch_mode = (serializer.validated_data.get("dispatch_mode") or "all").strip().lower()
 
 		is_urgent = request_type == RequestType.URGENT
 		# Mobile expects the request to reach providers immediately.
@@ -115,12 +151,16 @@ class ServiceRequestCreateView(generics.CreateAPIView):
 			minutes = getattr(settings, "URGENT_REQUEST_EXPIRY_MINUTES", 15)
 			expires_at = timezone.now() + timedelta(minutes=minutes)
 
-		serializer.save(
+		service_request = serializer.save(
 			client=self.request.user,
 			is_urgent=is_urgent,
 			status=status_value,
 			expires_at=expires_at,
 		)
+		# End-to-end urgent event: generate urgent notifications to eligible providers.
+		# For now "nearest" follows same eligibility filter until geo distance routing is added.
+		if is_urgent and dispatch_mode in {"all", "nearest"}:
+			_notify_urgent_request_to_matching_providers(service_request)
 
 
 class IsProviderPermission(permissions.BasePermission):

@@ -27,6 +27,9 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   // نبذة عامة عن المزود وخدماته
   final TextEditingController aboutController = TextEditingController();
 
+  // سنوات الخبرة
+  final TextEditingController yearsExperienceController = TextEditingController();
+
   // قوائم ديناميكية للمؤهلات والخبرات
   final List<String> qualifications = [];
 
@@ -44,6 +47,11 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
     _loadDraft();
     _loadFromBackendBestEffort();
     aboutController.addListener(() {
+      _scheduleDraftSave();
+      _updateSectionDone();
+    });
+
+    yearsExperienceController.addListener(() {
       _scheduleDraftSave();
       _updateSectionDone();
     });
@@ -65,6 +73,7 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
       }
 
       final about = (profile['about_details'] ?? '').toString().trim();
+      final yearsExpRaw = (profile['years_experience'] ?? '').toString().trim();
       final qs = asList(profile['qualifications']);
       final ex = asList(profile['experiences']);
 
@@ -73,6 +82,11 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
         if (aboutController.text.trim().isEmpty && about.isNotEmpty) {
           aboutController.text = about;
         }
+
+        if (yearsExperienceController.text.trim().isEmpty && yearsExpRaw.isNotEmpty) {
+          yearsExperienceController.text = yearsExpRaw;
+        }
+
         if (qualifications.isEmpty && qs.isNotEmpty) {
           qualifications.addAll(qs);
         }
@@ -115,6 +129,10 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
         aboutController.text = asString(data['about']);
       }
 
+      if (yearsExperienceController.text.trim().isEmpty) {
+        yearsExperienceController.text = asString(data['years_experience']);
+      }
+
       final qs = asStringList(data['qualifications']);
       final ex = asStringList(data['experiences']);
       if (mounted) {
@@ -142,6 +160,7 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
         final userId = await UserScopedPrefs.readUserId();
         final data = <String, dynamic>{
           'about': aboutController.text.trim(),
+          'years_experience': yearsExperienceController.text.trim(),
           'qualifications': qualifications,
           'experiences': experiences,
         };
@@ -158,7 +177,12 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   }
 
   void _updateSectionDone() {
-    final done = aboutController.text.trim().isNotEmpty || qualifications.isNotEmpty || experiences.isNotEmpty;
+    final years = int.tryParse(yearsExperienceController.text.trim()) ?? 0;
+    final done =
+        aboutController.text.trim().isNotEmpty ||
+        years > 0 ||
+        qualifications.isNotEmpty ||
+        experiences.isNotEmpty;
     SharedPreferences.getInstance().then((prefs) async {
       final userId = await UserScopedPrefs.readUserId();
       await UserScopedPrefs.setBoolScoped(
@@ -181,6 +205,7 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   void dispose() {
     _draftTimer?.cancel();
     aboutController.dispose();
+    yearsExperienceController.dispose();
     _dialogController.dispose();
     super.dispose();
   }
@@ -285,7 +310,10 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
     if (_saving) return false;
     setState(() => _saving = true);
     try {
+      final yearsParsed = int.tryParse(yearsExperienceController.text.trim());
+      final years = (yearsParsed == null || yearsParsed < 0) ? 0 : yearsParsed;
       final payload = <String, dynamic>{
+        'years_experience': years,
         'about_details': aboutController.text.trim(),
         'qualifications': qualifications,
         'experiences': experiences,
@@ -341,6 +369,8 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
               children: [
                 _buildInfoCard(),
                 const SizedBox(height: 18),
+                _buildYearsExperienceCard(),
+                const SizedBox(height: 16),
                 _buildAboutCard(),
                 const SizedBox(height: 16),
                 _buildQualificationsCard(),
@@ -453,6 +483,78 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
             "حاول أن تذكر طريقة تعاملك مع العميل، أسلوب تنفيذك للمشاريع، وما يميّزك عن غيرك.",
             style: TextStyle(
               fontFamily: "Cairo",
+              fontSize: 11.5,
+              color: Colors.black54,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildYearsExperienceCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(color: Colors.deepPurple.withOpacity(0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle(
+            icon: Icons.work_outline,
+            title: 'سنوات الخبرة',
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: yearsExperienceController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13.5),
+            decoration: InputDecoration(
+              hintText: 'مثال: 5',
+              hintStyle: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: Colors.grey,
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF9F7FF),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: Colors.deepPurple.withOpacity(0.35),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: Colors.deepPurple.withOpacity(0.25),
+                ),
+              ),
+              focusedBorder: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(14)),
+                borderSide: BorderSide(color: Colors.deepPurple, width: 1.4),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'اكتب عدد سنوات خبرتك في مجالك (اختياري).',
+            style: TextStyle(
+              fontFamily: 'Cairo',
               fontSize: 11.5,
               color: Colors.black54,
             ),

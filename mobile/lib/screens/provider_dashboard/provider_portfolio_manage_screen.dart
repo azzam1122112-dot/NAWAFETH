@@ -68,7 +68,7 @@ class _ProviderPortfolioManageScreenState
     return 'image';
   }
 
-  Future<void> _createFromFile(PlatformFile file) async {
+  Future<void> _createFromFile(PlatformFile file, {required String caption}) async {
     if (_saving) return;
     final fileType = _detectFileType(file.name);
     if (!mounted) return;
@@ -77,6 +77,7 @@ class _ProviderPortfolioManageScreenState
       final created = await ProvidersApi().createMyPortfolioItem(
         file: file,
         fileType: fileType,
+        caption: caption,
       );
       if (!mounted) return;
       if (created == null) {
@@ -95,7 +96,7 @@ class _ProviderPortfolioManageScreenState
     }
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage(ImageSource source, {required String caption}) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: source);
     if (picked == null) return;
@@ -104,10 +105,10 @@ class _ProviderPortfolioManageScreenState
       size: await File(picked.path).length(),
       path: picked.path,
     );
-    await _createFromFile(file);
+    await _createFromFile(file, caption: caption);
   }
 
-  Future<void> _pickFile() async {
+  Future<void> _pickFile({required String caption}) async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       withData: true,
@@ -118,11 +119,12 @@ class _ProviderPortfolioManageScreenState
       ],
     );
     if (result == null || result.files.isEmpty) return;
-    await _createFromFile(result.files.first);
+    await _createFromFile(result.files.first, caption: caption);
   }
 
   Future<void> _showAddDialog() async {
     if (!mounted) return;
+    final captionController = TextEditingController();
     await showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
@@ -153,26 +155,41 @@ class _ProviderPortfolioManageScreenState
                   ],
                 ),
                 const SizedBox(height: 12),
+                TextField(
+                  controller: captionController,
+                  textInputAction: TextInputAction.done,
+                  maxLength: 80,
+                  decoration: InputDecoration(
+                    labelText: 'شرح بسيط (اختياري)',
+                    hintText: 'مثال: قبل/بعد - تصميم واجهة - جزء من مشروع...',
+                    counterText: '',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
                 ListTile(
                   onTap: () async {
+                    final caption = captionController.text.trim();
                     Navigator.pop(ctx);
-                    await _pickImage(ImageSource.gallery);
+                    await _pickImage(ImageSource.gallery, caption: caption);
                   },
                   title: const Text('اختيار من المعرض', style: TextStyle(fontFamily: 'Cairo')),
                   trailing: const Icon(Icons.photo_library_outlined),
                 ),
                 ListTile(
                   onTap: () async {
+                    final caption = captionController.text.trim();
                     Navigator.pop(ctx);
-                    await _pickImage(ImageSource.camera);
+                    await _pickImage(ImageSource.camera, caption: caption);
                   },
                   title: const Text('التقاط صورة', style: TextStyle(fontFamily: 'Cairo')),
                   trailing: const Icon(Icons.camera_alt_outlined),
                 ),
                 ListTile(
                   onTap: () async {
+                    final caption = captionController.text.trim();
                     Navigator.pop(ctx);
-                    await _pickFile();
+                    await _pickFile(caption: caption);
                   },
                   title: const Text('اختيار ملف', style: TextStyle(fontFamily: 'Cairo')),
                   trailing: const Icon(Icons.folder_open_outlined),
@@ -378,58 +395,82 @@ class _ProviderPortfolioManageScreenState
                           crossAxisCount: 3,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
+                          childAspectRatio: 0.78,
                         ),
                         itemBuilder: (context, index) {
                           final item = _items[index];
                           final url = item.fileUrl.trim();
                           final isVideo = item.fileType.toLowerCase() == 'video';
+                          final caption = item.caption.trim();
 
-                          return InkWell(
-                            onTap: () => _openItem(item),
-                            borderRadius: BorderRadius.circular(14),
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(14),
-                                    child: Container(
-                                      color: Colors.grey.shade200,
-                                      child: url.isEmpty
-                                          ? const Center(child: Icon(Icons.broken_image_outlined))
-                                          : Image.network(
-                                              url,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => const Center(
-                                                child: Icon(Icons.broken_image_outlined),
-                                              ),
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => _openItem(item),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(14),
+                                          child: Container(
+                                            color: Colors.grey.shade200,
+                                            child: url.isEmpty
+                                                ? const Center(child: Icon(Icons.broken_image_outlined))
+                                                : Image.network(
+                                                    url,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (_, __, ___) => const Center(
+                                                      child: Icon(Icons.broken_image_outlined),
+                                                    ),
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (isVideo)
+                                        const Positioned(
+                                          left: 8,
+                                          bottom: 8,
+                                          child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 22),
+                                        ),
+                                      Positioned(
+                                        top: 6,
+                                        right: 6,
+                                        child: InkWell(
+                                          onTap: () => _confirmDelete(item),
+                                          child: Container(
+                                            width: 30,
+                                            height: 30,
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(alpha: 0.45),
+                                              shape: BoxShape.circle,
                                             ),
-                                    ),
+                                            child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 18),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                if (isVideo)
-                                  const Positioned(
-                                    left: 8,
-                                    bottom: 8,
-                                    child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 22),
-                                  ),
-                                Positioned(
-                                  top: 6,
-                                  right: 6,
-                                  child: InkWell(
-                                    onTap: () => _confirmDelete(item),
-                                    child: Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.45),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 18),
-                                    ),
+                              ),
+                              if (caption.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  caption,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.grey.shade800,
+                                    height: 1.2,
                                   ),
                                 ),
                               ],
-                            ),
+                            ],
                           );
                         },
                       ),

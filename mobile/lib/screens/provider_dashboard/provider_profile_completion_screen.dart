@@ -73,20 +73,62 @@ class _ProviderProfileCompletionScreenState
 
   int _sectionPercent(String id) => _sectionWeights[id] ?? 0;
 
+  Map<String, bool> _deriveSectionsFromBackend({
+    required Map<String, dynamic>? providerProfile,
+    required List<int> subcategories,
+  }) {
+    bool hasAnyList(dynamic v) =>
+        v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
+    bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
+
+    int asInt(dynamic v) {
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse((v ?? '').toString().trim()) ?? 0;
+    }
+
+    final p = providerProfile ?? const <String, dynamic>{};
+    return <String, bool>{
+      "service_details": subcategories.isNotEmpty,
+      "contact_full":
+          hasAnyString(p['whatsapp']) ||
+          hasAnyString(p['website']) ||
+          hasAnyList(p['social_links']),
+      "lang_loc":
+          hasAnyList(p['languages']) ||
+          (p['lat'] != null && p['lng'] != null),
+      "additional":
+          hasAnyString(p['about_details']) ||
+          asInt(p['years_experience']) > 0 ||
+          hasAnyList(p['qualifications']) ||
+          hasAnyList(p['experiences']),
+      "content": hasAnyList(p['content_sections']),
+      "seo":
+          hasAnyString(p['seo_keywords']) ||
+          hasAnyString(p['seo_meta_description']) ||
+          hasAnyString(p['seo_slug']),
+    };
+  }
+
   Future<void> _reloadSectionFlags() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = await UserScopedPrefs.readUserId();
-      final updated = <String, bool>{};
-      for (final id in _sections.keys) {
-        final baseKey = 'provider_section_done_$id';
-        updated[id] = (await UserScopedPrefs.getBoolScoped(
-              prefs,
-              baseKey,
-              userId: userId,
-            )) ??
-            false;
+      Map<String, dynamic>? providerProfile;
+      try {
+        providerProfile = await ProvidersApi().getMyProviderProfile();
+      } catch (_) {
+        providerProfile = null;
       }
+      List<int> subcategories = <int>[];
+      try {
+        subcategories = await ProvidersApi().getMyProviderSubcategories();
+      } catch (_) {
+        subcategories = <int>[];
+      }
+
+      final updated = _deriveSectionsFromBackend(
+        providerProfile: providerProfile,
+        subcategories: subcategories,
+      );
       if (!mounted) return;
       setState(() {
         _sections.addAll(updated);
@@ -100,7 +142,6 @@ class _ProviderProfileCompletionScreenState
     if (!mounted) return;
     setState(() => _loading = true);
     await _bootstrap();
-    await _reloadSectionFlags();
   }
 
   String? _nextRecommendedSectionId() {
@@ -248,18 +289,6 @@ class _ProviderProfileCompletionScreenState
 
   Future<void> _bootstrap() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = await UserScopedPrefs.readUserId();
-      for (final id in _sections.keys) {
-        final baseKey = 'provider_section_done_$id';
-        _sections[id] = (await UserScopedPrefs.getBoolScoped(
-              prefs,
-              baseKey,
-              userId: userId,
-            )) ??
-            false;
-      }
-
       final loggedIn = await const SessionStorage().isLoggedIn();
       if (!loggedIn) {
         if (!mounted) return;
@@ -339,35 +368,12 @@ class _ProviderProfileCompletionScreenState
         _username = username;
         _email = email;
         _phone = phone;
-        if (providerProfile != null) {
-          bool hasAnyList(dynamic v) => v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
-          bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
-
-          _sections['service_details'] =
-              (_sections['service_details'] ?? false) || subcategories.isNotEmpty;
-          _sections['contact_full'] =
-              (_sections['contact_full'] ?? false) ||
-              hasAnyString(providerProfile['whatsapp']) ||
-              hasAnyString(providerProfile['website']) ||
-              hasAnyList(providerProfile['social_links']);
-          _sections['lang_loc'] =
-              (_sections['lang_loc'] ?? false) ||
-              hasAnyList(providerProfile['languages']) ||
-              (providerProfile['lat'] != null && providerProfile['lng'] != null);
-          _sections['additional'] =
-              (_sections['additional'] ?? false) ||
-              hasAnyString(providerProfile['about_details']) ||
-              hasAnyList(providerProfile['qualifications']) ||
-              hasAnyList(providerProfile['experiences']);
-          _sections['content'] =
-              (_sections['content'] ?? false) ||
-              hasAnyList(providerProfile['content_sections']);
-          _sections['seo'] =
-              (_sections['seo'] ?? false) ||
-              hasAnyString(providerProfile['seo_keywords']) ||
-              hasAnyString(providerProfile['seo_meta_description']) ||
-              hasAnyString(providerProfile['seo_slug']);
-        }
+        _sections.addAll(
+          _deriveSectionsFromBackend(
+            providerProfile: providerProfile,
+            subcategories: subcategories,
+          ),
+        );
         _loading = false;
       });
     } catch (_) {
@@ -404,7 +410,7 @@ class _ProviderProfileCompletionScreenState
           centerTitle: true,
           iconTheme: const IconThemeData(color: Colors.white),
           title: const Text(
-            "إكمال الملف التعريفي",
+            "الملف التعريفي",
             style: TextStyle(
               fontFamily: "Cairo",
               fontWeight: FontWeight.bold,
