@@ -106,11 +106,9 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       }
 
       final patch = <String, dynamic>{};
-      final u = username.trim();
       final p = phone.trim();
       final e = email.trim();
 
-      if (u.isNotEmpty) patch['username'] = u;
       if (p.isNotEmpty) {
         final normalized = _normalizeSaudiToLocal05(p);
         if (normalized == null) {
@@ -144,7 +142,7 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
 
       final firstName = nonEmpty(updated['first_name']);
       final lastName = nonEmpty(updated['last_name']);
-      final updatedUsername = nonEmpty(updated['username']) ?? u;
+      final updatedUsername = nonEmpty(updated['username']) ?? username;
       final updatedEmail = nonEmpty(updated['email']) ?? e;
       final updatedPhone = nonEmpty(updated['phone']) ?? p;
 
@@ -287,12 +285,6 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
 
           // 🟣 معلومات الحساب
           _buildSection('معلومات الحساب', [
-            _buildEditableField(
-              icon: Icons.person_outline,
-              label: 'اسم العضوية',
-              value: username,
-              onChanged: (val) => setState(() => username = val),
-            ),
             _buildEditableField(
               icon: Icons.phone_android,
               label: 'رقم الجوال',

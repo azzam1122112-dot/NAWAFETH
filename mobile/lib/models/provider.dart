@@ -1,6 +1,7 @@
 class ProviderProfile {
   final int id;
   final String? displayName;
+  final String? username;
   final String? bio;
   final int yearsExperience;
   final String? city;
@@ -8,12 +9,14 @@ class ProviderProfile {
   final String? whatsapp;
   final double? lat;
   final double? lng;
+  final bool isOnline;
   final bool acceptsUrgent;
   final bool isVerifiedBlue;
   final bool isVerifiedGreen;
   final String? imageUrl;
   final double ratingAvg;
   final int ratingCount;
+  final int? completedRequests;
   final int followersCount;
   final int followingCount;
   final int likesCount;
@@ -21,6 +24,7 @@ class ProviderProfile {
   const ProviderProfile({
     required this.id,
     this.displayName,
+    this.username,
     this.bio,
     this.yearsExperience = 0,
     this.city,
@@ -28,12 +32,14 @@ class ProviderProfile {
     this.whatsapp,
     this.lat,
     this.lng,
+    this.isOnline = false,
     this.acceptsUrgent = false,
     this.isVerifiedBlue = false,
     this.isVerifiedGreen = false,
     this.imageUrl,
     this.ratingAvg = 0.0,
     this.ratingCount = 0,
+    this.completedRequests,
     this.followersCount = 0,
     this.followingCount = 0,
     this.likesCount = 0,
@@ -62,6 +68,7 @@ class ProviderProfile {
     return ProviderProfile(
       id: parseInt(json['id']),
       displayName: json['display_name'],
+      username: json['username']?.toString(),
       bio: json['bio'],
       yearsExperience: parseInt(json['years_experience']),
       city: json['city'],
@@ -69,6 +76,7 @@ class ProviderProfile {
       whatsapp: json['whatsapp']?.toString(),
       lat: parseNullableDouble(json['lat']),
       lng: parseNullableDouble(json['lng']),
+      isOnline: (json['is_online'] == true),
       acceptsUrgent: json['accepts_urgent'] ?? false,
       isVerifiedBlue: json['is_verified_blue'] ?? false,
       isVerifiedGreen: json['is_verified_green'] ?? false,
@@ -83,6 +91,11 @@ class ProviderProfile {
           ?.toString(),
       ratingAvg: parseDouble(json['rating_avg']),
       ratingCount: parseInt(json['rating_count']),
+      completedRequests: json['completed_requests'] == null
+          ? (json['completed_orders_count'] == null
+              ? null
+              : parseInt(json['completed_orders_count']))
+          : parseInt(json['completed_requests']),
       followersCount: parseInt(json['followers_count']),
       followingCount: parseInt(json['following_count']),
       likesCount: parseInt(json['likes_count']),

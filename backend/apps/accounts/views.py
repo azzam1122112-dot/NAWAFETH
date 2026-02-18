@@ -236,6 +236,13 @@ def me_view(request):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # Username is immutable after registration/completion for all users.
+        if "username" in data:
+            return Response(
+                {"username": ["لا يمكن تعديل اسم المستخدم بعد التسجيل"]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Uniqueness safeguard for phone.
         if "phone" in data:
             new_phone = data.get("phone")
@@ -248,7 +255,7 @@ def me_view(request):
                 user.phone = new_phone
 
         # Optional fields (allow clearing by sending empty string)
-        for field in ("email", "username", "first_name", "last_name"):
+        for field in ("email", "first_name", "last_name"):
             if field in data:
                 val = data.get(field)
                 setattr(user, field, val)

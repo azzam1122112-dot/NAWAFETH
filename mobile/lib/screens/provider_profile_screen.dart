@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../widgets/app_bar.dart';
 import '../widgets/custom_drawer.dart';
@@ -19,9 +21,11 @@ import '../models/provider_service.dart';
 import '../models/user_summary.dart';
 import '../services/chat_nav.dart';
 import '../services/messaging_api.dart';
-import '../services/session_storage.dart';
+import '../services/account_api.dart';
 import '../utils/auth_guard.dart'; // Added
 import '../utils/whatsapp_helper.dart';
+
+import 'provider_dashboard/provider_portfolio_manage_screen.dart';
 
 class ProviderProfileScreen extends StatefulWidget {
   final String? providerId;
@@ -57,7 +61,8 @@ class ProviderProfileScreen extends StatefulWidget {
 
 class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   final Color mainColor = Colors.deepPurple;
-  String? _myPhone;
+
+  bool _canManageGallery = false;
 
   int _selectedTabIndex = 0;
 
@@ -66,10 +71,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   Set<int> _favoritePortfolioIds = <int>{};
   final Set<int> _portfolioFavoriteBusyIds = <int>{};
   final Set<int> _favoriteHighlightIndexes = <int>{};
-  final bool _isOnline = true;
 
-  // عدادات أعلى الصفحة (بدون بيانات وهمية)
-  // ملاحظة: بعض العدادات لا يوجد لها مصدر API حالياً، لذلك تبقى null وتُعرض كـ "—".
+  // عدادات أعلى الصفحة (من API العام لمقدم الخدمة)
   int? _completedRequests;
   int? _followersCount;
   int? _followingCount;
@@ -118,7 +121,12 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         ? _fullProfile!.phone!.trim()
         : (widget.providerPhone ?? '').trim();
 
-  String get providerHandle => '';
+  String get providerHandle {
+    final raw = (_fullProfile?.username ?? '').trim();
+    if (raw.isNotEmpty) return raw.startsWith('@') ? raw : '@$raw';
+    final pid = (widget.providerId ?? '').trim();
+    return pid.isNotEmpty ? '#$pid' : '—';
+  }
 
   String get providerEnglishName => '';
 
@@ -135,7 +143,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   String get providerExperienceYears =>
       providerYearsExperience > 0 ? '$providerYearsExperience سنة' : '—';
 
-  String get providerCityName => _fullProfile?.city ?? 'الرياض';
+  String get providerCityName => (_fullProfile?.city ?? '').trim();
   String get providerRegionName => 'منطقة الرياض';
   String get providerCountryName => 'المملكة العربية السعودية';
 
@@ -178,7 +186,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMyPhone();
+    _syncCanManageGallery();
     if (widget.providerId != null) {
       _loadProviderData();
       _loadProviderSubcategories();
@@ -187,10 +195,30 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     }
   }
 
-  Future<void> _loadMyPhone() async {
-    final phone = await const SessionStorage().readPhone();
-    if (!mounted) return;
-    setState(() => _myPhone = phone?.trim());
+  Future<void> _syncCanManageGallery() async {
+    final providerId = int.tryParse((widget.providerId ?? '').trim());
+    if (providerId == null) return;
+    try {
+      final me = await AccountApi().me();
+      final raw = me['provider_profile_id'];
+      final int? myProviderId = raw is int ? raw : int.tryParse((raw ?? '').toString());
+      if (!mounted) return;
+      setState(() {
+        _canManageGallery = myProviderId != null && myProviderId == providerId;
+      });
+    } catch (_) {
+      // Best-effort: keep hidden.
+    }
+  }
+
+  Future<void> _openManageGallery() async {
+    if (!_canManageGallery) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const ProviderPortfolioManageScreen(),
+      ),
+    );
+    await _loadProviderPortfolio();
   }
 
   Future<void> _syncClientSocialState() async {
@@ -325,6 +353,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       if (profile != null && mounted) {
         setState(() {
           _fullProfile = profile;
+          _completedRequests = profile.completedRequests;
           _followersCount = profile.followersCount;
           _followingCount = profile.followingCount;
           _likesCount = profile.likesCount;
@@ -479,8 +508,12 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           borderRadius: BorderRadius.circular(12),
                           color: Colors.white,
                         ),
-                        child: const Center(
-                          child: Icon(Icons.qr_code, size: 80, color: Colors.black54),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: QrImageView(
+                            data: shareLink,
+                            padding: const EdgeInsets.all(10),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -515,14 +548,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () {
-                                Clipboard.setData(ClipboardData(text: shareLink));
+                                Share.share(shareLink);
                                 if (sheetContext.mounted) {
                                   Navigator.pop(sheetContext);
                                 }
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('تم نسخ رابط المشاركة')),
-                                );
                               },
                               icon: const Icon(Icons.share, size: 18),
                               label: const Text('مشاركة', style: TextStyle(fontFamily: 'Cairo')),
@@ -630,7 +659,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       return ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: list.length,
-                        separatorBuilder: (_, __) => const Divider(),
+                        separatorBuilder: (context, index) => const Divider(),
                         itemBuilder: (context, i) {
                           final user = list[i];
                           return ListTile(
@@ -737,7 +766,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       return ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: list.length,
-                        separatorBuilder: (_, __) => const Divider(),
+                        separatorBuilder: (context, index) => const Divider(),
                         itemBuilder: (context, i) {
                           final provider = list[i];
                           final displayName = provider.displayName ?? 'مزود';
@@ -894,7 +923,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                         ),
                       ),
                     ),
-                  if (_isOnline)
+                  if (_fullProfile?.isOnline == true)
                     Positioned(
                       bottom: -12,
                       right: 78,
@@ -979,7 +1008,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _circleStat(
-                      icon: Icons.home_repair_service_outlined,
+                      icon: Icons.business_center_outlined,
                       value: _completedRequests,
                       onTap: () {},
                       isDark: isDark,
@@ -1057,7 +1086,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: tabs.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  separatorBuilder: (context, index) => const SizedBox(width: 14),
                   itemBuilder: (context, index) {
                     final isSelected = _selectedTabIndex == index;
                     final bg = isSelected
@@ -1085,18 +1114,60 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           children: [
                             Icon(tabs[index]['icon'], size: 22, color: iconColor),
                             const SizedBox(height: 6),
-                            Text(
-                              tabs[index]['title'],
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: titleColor,
+                            if (_canManageGallery && index == 2)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      tabs[index]['title'],
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: titleColor,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () async {
+                                        if (!mounted) return;
+                                        setState(() => _selectedTabIndex = 2);
+                                        await _openManageGallery();
+                                      },
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(2),
+                                        child: Icon(
+                                          Icons.settings_outlined,
+                                          size: 16,
+                                          color: titleColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Text(
+                                tabs[index]['title'],
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: titleColor,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),
@@ -1110,31 +1181,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                 child: _buildTabContent(),
               ),
               const SizedBox(height: 30),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    InkWell(
-                      onTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        child: Row(
-                          children: [
-                            Icon(Icons.home_outlined, color: mainColor, size: 20),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'الرئيسية',
-                              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 18),
             ],
           ),
@@ -1233,7 +1279,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            separatorBuilder: (context, index) => const SizedBox(width: 14),
             itemBuilder: (context, index) {
               final item = items[index];
               final isFav = _favoriteHighlightIndexes.contains(index);
@@ -1350,8 +1396,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final hasPhone = providerPhone.trim().isNotEmpty;
     final hasWhatsApp =
         ((_fullProfile?.whatsapp ?? '').trim().isNotEmpty) ||
-        hasPhone ||
-        (_myPhone?.isNotEmpty == true);
+        hasPhone;
     final lat = providerLat;
     final lng = providerLng;
 
@@ -1654,7 +1699,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: _providerSubcategories.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          separatorBuilder: (context, index) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
             final s = _providerSubcategories[index];
             final cat = (s.categoryName ?? '').trim();
@@ -1856,7 +1901,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                                 item.fileUrl,
                                 fit: BoxFit.cover,
                                 width: double.infinity,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (context, error, stackTrace) => Container(
                                   color: Colors.grey.shade200,
                                   child: Center(
                                     child: Icon(

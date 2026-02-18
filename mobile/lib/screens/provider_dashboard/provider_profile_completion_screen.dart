@@ -13,11 +13,11 @@ import '../../services/session_storage.dart';
 import '../registration/steps/additional_details_step.dart';
 import '../registration/steps/contact_info_step.dart';
 import '../registration/steps/language_location_step.dart';
-import '../registration/steps/content_step.dart';
 import '../registration/steps/seo_step.dart';
 
 import 'provider_completion_utils.dart';
 import 'provider_service_categories_screen.dart';
+import 'provider_portfolio_manage_screen.dart';
 
 class ProviderProfileCompletionScreen extends StatefulWidget {
   const ProviderProfileCompletionScreen({super.key});
@@ -194,11 +194,7 @@ class _ProviderProfileCompletionScreenState
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => ContentStep(
-                  onBack: () => Navigator.pop(context, false),
-                  onNext: () => Navigator.pop(context, true),
-                ),
+            builder: (_) => const ProviderPortfolioManageScreen(),
           ),
         );
         break;
@@ -746,8 +742,8 @@ class _ProviderProfileCompletionScreenState
             ),
             _luxSectionTile(
               id: 'content',
-              title: 'معرض الأعمال (Portfolio)',
-              subtitle: 'صور ونماذج أعمالك السابقة.',
+              title: 'معرض الخدمات',
+              subtitle: 'صور وفيديوهات لأعمالك السابقة.',
               icon: Icons.image_outlined,
               color: Colors.purple,
               isOptional: true,

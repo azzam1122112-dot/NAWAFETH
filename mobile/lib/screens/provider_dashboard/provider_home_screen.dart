@@ -27,6 +27,7 @@ import 'reviews_tab.dart';
 import 'provider_completion_utils.dart';
 import 'provider_orders_screen.dart';
 import 'provider_profile_completion_screen.dart';
+import 'provider_portfolio_manage_screen.dart';
 import '../plans_screen.dart';
 import '../additional_services_screen.dart';
 import '../../screens/network_video_player_screen.dart';
@@ -1063,9 +1064,9 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           ),
           const SizedBox(height: 8),
           _editableInfoRow(
-            title: 'اسم المستخدم (اختياري)',
+            title: 'اسم المستخدم',
             value: (_providerUsername ?? '').trim().isEmpty ? 'غير مضاف' : '@${_providerUsername!.trim()}',
-            onEdit: _editUsername,
+            onEdit: null,
           ),
           const SizedBox(height: 8),
           _editableInfoRow(
@@ -1088,7 +1089,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   Widget _editableInfoRow({
     required String title,
     required String value,
-    required VoidCallback onEdit,
+    VoidCallback? onEdit,
     int maxLines = 1,
   }) {
     return Row(
@@ -1122,20 +1123,21 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           ),
         ),
         const SizedBox(width: 8),
-        OutlinedButton(
-          onPressed: onEdit,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.deepPurple,
-            side: BorderSide(color: AppColors.deepPurple.withValues(alpha: 0.35)),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            minimumSize: const Size(68, 30),
+        if (onEdit != null)
+          OutlinedButton(
+            onPressed: onEdit,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.deepPurple,
+              side: BorderSide(color: AppColors.deepPurple.withValues(alpha: 0.35)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: const Size(68, 30),
+            ),
+            child: const Text(
+              'تعديل',
+              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 12),
+            ),
           ),
-          child: const Text(
-            'تعديل',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 12),
-          ),
-        ),
       ],
     );
   }
@@ -1316,24 +1318,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تعذر تحديث الاسم')),
-      );
-    }
-  }
-
-  Future<void> _editUsername() async {
-    final value = await _showSimpleEditDialog(
-      title: 'تعديل اسم المستخدم',
-      initialValue: (_providerUsername ?? '').trim(),
-    );
-    if (value == null) return;
-    final normalized = value.replaceAll(RegExp(r'\s+'), '_');
-    try {
-      await AccountApi().updateMe({'username': normalized});
-      await _loadProviderData();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر تحديث اسم المستخدم')),
       );
     }
   }
@@ -1555,6 +1539,17 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     return ProfileQuickLinksPanel(
       title: 'إعدادات سريعة',
       items: [
+        ProfileQuickLinkItem(
+          title: 'معرض الخدمات',
+          icon: Icons.photo_library_outlined,
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProviderPortfolioManageScreen()),
+            );
+            await _loadMySpotlights();
+          },
+        ),
         ProfileQuickLinkItem(
           title: 'إدارة الباقات والاشتراك',
           icon: Icons.card_membership,

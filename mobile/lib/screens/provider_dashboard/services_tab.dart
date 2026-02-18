@@ -43,9 +43,8 @@ class _ServicesTabState extends State<ServicesTab> {
 
   String _serviceSubtitle(ProviderService s) {
     final sub = s.subcategory?.name;
-    final price = s.priceText();
-    if (sub != null && sub.trim().isNotEmpty) return '$sub • $price';
-    return price;
+    if (sub != null && sub.trim().isNotEmpty) return sub;
+    return 'بدون تصنيف فرعي';
   }
 
   Future<void> _confirmDelete(ProviderService s) async {
@@ -86,12 +85,9 @@ class _ServicesTabState extends State<ServicesTab> {
 
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
-    final priceFromCtrl = TextEditingController(text: existing?.priceFrom?.toStringAsFixed(0) ?? '');
-    final priceToCtrl = TextEditingController(text: existing?.priceTo?.toStringAsFixed(0) ?? '');
 
     int? selectedCategoryId = existing?.subcategory?.categoryId;
     int? selectedSubId = existing?.subcategory?.id;
-    String priceUnit = existing?.priceUnit ?? 'fixed';
     bool isActive = existing?.isActive ?? true;
 
     if (selectedCategoryId == null && selectedSubId != null) {
@@ -188,48 +184,6 @@ class _ServicesTabState extends State<ServicesTab> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: priceUnit,
-                        items: const [
-                          DropdownMenuItem(value: 'fixed', child: Text('سعر ثابت', style: TextStyle(fontFamily: 'Cairo'))),
-                          DropdownMenuItem(value: 'starting_from', child: Text('يبدأ من', style: TextStyle(fontFamily: 'Cairo'))),
-                          DropdownMenuItem(value: 'hour', child: Text('بالساعة', style: TextStyle(fontFamily: 'Cairo'))),
-                          DropdownMenuItem(value: 'day', child: Text('باليوم', style: TextStyle(fontFamily: 'Cairo'))),
-                          DropdownMenuItem(value: 'negotiable', child: Text('قابل للتفاوض', style: TextStyle(fontFamily: 'Cairo'))),
-                        ],
-                        onChanged: (v) => setModalState(() => priceUnit = v ?? 'fixed'),
-                        decoration: const InputDecoration(
-                          labelText: 'نوع التسعير',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: priceFromCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'من (ر.س)',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: priceToCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'إلى (ر.س)',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
                       TextField(
                         controller: descCtrl,
                         minLines: 2,
@@ -260,19 +214,11 @@ class _ServicesTabState extends State<ServicesTab> {
                               return;
                             }
 
-                            final fromText = priceFromCtrl.text.trim();
-                            final toText = priceToCtrl.text.trim();
-                            final pFrom = fromText.isEmpty ? null : double.tryParse(fromText);
-                            final pTo = toText.isEmpty ? null : double.tryParse(toText);
-
                             if (existing == null) {
                               final created = await ProvidersApi().createMyService(
                                 title: title,
                                 subcategoryId: subId,
                                 description: descCtrl.text,
-                                priceFrom: pFrom,
-                                priceTo: pTo,
-                                priceUnit: priceUnit,
                                 isActive: isActive,
                               );
                               if (created == null) {
@@ -286,11 +232,8 @@ class _ServicesTabState extends State<ServicesTab> {
                               final patch = <String, dynamic>{
                                 'title': title,
                                 'description': descCtrl.text.trim(),
-                                'price_unit': priceUnit,
                                 'is_active': isActive,
                                 'subcategory_id': subId,
-                                'price_from': pFrom,
-                                'price_to': pTo,
                               };
                               final updated = await ProvidersApi().updateMyService(existing.id, patch);
                               if (updated == null) {
