@@ -16,6 +16,10 @@ param(
     [Parameter(Mandatory = $false)]
     [switch]$Clean,
 
+    # Stronger clean: implies -Clean and -UninstallFirst for a 100% fresh install.
+    [Parameter(Mandatory = $false)]
+    [switch]$FullClean,
+
     [Parameter(Mandatory = $false)]
     [switch]$UninstallFirst,
 
@@ -95,6 +99,36 @@ function Start-AdbServer {
         & adb start-server 2>$null | Out-Null
     } catch {
         # Non-fatal: device detection will still fail later with a clearer message.
+    }
+}
+
+function Remove-PathWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $false)]
+        [int]$Retries = 4,
+
+        [Parameter(Mandatory = $false)]
+        [int]$DelayMs = 250
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $Retries; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq $Retries) {
+                Write-Warn "Failed to remove '$Path' after $Retries attempts. It may be locked by another process."
+                return
+            }
+            Start-Sleep -Milliseconds $DelayMs
+        }
     }
 }
 
@@ -256,6 +290,11 @@ Assert-Command -Name adb -InstallHint "Install Android Platform-Tools (adb) and 
 
 Start-AdbServer
 
+if ($FullClean) {
+    $Clean = $true
+    $UninstallFirst = $true
+}
+
 if ($Local) {
     if (-not $ApiBaseUrl) {
         $ApiBaseUrl = 'http://127.0.0.1:8000'
@@ -323,6 +362,13 @@ try {
         } catch {
             Write-Warn "adb reverse failed. If you're using a local backend, the phone may not reach it."
         }
+    } else {
+        # Avoid stale reverse mappings from previous local runs (can cause confusing networking behavior).
+        try {
+            & adb -s $DeviceId reverse --remove "tcp:$ReversePort" 2>$null | Out-Null
+        } catch {
+            # Non-fatal
+        }
     }
 
     if ($UninstallFirst) {
@@ -333,12 +379,28 @@ try {
         }
     } else {
         Write-Step "Updating app in-place (no uninstall; keeps app data)."
+
+        if ($Clean) {
+            Write-Step "Clearing app data for '$PackageName' (clean install without uninstall)..."
+            try {
+                & adb -s $DeviceId shell pm clear $PackageName | Out-Host
+            } catch {
+                Write-Warn "Could not clear app data (pm clear). App may not be installed yet. Continuing..."
+            }
+        }
     }
 
     if (-not $ApkPath) {
         if ($Clean) {
             Write-Step "Running flutter clean..."
             flutter clean
+
+            # flutter clean may fail to remove build if files are locked (Windows). Best-effort retry.
+            $buildDir = Join-Path $mobilePath 'build'
+            if (Test-Path -LiteralPath $buildDir) {
+                Write-Step "Removing build folder (best-effort)..."
+                Remove-PathWithRetry -Path $buildDir -Retries 6 -DelayMs 350
+            }
         }
 
         Write-Step "Running flutter pub get..."

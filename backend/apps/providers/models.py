@@ -41,6 +41,8 @@ class ProviderProfile(models.Model):
 
     provider_type = models.CharField(max_length=20, choices=PROVIDER_TYPE_CHOICES)
     display_name = models.CharField(max_length=150)
+    profile_image = models.FileField(upload_to="providers/profile/%Y/%m/", null=True, blank=True)
+    cover_image = models.FileField(upload_to="providers/cover/%Y/%m/", null=True, blank=True)
     bio = models.TextField(max_length=300)
     years_experience = models.PositiveIntegerField(default=0)
 

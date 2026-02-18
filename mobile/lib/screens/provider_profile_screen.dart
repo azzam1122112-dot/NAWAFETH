@@ -11,7 +11,6 @@ import '../widgets/platform_report_dialog.dart';
 import 'provider_dashboard/reviews_tab.dart';
 import 'network_video_player_screen.dart';
 import 'service_request_form_screen.dart';
-import 'provider_service_detail_screen.dart';
 import '../services/providers_api.dart'; // Added
 import '../services/api_config.dart';
 import '../models/provider.dart'; // Added
@@ -80,13 +79,13 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   final List<Map<String, dynamic>> tabs = const [
     {"title": "الملف الشخصي", "icon": Icons.person_outline},
-    {"title": "خدماتي", "icon": Icons.work_outline},
+    {"title": "التصنيفات", "icon": Icons.work_outline},
     {"title": "معرض خدماتي", "icon": Icons.photo_library},
     {"title": "المراجعات", "icon": Icons.reviews},
   ];
 
-  // خدمات مقدم الخدمة (API)
-  List<ProviderService> _providerServices = const [];
+  // تصنيفات مقدم الخدمة (API) (الخدمات = التصنيفات الرئيسية/الفرعية)
+  List<ProviderServiceSubcategory> _providerSubcategories = const [];
   bool _servicesLoading = true;
 
   // ✅ معرض خدماتي (API)
@@ -182,7 +181,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     _loadMyPhone();
     if (widget.providerId != null) {
       _loadProviderData();
-      _loadProviderServices();
+      _loadProviderSubcategories();
       _loadProviderPortfolio();
       _syncClientSocialState();
     }
@@ -334,30 +333,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       }
     } catch (e) {
       debugPrint('Error loading provider: $e');
-    }
-  }
-
-  Future<void> _loadProviderServices() async {
-    try {
-      final id = int.tryParse(widget.providerId ?? '');
-      if (id == null) return;
-
-      if (mounted) {
-        setState(() => _servicesLoading = true);
-      }
-
-      final services = await ProvidersApi().getProviderServices(id);
-      if (!mounted) return;
-      setState(() {
-        _providerServices = services;
-        _servicesLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _providerServices = const [];
-        _servicesLoading = false;
-      });
     }
   }
 
@@ -1610,7 +1585,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            'الخدمات',
+            'التصنيفات',
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 14,
@@ -1619,7 +1594,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             ),
           ),
           TextButton.icon(
-            onPressed: _servicesLoading ? null : _loadProviderServices,
+            onPressed: _servicesLoading ? null : _loadProviderSubcategories,
             icon: Icon(Icons.refresh, color: mainColor),
             label: Text(
               'تحديث',
@@ -1647,7 +1622,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       );
     }
 
-    if (_providerServices.isEmpty) {
+    if (_providerSubcategories.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
@@ -1656,13 +1631,13 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             const SizedBox(height: 14),
             const Center(
               child: Text(
-                'لا توجد خدمات معروضة حالياً',
+                'لا توجد تصنيفات محددة حالياً',
                 style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _loadProviderServices,
+              onPressed: _loadProviderSubcategories,
               icon: const Icon(Icons.refresh),
               label: const Text('إعادة المحاولة', style: TextStyle(fontFamily: 'Cairo')),
             ),
@@ -1678,18 +1653,12 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _providerServices.length,
+          itemCount: _providerSubcategories.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
-            final s = _providerServices[index];
-            final subtitleBits = <String>[];
-            if (s.subcategory?.name != null && s.subcategory!.name.trim().isNotEmpty) {
-              subtitleBits.add(s.subcategory!.name);
-            }
-            subtitleBits.add(s.priceText());
-            if (s.description.trim().isNotEmpty) {
-              subtitleBits.add(s.description.trim());
-            }
+            final s = _providerSubcategories[index];
+            final cat = (s.categoryName ?? '').trim();
+            final subtitle = cat.isNotEmpty ? cat : '—';
 
             return Container(
               decoration: BoxDecoration(
@@ -1702,22 +1671,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                 ),
               ),
               child: ListTile(
-                onTap: () {
-                  final id = (widget.providerId ?? '').trim();
-                  if (id.isEmpty) return;
-
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ProviderServiceDetailScreen(
-                        service: s,
-                        providerName: providerName,
-                        providerId: id,
-                      ),
-                    ),
-                  );
-                },
                 title: Text(
-                  s.title,
+                  s.name,
                   style: TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -1725,19 +1680,49 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ),
                 ),
                 subtitle: Text(
-                  subtitleBits.join(' • '),
+                  subtitle,
                   style: TextStyle(
                     fontFamily: 'Cairo',
                     color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[300] : Colors.grey[700],
                   ),
                 ),
-                trailing: const Icon(Icons.chevron_left),
+                trailing: const Icon(Icons.label_outline),
               ),
             );
           },
         ),
       ],
     );
+  }
+
+  Future<void> _loadProviderSubcategories() async {
+    final id = int.tryParse((widget.providerId ?? '').trim());
+    if (id == null) {
+      if (!mounted) return;
+      setState(() {
+        _providerSubcategories = const [];
+        _servicesLoading = false;
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _servicesLoading = true);
+
+    try {
+      final subs = await ProvidersApi().getProviderSubcategories(id);
+      if (!mounted) return;
+      setState(() {
+        _providerSubcategories = subs;
+        _servicesLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _providerSubcategories = const [];
+        _servicesLoading = false;
+      });
+    }
   }
 
   Widget _galleryTab() {

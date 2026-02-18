@@ -64,6 +64,8 @@ class ProviderProfileMeSerializer(serializers.ModelSerializer):
             "id",
             "provider_type",
             "display_name",
+            "profile_image",
+            "cover_image",
             "bio",
             "about_details",
             "years_experience",
@@ -109,6 +111,8 @@ class ProviderPublicSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "display_name",
+            "profile_image",
+            "cover_image",
             "bio",
             "years_experience",
             "phone",

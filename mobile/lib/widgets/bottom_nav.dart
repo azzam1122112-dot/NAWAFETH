@@ -5,18 +5,16 @@ import '../utils/auth_guard.dart';
 
 class CustomBottomNav extends StatelessWidget {
   final int currentIndex;
-  final bool homeVariant;
 
   const CustomBottomNav({
     required this.currentIndex,
-    this.homeVariant = false,
     super.key,
   });
 
   Future<void> _navigate(BuildContext context, int index) async {
     if (currentIndex >= 0 && index == currentIndex) return;
     final role = RoleController.instance.notifier.value;
-    if (!homeVariant && index == 1 && role.isProvider) return;
+    if (index == 1 && role.isProvider) return;
 
     // Guard profile and secondary tabs
     if (index == 1 || index == 3) {
@@ -30,11 +28,7 @@ class CustomBottomNav extends StatelessWidget {
         Navigator.pushReplacementNamed(context, '/home');
         break;
       case 1:
-        if (homeVariant) {
-          Navigator.pushNamed(context, '/chats');
-        } else {
-          Navigator.pushReplacementNamed(context, '/orders');
-        }
+        Navigator.pushReplacementNamed(context, '/orders');
         break;
       case 2:
         Navigator.pushReplacementNamed(context, '/interactive');
@@ -57,7 +51,7 @@ class CustomBottomNav extends StatelessWidget {
     return ValueListenableBuilder<RoleState>(
       valueListenable: RoleController.instance.notifier,
       builder: (context, role, _) {
-        final disableOrders = !homeVariant && role.isProvider;
+        final hideOrders = role.isProvider;
         return Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
@@ -87,15 +81,15 @@ class CustomBottomNav extends StatelessWidget {
                       selected: currentIndex == 0,
                       onTap: () => _navigate(context, 0),
                     ),
-                    IconWithLabel(
-                      icon: homeVariant
-                          ? Icons.chat_bubble_outline_rounded
-                          : Icons.list_alt,
-                      label: homeVariant ? "محادثاتي" : "طلباتي",
-                      selected: currentIndex == 1,
-                      enabled: !disableOrders,
-                      onTap: () => _navigate(context, 1),
-                    ),
+                    if (!hideOrders)
+                      IconWithLabel(
+                        icon: Icons.list_alt,
+                        label: "طلباتي",
+                        selected: currentIndex == 1,
+                        onTap: () => _navigate(context, 1),
+                      )
+                    else
+                      const SizedBox(width: 44),
                     const SizedBox(width: 40),
                     IconWithLabel(
                       icon: Icons.group,
@@ -231,6 +225,16 @@ class IconWithLabel extends StatelessWidget {
                 fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 color: contentColor,
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: selected && enabled ? 18 : 0,
+              height: 3,
+              decoration: BoxDecoration(
+                color: selected && enabled ? activeColor : Colors.transparent,
+                borderRadius: BorderRadius.circular(99),
               ),
             ),
           ],

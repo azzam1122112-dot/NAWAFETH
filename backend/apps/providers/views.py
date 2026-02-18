@@ -25,6 +25,7 @@ from .models import (
 from .serializers import (
 	CategorySerializer,
 	MyProviderSubcategoriesSerializer,
+	SubCategoryWithCategorySerializer,
 	ProviderServicePublicSerializer,
 	ProviderServiceSerializer,
 	ProviderPortfolioItemCreateSerializer,
@@ -141,6 +142,25 @@ class ProviderServicesPublicListView(generics.ListAPIView):
 		)
 
 
+class ProviderSubcategoriesPublicListView(generics.ListAPIView):
+	"""Public list of a provider's selected service subcategories."""
+
+	serializer_class = SubCategoryWithCategorySerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		provider_id = self.kwargs.get("provider_id")
+		return (
+			SubCategory.objects.filter(
+				is_active=True,
+				providercategory__provider_id=provider_id,
+			)
+			.select_related("category")
+			.distinct()
+			.order_by("category_id", "name")
+		)
+
+
 class CategoryListView(generics.ListAPIView):
 	queryset = Category.objects.filter(is_active=True)
 	serializer_class = CategorySerializer
@@ -174,7 +194,6 @@ class ProviderListView(generics.ListAPIView):
 			ProviderProfile.objects.select_related("user")
 			.filter(
 				user__is_active=True,
-				user__role_state=UserRole.PROVIDER,
 			)
 			.annotate(
 				followers_count=Count("followers", distinct=True),
@@ -227,7 +246,6 @@ class ProviderDetailView(generics.RetrieveAPIView):
 			ProviderProfile.objects.select_related("user")
 			.filter(
 				user__is_active=True,
-				user__role_state=UserRole.PROVIDER,
 			)
 			.annotate(
 				followers_count=Count("followers", distinct=True),

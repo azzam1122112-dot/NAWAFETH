@@ -213,8 +213,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
         return 'in_progress';
       }
       if (raw == 'completed') return 'completed';
-      if (raw == 'cancelled' || raw == 'canceled' || raw == 'expired')
+      if (raw == 'cancelled' || raw == 'canceled' || raw == 'expired') {
         return 'cancelled';
+      }
     }
 
     final label = (req['status_label'] ?? '').toString().trim();
@@ -456,9 +457,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: typeColor.withOpacity(0.15),
+                    color: typeColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: typeColor.withOpacity(0.4)),
+                    border: Border.all(color: typeColor.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     typeLabel,
@@ -476,9 +477,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.15),
+                    color: statusColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: statusColor.withOpacity(0.4)),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     statusAr,
@@ -824,8 +825,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
   @override
   Widget build(BuildContext context) {
     if (!_accountChecked) {
-      if (widget.embedded)
+      if (widget.embedded) {
         return const Center(child: CircularProgressIndicator());
+      }
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
@@ -843,17 +845,29 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
               color: _mainColor,
               child: TabBar(
                 controller: _tabController,
-                indicatorColor: Colors.white,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
+                indicator: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                indicatorPadding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 6,
+                ),
+                labelColor: _mainColor,
+                unselectedLabelColor: Colors.white,
                 labelStyle: const TextStyle(
                   fontFamily: 'Cairo',
                   fontWeight: FontWeight.bold,
                 ),
+                unselectedLabelStyle: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w700,
+                ),
+                dividerColor: Colors.transparent,
                 tabs: const [
-                  Tab(text: 'طلباتي'),
-                  Tab(text: 'العاجلة المتاحة'),
-                  Tab(text: 'العروض المتاحة'),
+                  Tab(text: 'طلب مباشر'),
+                  Tab(text: 'طلب عاجل'),
+                  Tab(text: 'عروض أسعار'),
                 ],
               ),
             ),
@@ -880,20 +894,34 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
           backgroundColor: _mainColor,
           foregroundColor: Colors.white,
           title: const Text(
-            'تتبع الطلبات',
+            'إدارة الطلبات',
             style: TextStyle(fontFamily: 'Cairo'),
           ),
           bottom: TabBar(
             controller: _tabController,
-            indicatorColor: Colors.white,
+            indicator: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            indicatorPadding: const EdgeInsets.symmetric(
+              horizontal: 6,
+              vertical: 6,
+            ),
+            labelColor: _mainColor,
+            unselectedLabelColor: Colors.white,
             labelStyle: const TextStyle(
               fontFamily: 'Cairo',
               fontWeight: FontWeight.bold,
             ),
+            unselectedLabelStyle: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w700,
+            ),
+            dividerColor: Colors.transparent,
             tabs: const [
-              Tab(text: 'طلباتي'),
-              Tab(text: 'العاجلة المتاحة'),
-              Tab(text: 'العروض المتاحة'),
+              Tab(text: 'طلب مباشر'),
+              Tab(text: 'طلب عاجل'),
+              Tab(text: 'عروض أسعار'),
             ],
           ),
         ),

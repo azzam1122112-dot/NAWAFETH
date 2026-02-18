@@ -193,6 +193,22 @@ class ProvidersApi {
     }
   }
 
+  Future<List<ProviderServiceSubcategory>> getProviderSubcategories(int providerId) async {
+    try {
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/$providerId/subcategories/',
+      );
+      final rawList = _extractList(res.data);
+      final list = rawList
+          .whereType<Map>()
+          .map((e) => ProviderServiceSubcategory.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<List<ProviderService>> getMyServices() async {
     try {
       final res = await _dio.get(
@@ -584,6 +600,46 @@ class ProvidersApi {
       return res.data as Map<String, dynamic>;
     }
     return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>?> uploadMyProviderImages({
+    String? profileImagePath,
+    String? coverImagePath,
+  }) async {
+    final profile = (profileImagePath ?? '').trim();
+    final cover = (coverImagePath ?? '').trim();
+    if (profile.isEmpty && cover.isEmpty) return null;
+
+    try {
+      final form = FormData();
+      if (profile.isNotEmpty) {
+        form.files.add(
+          MapEntry(
+            'profile_image',
+            await MultipartFile.fromFile(profile),
+          ),
+        );
+      }
+      if (cover.isNotEmpty) {
+        form.files.add(
+          MapEntry(
+            'cover_image',
+            await MultipartFile.fromFile(cover),
+          ),
+        );
+      }
+
+      final res = await _dio.patch(
+        '${ApiConfig.apiPrefix}/providers/me/profile/',
+        data: form,
+      );
+      if (res.data is Map<String, dynamic>) {
+        return res.data as Map<String, dynamic>;
+      }
+      return Map<String, dynamic>.from(res.data as Map);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<int>> getMyProviderSubcategories() async {

@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import OTP
 from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 
 @pytest.mark.django_db
@@ -266,3 +267,35 @@ def test_provider_list_supports_urgent_and_location_filters():
     payload = res.json()
     assert len(payload) == 1
     assert payload[0]["display_name"] == "مزود عاجل مع موقع"
+
+
+@pytest.mark.django_db
+def test_provider_can_upload_profile_and_cover_images(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+
+    client = APIClient()
+    _register_and_auth_provider(client, phone="0500000099")
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfeA\x89\x1e\x1b\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    profile_upload = SimpleUploadedFile("profile.png", png_bytes, content_type="image/png")
+    cover_upload = SimpleUploadedFile("cover.png", png_bytes, content_type="image/png")
+
+    res = client.patch(
+        "/api/providers/me/profile/",
+        {
+            "profile_image": profile_upload,
+            "cover_image": cover_upload,
+        },
+        format="multipart",
+    )
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload.get("profile_image")
+    assert payload.get("cover_image")
+
+    profile = ProviderProfile.objects.get(user__phone="0500000099")
+    assert bool(profile.profile_image)
+    assert bool(profile.cover_image)

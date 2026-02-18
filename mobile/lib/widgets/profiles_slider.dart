@@ -26,7 +26,10 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
   }
 
   Future<void> _fetchProviders() async {
-    final list = await HomeFeedService.instance.getTopProviders(limit: 20);
+    final list = await HomeFeedService.instance.getTopProviders(
+      limit: 20,
+      forceRefresh: true,
+    );
     if (mounted) {
       if (list.isEmpty) {
         setState(() => _loading = false);

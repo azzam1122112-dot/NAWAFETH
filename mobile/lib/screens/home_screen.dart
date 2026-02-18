@@ -126,7 +126,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       bottomNavigationBar: const CustomBottomNav(
         currentIndex: 0,
-        homeVariant: true,
       ),
     );
   }
