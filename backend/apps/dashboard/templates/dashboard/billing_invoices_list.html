@@ -38,6 +38,7 @@
         <th class="text-right px-4 py-3">الحالة</th>
         <th class="text-right px-4 py-3">المرجع</th>
         <th class="text-right px-4 py-3">محاولات</th>
+        <th class="text-right px-4 py-3">إجراءات</th>
         <th class="text-right px-4 py-3">تاريخ</th>
       </tr>
     </thead>
@@ -51,10 +52,34 @@
         <td class="px-4 py-3">{{ inv.get_status_display }}</td>
         <td class="px-4 py-3">{{ inv.reference_type|default:"—" }} / {{ inv.reference_id|default:"—" }}</td>
         <td class="px-4 py-3">{{ inv.attempts.count }}</td>
+        <td class="px-4 py-3">
+          {% if can_write %}
+            <div class="flex items-center gap-2">
+              <form method="post" action="{% url 'dashboard:billing_invoice_set_status_action' inv.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="mark_paid">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold">
+                  مدفوعة
+                </button>
+              </form>
+              <form method="post" action="{% url 'dashboard:billing_invoice_set_status_action' inv.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="mark_unpaid">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold">
+                  غير مدفوعة
+                </button>
+              </form>
+            </div>
+          {% else %}
+            <span class="text-gray-400">—</span>
+          {% endif %}
+        </td>
         <td class="px-4 py-3">{{ inv.created_at|date:"Y-m-d H:i" }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">لا توجد فواتير.</td></tr>
+      <tr><td colspan="9" class="px-4 py-8 text-center text-gray-400">لا توجد فواتير.</td></tr>
       {% endfor %}
     </tbody>
   </table>

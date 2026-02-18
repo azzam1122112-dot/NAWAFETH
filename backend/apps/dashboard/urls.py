@@ -13,6 +13,11 @@ urlpatterns = [
 
     path("services/", views.services_list, name="services_list"),
     path("billing/", views.billing_invoices_list, name="billing_invoices_list"),
+    path(
+        "billing/<int:invoice_id>/actions/set-status/",
+        views.billing_invoice_set_status_action,
+        name="billing_invoice_set_status_action",
+    ),
     path("support/", views.support_tickets_list, name="support_tickets_list"),
     path("support/<int:ticket_id>/", views.support_ticket_detail, name="support_ticket_detail"),
     path("support/<int:ticket_id>/actions/assign/", views.support_ticket_assign_action, name="support_ticket_assign_action"),

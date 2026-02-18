@@ -1137,8 +1137,36 @@ def billing_invoices_list(request: HttpRequest) -> HttpResponse:
             "status_val": status_val,
             "ref_type": ref_type,
             "status_choices": InvoiceStatus.choices,
+            "can_write": _dashboard_allowed(request.user, "billing", write=True),
         },
     )
+
+
+@staff_member_required
+@dashboard_access_required("billing", write=True)
+@require_POST
+def billing_invoice_set_status_action(request: HttpRequest, invoice_id: int) -> HttpResponse:
+    invoice = get_object_or_404(Invoice, id=invoice_id)
+    action = (request.POST.get("action") or "").strip().lower()
+
+    if action == "mark_paid":
+        invoice.mark_paid()
+        invoice.cancelled_at = None
+        invoice.save(update_fields=["status", "paid_at", "cancelled_at", "updated_at"])
+        messages.success(request, f"تم تعليم الفاتورة {invoice.code or invoice.id} كمدفوعة")
+    elif action == "mark_unpaid":
+        invoice.status = InvoiceStatus.PENDING
+        invoice.paid_at = None
+        invoice.cancelled_at = None
+        invoice.save(update_fields=["status", "paid_at", "cancelled_at", "updated_at"])
+        messages.success(request, f"تم تعليم الفاتورة {invoice.code or invoice.id} كغير مدفوعة")
+    else:
+        messages.warning(request, "إجراء غير صالح")
+
+    next_url = (request.POST.get("next") or "").strip()
+    if next_url:
+        return redirect(next_url)
+    return redirect("dashboard:billing_invoices_list")
 
 
 @staff_member_required
