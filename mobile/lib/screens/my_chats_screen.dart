@@ -8,6 +8,7 @@ import '../services/marketplace_api.dart';
 import '../services/messaging_api.dart';
 import '../services/role_controller.dart';
 import '../services/session_storage.dart';
+import '../utils/auth_guard.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
@@ -32,6 +33,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   bool _isProviderAccount = false;
   bool _isLoading = true;
   bool _hasError = false;
+  bool _loginRequired = false;
   int? _myUserId;
 
   List<Map<String, dynamic>> _allChats = <Map<String, dynamic>>[];
@@ -77,7 +79,21 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     setState(() {
       _isLoading = true;
       _hasError = false;
+      _loginRequired = false;
     });
+
+    final loggedIn = await _session.isLoggedIn();
+    if (!loggedIn) {
+      if (!mounted) return;
+      _closeAllSockets();
+      setState(() {
+        _allChats = <Map<String, dynamic>>[];
+        _isLoading = false;
+        _hasError = false;
+        _loginRequired = true;
+      });
+      return;
+    }
 
     try {
       _myUserId = await _session.readUserId();
@@ -459,6 +475,12 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loginRequired
+                    ? _StateMessage(
+                        text: 'تسجيل الدخول مطلوب لعرض المحادثات.',
+                        action: 'دخول',
+                        onTap: () => checkAuth(context),
+                      )
                 : _hasError
                 ? _StateMessage(
                     text: 'تعذر تحميل المحادثات.',

@@ -39,8 +39,102 @@ Future<bool> checkAuth(BuildContext context) async {
 
 /// Checks if user has completed profile (Full Client)
 Future<bool> checkFullClient(BuildContext context) async {
-  // First ensure logged in
-  if (!await checkAuth(context)) return false;
+  final token = await const SessionStorage().readAccessToken();
+  final hasToken = token != null && token.isNotEmpty;
+
+  Future<void> showRegistrationRequiredDialog({required bool canOpenSignup}) async {
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF9C2D9E), width: 1.2),
+        ),
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: InkWell(
+                    onTap: () => Navigator.pop(ctx),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: Text(
+                        'x',
+                        style: TextStyle(
+                          color: Color(0xFF7F1D8D),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'نرجو استكمال معلومات التسجيل لتتمكن من الاستفادة من خدمات المنصة',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 15,
+                    color: Color(0xFF7F1D8D),
+                    fontWeight: FontWeight.w600,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: SizedBox(
+                    width: 140,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFEBC8EE),
+                        foregroundColor: const Color(0xFF7F1D8D),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        if (canOpenSignup) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                          );
+                        } else {
+                          Navigator.pushNamed(context, '/login');
+                        }
+                      },
+                      child: const Text(
+                        'التسجيل',
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  if (!hasToken) {
+    await showRegistrationRequiredDialog(canOpenSignup: false);
+    return false;
+  }
 
   bool isCompleted = false;
   try {
@@ -54,33 +148,7 @@ Future<bool> checkFullClient(BuildContext context) async {
   }
 
   if (!isCompleted) {
-    if (!context.mounted) return false;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('إكمال التسجيل', textAlign: TextAlign.right),
-        content: const Text(
-          'للاستفادة من هذه الميزة (الطلبات، التقييم، التسجيل كمزود، إلخ)، يرجى استكمال بياناتك الأساسية.',
-          textAlign: TextAlign.right,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('لاحقاً'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.push(
-                context, 
-                MaterialPageRoute(builder: (_) => const SignUpScreen()),
-              );
-            },
-            child: const Text('إكمال الآن'),
-          ),
-        ],
-      ),
-    );
+    await showRegistrationRequiredDialog(canOpenSignup: true);
     return false;
   }
   

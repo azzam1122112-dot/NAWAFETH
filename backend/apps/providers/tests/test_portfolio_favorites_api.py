@@ -163,3 +163,31 @@ def test_following_is_ordered_by_latest_activity(settings, tmp_path):
     assert following.status_code == 200
     providers = following.json()
     assert [p["id"] for p in providers][:2] == [p1.id, p2.id]
+
+
+@pytest.mark.django_db
+def test_provider_can_delete_own_portfolio_item(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+
+    provider_api = APIClient()
+    provider_phone = "0500000721"
+    provider_access = _login_via_otp(provider_api, provider_phone)
+    _complete_registration(provider_api, provider_access, provider_phone)
+    _register_provider(provider_api)
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfeA\x89\x1e\x1b\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    upload = SimpleUploadedFile("tiny_del.png", png_bytes, content_type="image/png")
+    created = provider_api.post(
+        "/api/providers/me/portfolio/",
+        {"file_type": "image", "caption": "to delete", "file": upload},
+        format="multipart",
+    )
+    assert created.status_code == 201
+    item_id = created.json()["id"]
+
+    deleted = provider_api.delete(f"/api/providers/me/portfolio/{item_id}/")
+    assert deleted.status_code == 204
+    assert not ProviderPortfolioItem.objects.filter(id=item_id).exists()

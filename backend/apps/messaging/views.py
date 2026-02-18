@@ -11,6 +11,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.permissions import IsAtLeastPhoneOnly, ROLE_LEVELS, role_level
 from apps.marketplace.models import ServiceRequest
 from apps.providers.models import ProviderProfile
 
@@ -48,6 +49,8 @@ def post_message(request, thread_id: int):
 		user = request.user
 		if not user or not user.is_authenticated:
 			return JsonResponse({"ok": False, "error": "غير مصرح"}, status=401)
+		if role_level(user) < ROLE_LEVELS["phone_only"]:
+			return JsonResponse({"ok": False, "error": "غير مصرح"}, status=403)
 
 		thread = (
 			Thread.objects.select_related("request", "request__client", "request__provider__user")
@@ -112,7 +115,7 @@ def post_message(request, thread_id: int):
 
 
 class GetOrCreateThreadView(APIView):
-	permission_classes = [permissions.IsAuthenticated, IsRequestParticipant]
+	permission_classes = [IsAtLeastPhoneOnly, IsRequestParticipant]
 
 	def get(self, request, request_id):
 		service_request = get_object_or_404(ServiceRequest, id=request_id)
@@ -125,7 +128,7 @@ class GetOrCreateThreadView(APIView):
 
 
 class ThreadMessagesListView(generics.ListAPIView):
-	permission_classes = [permissions.IsAuthenticated, IsRequestParticipant]
+	permission_classes = [IsAtLeastPhoneOnly, IsRequestParticipant]
 	serializer_class = MessageListSerializer
 	pagination_class = MessagePagination
 
@@ -141,7 +144,7 @@ class ThreadMessagesListView(generics.ListAPIView):
 
 
 class SendMessageView(APIView):
-	permission_classes = [permissions.IsAuthenticated, IsRequestParticipant]
+	permission_classes = [IsAtLeastPhoneOnly, IsRequestParticipant]
 
 	def post(self, request, request_id):
 		service_request = get_object_or_404(ServiceRequest, id=request_id)
@@ -164,7 +167,7 @@ class SendMessageView(APIView):
 
 
 class MarkThreadReadView(APIView):
-	permission_classes = [permissions.IsAuthenticated, IsRequestParticipant]
+	permission_classes = [IsAtLeastPhoneOnly, IsRequestParticipant]
 
 	def post(self, request, request_id):
 		thread = get_object_or_404(Thread, request_id=request_id)
@@ -198,7 +201,7 @@ class MarkThreadReadView(APIView):
 
 class DirectThreadGetOrCreateView(APIView):
 	"""Create or get an existing direct thread between the current user and a provider."""
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastPhoneOnly]
 
 	def post(self, request):
 		provider_id = request.data.get("provider_id")
@@ -235,7 +238,7 @@ class DirectThreadGetOrCreateView(APIView):
 
 class DirectThreadMessagesListView(generics.ListAPIView):
 	"""List messages in a direct thread."""
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastPhoneOnly]
 	serializer_class = MessageListSerializer
 	pagination_class = MessagePagination
 
@@ -255,7 +258,7 @@ class DirectThreadMessagesListView(generics.ListAPIView):
 
 class DirectThreadSendMessageView(APIView):
 	"""Send a message in a direct thread."""
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastPhoneOnly]
 
 	def post(self, request, thread_id):
 		thread = get_object_or_404(Thread, id=thread_id, is_direct=True)
@@ -280,7 +283,7 @@ class DirectThreadSendMessageView(APIView):
 
 class DirectThreadMarkReadView(APIView):
 	"""Mark all messages in a direct thread as read."""
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastPhoneOnly]
 
 	def post(self, request, thread_id):
 		thread = get_object_or_404(Thread, id=thread_id, is_direct=True)
@@ -314,7 +317,7 @@ class DirectThreadMarkReadView(APIView):
 
 class MyDirectThreadsListView(APIView):
 	"""List all direct threads for the current user."""
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastPhoneOnly]
 
 	def get(self, request):
 		from django.db.models import Q, Max, Subquery, OuterRef

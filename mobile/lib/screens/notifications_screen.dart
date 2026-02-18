@@ -6,6 +6,7 @@ import '../services/notifications_api.dart';
 import '../services/notifications_badge_controller.dart';
 import '../services/notification_link_handler.dart';
 import '../services/role_controller.dart';
+import '../services/session_storage.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -17,6 +18,7 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final _api = NotificationsApi();
   final _scroll = ScrollController();
+  final _session = const SessionStorage();
 
   final List<AppNotification> _items = [];
   bool _loading = false;
@@ -24,13 +26,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _hasMore = true;
   int _offset = 0;
   String? _error;
+  bool _loginRequired = false;
 
   static const int _limit = 20;
 
   @override
   void initState() {
     super.initState();
-    _loadInitial();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final loggedIn = await _session.isLoggedIn();
+      if (!loggedIn) {
+        setState(() {
+          _loading = false;
+          _error = 'تسجيل الدخول مطلوب';
+          _loginRequired = true;
+        });
+        return;
+      }
+      await _loadInitial();
+    });
     _scroll.addListener(_onScroll);
     RoleController.instance.notifier.addListener(_onRoleChanged);
   }
@@ -57,9 +72,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _loadInitial() async {
+    final loggedIn = await _session.isLoggedIn();
+    if (!loggedIn) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'تسجيل الدخول مطلوب';
+        _loginRequired = true;
+        _items.clear();
+        _offset = 0;
+        _hasMore = true;
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
+      _loginRequired = false;
       _items.clear();
       _offset = 0;
       _hasMore = true;
@@ -95,6 +125,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _loadMore() async {
     if (!_hasMore) return;
+    final loggedIn = await _session.isLoggedIn();
+    if (!loggedIn) return;
     setState(() {
       _loadingMore = true;
     });
@@ -148,6 +180,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _markAllRead() async {
+    final loggedIn = await _session.isLoggedIn();
+    if (!loggedIn) {
+      if (!mounted) return;
+      await checkAuth(context);
+      return;
+    }
+
     try {
       await _api.markAllRead();
       if (!mounted) return;
@@ -370,8 +409,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         const SizedBox(height: 12),
                         Center(
                           child: ElevatedButton(
-                            onPressed: _loadInitial,
-                            child: const Text('إعادة المحاولة', style: TextStyle(fontFamily: 'Cairo')),
+                            onPressed: _loginRequired
+                                ? () => checkAuth(context)
+                                : _loadInitial,
+                            child: Text(
+                              _loginRequired ? 'دخول' : 'إعادة المحاولة',
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
                           ),
                         ),
                       ],

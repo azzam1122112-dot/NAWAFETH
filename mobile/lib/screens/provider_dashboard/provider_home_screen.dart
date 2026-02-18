@@ -3,14 +3,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../services/account_api.dart';
 import '../../services/api_config.dart';
 import '../../services/providers_api.dart';
 import '../../services/reviews_api.dart';
 import '../../services/account_switcher.dart';
+import '../../services/marketplace_api.dart';
 import '../../constants/colors.dart';
+import '../../models/provider_portfolio_item.dart';
 
 import '../../widgets/bottom_nav.dart';
 import '../../widgets/custom_drawer.dart';
@@ -26,6 +30,7 @@ import 'provider_orders_screen.dart';
 import 'provider_profile_completion_screen.dart';
 import '../plans_screen.dart';
 import '../additional_services_screen.dart';
+import '../../screens/network_video_player_screen.dart';
 
 class ProviderHomeScreen extends StatefulWidget {
   const ProviderHomeScreen({super.key});
@@ -52,10 +57,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   int? _likesReceivedCount;
   int? _providerId;
   double _profileCompletion = 0.0;
+  String _profileBio = '';
+  String _profileAboutDetails = '';
+  String _accountFirstName = '';
+  String _accountLastName = '';
 
   double _ratingAvg = 0.0;
   int _ratingCount = 0;
   bool _switchingAccount = false;
+  int _completedOrdersCount = 0;
+
+  bool _loadingSpotlights = false;
+  bool _savingSpotlight = false;
+  List<ProviderPortfolioItem> _mySpotlights = const [];
 
   @override
   void initState() {
@@ -92,6 +106,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       final providerDisplayName = (myProfile?['display_name'] ?? '').toString().trim();
       final providerUsername = (me['username'] ?? '').toString().trim();
       final providerCity = (myProfile?['city'] ?? '').toString().trim();
+      final profileBio = (myProfile?['bio'] ?? '').toString().trim();
+      final profileAboutDetails = (myProfile?['about_details'] ?? '').toString().trim();
+      final accountFirstName = (me['first_name'] ?? '').toString().trim();
+      final accountLastName = (me['last_name'] ?? '').toString().trim();
 
       // --- Profile Completion Logic (backend-driven) ---
       bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
@@ -172,14 +190,228 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         _providerDisplayName = providerDisplayName.isEmpty ? null : providerDisplayName;
         _providerUsername = providerUsername.isEmpty ? null : providerUsername;
         _providerCity = providerCity.isEmpty ? null : providerCity;
+        _profileBio = profileBio;
+        _profileAboutDetails = profileAboutDetails;
+        _accountFirstName = accountFirstName;
+        _accountLastName = accountLastName;
         _profileCompletion = completionPercent;
         _ratingAvg = ratingAvg;
         _ratingCount = ratingCount;
         _isLoading = false;
       });
+      await _loadCompletedOrdersCount();
+      await _loadMySpotlights();
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadCompletedOrdersCount() async {
+    try {
+      final list = await MarketplaceApi().getMyProviderRequests(statusGroup: 'completed');
+      if (!mounted) return;
+      setState(() => _completedOrdersCount = list.length);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _completedOrdersCount = 0);
+    }
+  }
+
+  Future<void> _loadMySpotlights() async {
+    if (!mounted) return;
+    setState(() => _loadingSpotlights = true);
+    try {
+      final items = await ProvidersApi().getMyPortfolio();
+      if (!mounted) return;
+      setState(() {
+        _mySpotlights = items;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _mySpotlights = const [];
+      });
+    } finally {
+      if (mounted) setState(() => _loadingSpotlights = false);
+    }
+  }
+
+  String _detectFileType(String name) {
+    final lower = name.toLowerCase();
+    const videoExt = [
+      '.mp4',
+      '.mov',
+      '.avi',
+      '.mkv',
+      '.webm',
+      '.m4v',
+    ];
+    for (final ext in videoExt) {
+      if (lower.endsWith(ext)) return 'video';
+    }
+    return 'image';
+  }
+
+  Future<void> _createSpotlightFromFile(PlatformFile file) async {
+    if (_savingSpotlight) return;
+    final fileType = _detectFileType(file.name);
+    setState(() => _savingSpotlight = true);
+    try {
+      final created = await ProvidersApi().createMyPortfolioItem(
+        file: file,
+        fileType: fileType,
+      );
+      if (!mounted) return;
+      if (created == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ اللمحة')),
+        );
+        return;
+      }
+      await _loadMySpotlights();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ اللمحة بنجاح')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingSpotlight = false);
+    }
+  }
+
+  Future<void> _pickSpotlightImageFromGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+    final file = PlatformFile(
+      name: picked.name,
+      size: await File(picked.path).length(),
+      path: picked.path,
+    );
+    await _createSpotlightFromFile(file);
+  }
+
+  Future<void> _pickSpotlightFromCamera() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.camera);
+    if (picked == null) return;
+    final file = PlatformFile(
+      name: picked.name,
+      size: await File(picked.path).length(),
+      path: picked.path,
+    );
+    await _createSpotlightFromFile(file);
+  }
+
+  Future<void> _pickSpotlightFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const [
+        'png', 'jpg', 'jpeg', 'webp',
+        'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v',
+      ],
+    );
+    if (result == null || result.files.isEmpty) return;
+    await _createSpotlightFromFile(result.files.first);
+  }
+
+  Future<void> _showCreateSpotlightDialog() async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.deepPurple, width: 1.2),
+        ),
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.video_collection_outlined, color: AppColors.deepPurple),
+                    SizedBox(width: 8),
+                    Text(
+                      'إضافة لمحة',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.deepPurple,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _pickSpotlightImageFromGallery();
+                  },
+                  title: const Text('Photo Library', style: TextStyle(fontFamily: 'Cairo')),
+                  trailing: const Icon(Icons.photo_library_outlined),
+                ),
+                ListTile(
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _pickSpotlightFromCamera();
+                  },
+                  title: const Text('Take Photo', style: TextStyle(fontFamily: 'Cairo')),
+                  trailing: const Icon(Icons.camera_alt_outlined),
+                ),
+                ListTile(
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _pickSpotlightFile();
+                  },
+                  title: const Text('Choose File', style: TextStyle(fontFamily: 'Cairo')),
+                  trailing: const Icon(Icons.folder_open_outlined),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey.shade300,
+                          foregroundColor: AppColors.deepPurple,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteSpotlight(ProviderPortfolioItem item) async {
+    final ok = await ProvidersApi().deleteMyPortfolioItem(item.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حذف اللمحة')),
+      );
+      return;
+    }
+    await _loadMySpotlights();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم حذف اللمحة')),
+    );
   }
 
   Future<void> _pickImage({required bool isCover}) async {
@@ -193,9 +425,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   void _showQrDialog() {
+    final rootContext = context;
     showDialog(
       context: context,
-      builder: (context) => Dialog(
+      builder: (dialogContext) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -212,16 +445,34 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                   : QrImageView(data: _providerShareLink!, padding: EdgeInsets.zero,),
               ),
               const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: _providerShareLink == null ? null : () {
-                   Clipboard.setData(ClipboardData(text: _providerShareLink!));
-                   Navigator.pop(context);
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ الرابط')));
-                },
-                icon: const Icon(Icons.copy),
-                label: const Text('نسخ الرابط', style: TextStyle(fontFamily: 'Cairo')),
-                style: ElevatedButton.styleFrom(backgroundColor: providerPrimary, foregroundColor: Colors.white),
-              )
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _providerShareLink == null ? null : () async {
+                         final messenger = ScaffoldMessenger.of(rootContext);
+                         Navigator.pop(dialogContext);
+                         await Clipboard.setData(ClipboardData(text: _providerShareLink!));
+                         if (!mounted) return;
+                         messenger.showSnackBar(const SnackBar(content: Text('تم نسخ الرابط')));
+                      },
+                      icon: const Icon(Icons.copy),
+                      label: const Text('نسخ الرابط', style: TextStyle(fontFamily: 'Cairo')),
+                      style: ElevatedButton.styleFrom(backgroundColor: providerPrimary, foregroundColor: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _providerShareLink == null ? null : () async {
+                        await Share.share(_providerShareLink!);
+                      },
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('مشاركة', style: TextStyle(fontFamily: 'Cairo')),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -259,8 +510,8 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                 ),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-                    onPressed: () async => AccountSwitcher.show(context),
+                    icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
+                    onPressed: () => Navigator.pushNamed(context, '/notifications'),
                   ),
                   IconButton(
                     icon: const Icon(Icons.qr_code_2_rounded, color: Colors.white),
@@ -385,7 +636,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                                 Icon(Icons.edit, size: 14, color: Colors.white),
                                 SizedBox(width: 4),
                                 Text(
-                                  'غطاء',
+                                  'تعديل',
                                   style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12),
                                 ),
                               ],
@@ -415,20 +666,20 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
-                  _buildStatsRow(),
-                  const SizedBox(height: 14),
-                  _buildAccountModesSection(),
-                  const SizedBox(height: 14),
-                  _buildCompletionCard(),
-                  const SizedBox(height: 18),
-                  _buildActionGrid(),
-                  const SizedBox(height: 18),
-                  _buildQuickLinks(),
-                  const SizedBox(height: 36),
-                ],
-              ),
+                child: Column(
+                  children: [
+                    _buildSpotlightsSection(),
+                    const SizedBox(height: 16),
+                    _buildCompletionCard(),
+                    const SizedBox(height: 14),
+                    _buildActionGrid(),
+                    const SizedBox(height: 18),
+                    _buildAccountModesSection(),
+                    const SizedBox(height: 18),
+                    _buildQuickLinks(),
+                    const SizedBox(height: 36),
+                  ],
+                ),
             ),
           ),
         ),
@@ -446,77 +697,81 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     );
   }
 
-  Widget _buildStatsRow() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+  Widget _buildTopMetricsRow() {
+    final ratingText = _ratingAvg.toStringAsFixed(1);
+    return Row(
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.qr_code_2_rounded, color: AppColors.deepPurple, size: 18),
+            const SizedBox(width: 4),
+            const Text(
+              'QR',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+                color: AppColors.deepPurple,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: 8),
+        Text(
+          ratingText,
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: AppColors.deepPurple,
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _statItem(
-             label: 'المتابعين', 
-             value: (_followersCount ?? 0).toString(),
-             icon: Icons.people_outline,
-             color: AppColors.deepPurple,
+        ),
+        const SizedBox(width: 4),
+        const Icon(Icons.star_rounded, color: Colors.amber, size: 21),
+        const SizedBox(width: 4),
+        Text(
+          '($_ratingCount)',
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: AppColors.deepPurple.withValues(alpha: 0.8),
           ),
-          Container(width: 1, height: 40, color: Colors.grey[200]),
-          _statItem(
-             label: 'الإعجابات', 
-             value: (_likesReceivedCount ?? 0).toString(),
-             icon: Icons.thumb_up_alt_outlined,
-             color: AppColors.deepPurple,
+        ),
+        const Spacer(),
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: AppColors.deepPurple.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
           ),
-          Container(width: 1, height: 40, color: Colors.grey[200]),
-          _statItem(
-             label: 'التقييم', 
-             value: _ratingCount > 0
-                ? '${_ratingAvg.toStringAsFixed(1)} ($_ratingCount)'
-                : _ratingAvg.toStringAsFixed(1),
-             icon: Icons.star_rounded,
-             color: AppColors.deepPurple,
-          ),
-        ],
-      ),
+          child: const Icon(Icons.camera_alt_rounded, size: 16, color: AppColors.deepPurple),
+        ),
+        const SizedBox(width: 8),
+        _miniCounter(icon: Icons.bookmark_border_rounded, value: _mySpotlights.length.toString()),
+        const SizedBox(width: 8),
+        _miniCounter(icon: Icons.person_add_alt_1_rounded, value: (_followersCount ?? 0).toString()),
+        const SizedBox(width: 8),
+        _miniCounter(icon: Icons.thumb_up_alt_outlined, value: (_likesReceivedCount ?? 0).toString()),
+      ],
     );
   }
 
-  Widget _statItem({required String label, required String value, required IconData icon, required Color color}) {
+  Widget _miniCounter({
+    required IconData icon,
+    required String value,
+  }) {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        const SizedBox(height: 6),
+        Icon(icon, color: AppColors.deepPurple, size: 18),
+        const SizedBox(height: 2),
         Text(
           value,
           style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
             fontFamily: 'Cairo',
-            color: AppColors.softBlue,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[600],
+            color: AppColors.deepPurple,
+            fontWeight: FontWeight.w800,
             fontSize: 12,
-            fontFamily: 'Cairo',
           ),
         ),
       ],
@@ -571,6 +826,685 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildSpotlightsSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTopMetricsRow(),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _completedOrdersIcon(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _navToOrders,
+                  icon: const Icon(Icons.fact_check_outlined),
+                  label: const Text(
+                    'إدارة الطلبات',
+                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.deepPurple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 46,
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: _savingSpotlight ? null : _showCreateSpotlightDialog,
+                  icon: _savingSpotlight
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.video_call_rounded),
+                  label: const SizedBox.shrink(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryDark,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildTopShortcutRow(),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: _navToReviews,
+              icon: const Icon(Icons.star_border_rounded, size: 18),
+              label: const Text(
+                'صفحة التقييمات',
+                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.deepPurple,
+                side: BorderSide(color: AppColors.deepPurple.withValues(alpha: 0.35)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'اللمحات السابقة',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w800,
+              color: AppColors.deepPurple,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_loadingSpotlights)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: CircularProgressIndicator(color: AppColors.deepPurple),
+              ),
+            )
+          else if (_mySpotlights.isEmpty)
+            SizedBox(
+              height: 86,
+              child: Row(
+                children: List.generate(
+                  3,
+                  (index) => Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: AppColors.deepPurple.withValues(alpha: 0.45),
+                          width: 1.6,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.play_circle_outline_rounded,
+                          color: AppColors.deepPurple,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: 108,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _mySpotlights.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final item = _mySpotlights[index];
+                  return _buildSpotlightItem(item);
+                },
+              ),
+            ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.primaryDark.withValues(alpha: 0.24)),
+            ),
+            child: const Text(
+              'عندك خبرة ومهارة وعندك وقت؟ نافذتي تمكنك من استثمارها والتواصل مع من يحتاج خدماتك.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                color: AppColors.deepPurple,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildProviderInfoEditorCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProviderInfoEditorCard() {
+    final fullName = '${_accountFirstName.trim()} ${_accountLastName.trim()}'.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primaryDark.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        children: [
+          _editableInfoRow(
+            title: 'الاسم الكامل للحساب',
+            value: fullName.isEmpty ? 'غير مضاف' : fullName,
+            onEdit: _editAccountFullName,
+          ),
+          const SizedBox(height: 8),
+          _editableInfoRow(
+            title: 'اسم المستخدم (اختياري)',
+            value: (_providerUsername ?? '').trim().isEmpty ? 'غير مضاف' : '@${_providerUsername!.trim()}',
+            onEdit: _editUsername,
+          ),
+          const SizedBox(height: 8),
+          _editableInfoRow(
+            title: 'صفة الحساب',
+            value: _profileBio.isEmpty ? 'غير مضاف' : _profileBio,
+            onEdit: _editBio,
+          ),
+          const SizedBox(height: 8),
+          _editableInfoRow(
+            title: 'نبذة عنك (منشأتك) كمقدم خدمة',
+            value: _profileAboutDetails.isEmpty ? 'غير مضاف' : _profileAboutDetails,
+            maxLines: 3,
+            onEdit: _editAboutDetails,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _editableInfoRow({
+    required String title,
+    required String value,
+    required VoidCallback onEdit,
+    int maxLines = 1,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: AppColors.deepPurple,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                value,
+                maxLines: maxLines,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Colors.grey[800],
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: onEdit,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.deepPurple,
+            side: BorderSide(color: AppColors.deepPurple.withValues(alpha: 0.35)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            minimumSize: const Size(68, 30),
+          ),
+          child: const Text(
+            'تعديل',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopShortcutRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _circleShortcut(
+          icon: Icons.rate_review_outlined,
+          label: 'المراجعات',
+          onTap: _navToReviews,
+        ),
+        _circleShortcut(
+          icon: Icons.design_services_outlined,
+          label: 'خدماتي',
+          onTap: _navToServices,
+        ),
+        _circleShortcut(
+          icon: Icons.person_outline_rounded,
+          label: 'الملف الشخصي',
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProviderProfileCompletionScreen()),
+            ).then((_) => _loadProviderData());
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _completedOrdersIcon() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: _navToOrders,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.deepPurple.withValues(alpha: 0.60),
+            width: 1.4,
+          ),
+          color: AppColors.primaryLight,
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Center(
+              child: Icon(
+                Icons.assignment_outlined,
+                color: AppColors.deepPurple,
+                size: 24,
+              ),
+            ),
+            Positioned(
+              top: -5,
+              left: -5,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.deepPurple,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _completedOrdersCount.toString(),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _circleShortcut({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(99),
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.70), width: 2),
+            ),
+            child: Container(
+              margin: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primaryLight,
+                border: Border.all(color: AppColors.deepPurple.withValues(alpha: 0.26)),
+              ),
+              child: Icon(icon, color: AppColors.deepPurple, size: 26),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.deepPurple,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showSimpleEditDialog({
+    required String title,
+    required String initialValue,
+    int minLines = 1,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(title, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: TextField(
+          controller: controller,
+          minLines: minLines,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          textDirection: TextDirection.rtl,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editAccountFullName() async {
+    final current = '${_accountFirstName.trim()} ${_accountLastName.trim()}'.trim();
+    final value = await _showSimpleEditDialog(
+      title: 'تعديل الاسم الكامل',
+      initialValue: current,
+    );
+    if (value == null) return;
+    final parts = value.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final first = parts.isNotEmpty ? parts.first : '';
+    final last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    try {
+      await AccountApi().updateMe({
+        'first_name': first,
+        'last_name': last,
+      });
+      await _loadProviderData();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديث الاسم')),
+      );
+    }
+  }
+
+  Future<void> _editUsername() async {
+    final value = await _showSimpleEditDialog(
+      title: 'تعديل اسم المستخدم',
+      initialValue: (_providerUsername ?? '').trim(),
+    );
+    if (value == null) return;
+    final normalized = value.replaceAll(RegExp(r'\s+'), '_');
+    try {
+      await AccountApi().updateMe({'username': normalized});
+      await _loadProviderData();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديث اسم المستخدم')),
+      );
+    }
+  }
+
+  Future<void> _editBio() async {
+    final value = await _showSimpleEditDialog(
+      title: 'تعديل صفة الحساب',
+      initialValue: _profileBio,
+      minLines: 2,
+      maxLines: 3,
+    );
+    if (value == null) return;
+    try {
+      await ProvidersApi().updateMyProviderProfile({'bio': value});
+      await _loadProviderData();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديث صفة الحساب')),
+      );
+    }
+  }
+
+  Future<void> _editAboutDetails() async {
+    final value = await _showSimpleEditDialog(
+      title: 'تعديل النبذة',
+      initialValue: _profileAboutDetails,
+      minLines: 3,
+      maxLines: 5,
+    );
+    if (value == null) return;
+    try {
+      await ProvidersApi().updateMyProviderProfile({'about_details': value});
+      await _loadProviderData();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديث النبذة')),
+      );
+    }
+  }
+
+  Widget _buildSpotlightItem(ProviderPortfolioItem item) {
+    final isVideo = item.fileType.toLowerCase().contains('video');
+    return SizedBox(
+      width: 82,
+      child: Column(
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(99),
+                    onTap: () => _openSpotlight(item),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.deepPurple.withValues(alpha: 0.7),
+                          width: 2,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: ClipOval(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                item.fileUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  color: AppColors.primaryLight,
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.deepPurple,
+                                  ),
+                                ),
+                              ),
+                              if (isVideo)
+                                Container(
+                                  color: Colors.black.withValues(alpha: 0.24),
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.play_circle_fill_rounded,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  child: InkWell(
+                    onTap: () => _confirmDeleteSpotlight(item),
+                    borderRadius: BorderRadius.circular(99),
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.red),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            item.caption.trim().isEmpty ? 'لمحة' : item.caption.trim(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11,
+              color: AppColors.deepPurple,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openSpotlight(ProviderPortfolioItem item) async {
+    if (item.fileType.toLowerCase().contains('video')) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NetworkVideoPlayerScreen(
+            url: item.fileUrl,
+            title: item.caption.trim().isEmpty ? 'لمحة فيديو' : item.caption.trim(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 30),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                child: Image.network(
+                  item.fileUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const Center(
+                    child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 52),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: IconButton(
+                onPressed: () => Navigator.pop(ctx),
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteSpotlight(ProviderPortfolioItem item) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          'حذف اللمحة',
+          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          'هل تريد حذف هذه اللمحة؟',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('حذف', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      await _deleteSpotlight(item);
+    }
   }
 
   Widget _buildActionGrid() {

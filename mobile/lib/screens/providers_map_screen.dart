@@ -8,9 +8,12 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/service_provider_location.dart';
 import '../constants/colors.dart';
+import '../services/messaging_api.dart';
+import '../utils/auth_guard.dart';
 import '../utils/whatsapp_helper.dart';
 import '../services/providers_api.dart';
 import 'provider_profile_screen.dart';
+import 'chat_detail_screen.dart';
 import 'service_request_form_screen.dart';
 
 class ProvidersMapScreen extends StatefulWidget {
@@ -110,40 +113,50 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
     );
   }
 
-  void _openChat(ServiceProviderLocation provider) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('المحادثة تتطلب طلب خدمة'),
-          content: const Text(
-            'لبدء محادثة مباشرة مع المزود، أنشئ طلب خدمة أولاً.',
-            style: TextStyle(fontFamily: 'Cairo'),
+  Future<void> _openChat(ServiceProviderLocation provider) async {
+    if (!await checkAuth(context)) return;
+
+    final providerId = int.tryParse(provider.id);
+    if (providerId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح المحادثة')),
+      );
+      return;
+    }
+
+    try {
+      final api = MessagingApi();
+      final thread = await api.getOrCreateDirectThread(providerId);
+      final threadIdRaw = thread['id'];
+      final threadId = (threadIdRaw is int)
+          ? threadIdRaw
+          : int.tryParse(threadIdRaw?.toString() ?? '');
+      if (threadId == null) throw Exception('invalid thread id');
+
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatDetailScreen(
+            name: provider.name,
+            isOnline: provider.isAvailable,
+            requestId: null,
+            threadId: threadId,
+            requestCode: '',
+            requestTitle: '',
+            isDirect: true,
+            peerId: provider.id,
+            peerName: provider.name,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ServiceRequestFormScreen(
-                      providerName: provider.name,
-                      providerId: provider.id,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('إنشاء طلب'),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح المحادثة')),
+      );
+    }
   }
 
   Future<void> _showProviderContactActions(ServiceProviderLocation provider) async {

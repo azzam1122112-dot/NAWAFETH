@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/category.dart';
 import '../models/provider_portfolio_item.dart';
 import '../models/provider.dart';
@@ -108,21 +109,21 @@ class ProvidersApi {
         queryParameters: params,
       );
 
-      double? _asDouble(dynamic value) {
+      double? asDouble(dynamic value) {
         if (value == null) return null;
         if (value is num) return value.toDouble();
         if (value is String) return double.tryParse(value);
         return null;
       }
 
-      String? _asNonEmptyString(dynamic value) {
+      String? asNonEmptyString(dynamic value) {
         final s = value?.toString().trim();
         if (s == null || s.isEmpty) return null;
         return s;
       }
 
-      String? _normalizeMediaUrl(dynamic raw) {
-        final s = _asNonEmptyString(raw);
+      String? normalizeMediaUrl(dynamic raw) {
+        final s = asNonEmptyString(raw);
         if (s == null) return null;
         if (s.startsWith('http://') || s.startsWith('https://')) return s;
         if (s.startsWith('/')) return '${ApiConfig.baseUrl}$s';
@@ -133,8 +134,8 @@ class ProvidersApi {
       final rawList = _extractList(res.data);
       for (final item in rawList.whereType<Map>()) {
         final provider = Map<String, dynamic>.from(item);
-        final lat = _asDouble(provider['lat']);
-        final lng = _asDouble(provider['lng']);
+        final lat = asDouble(provider['lat']);
+        final lng = asDouble(provider['lng']);
         if (lat != null && lng != null) {
           final imageRaw =
               provider['logo'] ??
@@ -145,7 +146,7 @@ class ProvidersApi {
               provider['image_url'] ??
               provider['profile_image'] ??
               provider['profile_image_url'];
-          final imageUrl = _normalizeMediaUrl(imageRaw);
+          final imageUrl = normalizeMediaUrl(imageRaw);
 
           providers.add({
             'id': provider['id'],
@@ -154,8 +155,8 @@ class ProvidersApi {
             'lat': lat,
             'lng': lng,
             'accepts_urgent': provider['accepts_urgent'] ?? false,
-            'phone': _asNonEmptyString(provider['phone']),
-            'whatsapp': _asNonEmptyString(provider['whatsapp']),
+            'phone': asNonEmptyString(provider['phone']),
+            'whatsapp': asNonEmptyString(provider['whatsapp']),
             'image_url': imageUrl,
           });
         }
@@ -373,6 +374,66 @@ class ProvidersApi {
       return list;
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<List<ProviderPortfolioItem>> getMyPortfolio() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/portfolio/');
+      final rawList = _extractList(res.data);
+      return rawList
+          .whereType<Map>()
+          .map((e) => ProviderPortfolioItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<ProviderPortfolioItem?> createMyPortfolioItem({
+    required PlatformFile file,
+    required String fileType,
+    String caption = '',
+  }) async {
+    try {
+      final bytes = file.bytes;
+      MultipartFile multipartFile;
+      if (bytes != null) {
+        multipartFile = MultipartFile.fromBytes(
+          bytes,
+          filename: file.name,
+        );
+      } else if ((file.path ?? '').trim().isNotEmpty) {
+        multipartFile = await MultipartFile.fromFile(
+          file.path!,
+          filename: file.name,
+        );
+      } else {
+        return null;
+      }
+
+      final formData = FormData.fromMap({
+        'file_type': fileType,
+        'caption': caption,
+        'file': multipartFile,
+      });
+
+      final res = await _dio.post(
+        '${ApiConfig.apiPrefix}/providers/me/portfolio/',
+        data: formData,
+      );
+      return ProviderPortfolioItem.fromJson(Map<String, dynamic>.from(res.data as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> deleteMyPortfolioItem(int itemId) async {
+    try {
+      await _dio.delete('${ApiConfig.apiPrefix}/providers/me/portfolio/$itemId/');
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

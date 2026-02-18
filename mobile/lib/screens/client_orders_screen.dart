@@ -4,6 +4,8 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../constants/colors.dart';
 import '../models/client_order.dart';
 import '../services/marketplace_api.dart';
+import '../services/session_storage.dart';
+import '../utils/auth_guard.dart';
 import 'client_order_details_screen.dart';
 
 /// صفحة طلباتي الخاصة بالعميل
@@ -25,6 +27,8 @@ class ClientOrdersScreen extends StatefulWidget {
 class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   static const Color _mainColor = AppColors.deepPurple;
 
+  final SessionStorage _session = const SessionStorage();
+
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'الكل';
   String _selectedType = 'الكل';
@@ -32,20 +36,47 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   List<ClientOrder> _orders = [];
   bool _isLoading = true;
   String? _errorMessage;
+  bool _loginRequired = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchOrders();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final loggedIn = await _session.isLoggedIn();
+      if (!loggedIn) {
+        setState(() {
+          _isLoading = false;
+          _orders = [];
+          _loginRequired = true;
+          _errorMessage = 'تسجيل الدخول مطلوب لعرض الطلبات.';
+        });
+        return;
+      }
+      await _fetchOrders();
+    });
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
   }
 
   Future<void> _fetchOrders() async {
+    final loggedIn = await _session.isLoggedIn();
+    if (!loggedIn) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _orders = [];
+        _loginRequired = true;
+        _errorMessage = 'تسجيل الدخول مطلوب لعرض الطلبات.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _loginRequired = false;
     });
     try {
       String? statusGroup;
@@ -458,7 +489,32 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
     final content = _isLoading
         ? const Center(child: CircularProgressIndicator())
-        : _buildBody(isDark: isDark, orders: orders, isCompact: isCompact);
+        : (_loginRequired
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 140, 16, 16),
+                children: [
+                  Center(
+                    child: Text(
+                      'تسجيل الدخول مطلوب لعرض الطلبات.',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: ElevatedButton(
+                      onPressed: () => checkAuth(context),
+                      child: const Text('دخول', style: TextStyle(fontFamily: 'Cairo')),
+                    ),
+                  ),
+                ],
+              )
+            : _buildBody(isDark: isDark, orders: orders, isCompact: isCompact));
 
     if (widget.embedded) {
       return Directionality(textDirection: TextDirection.rtl, child: content);
@@ -477,7 +533,13 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
             IconButton(
-              onPressed: _fetchOrders,
+              onPressed: () async {
+                if (_loginRequired) {
+                  await checkAuth(context);
+                  return;
+                }
+                await _fetchOrders();
+              },
               icon: const Icon(Icons.refresh),
               tooltip: 'تحديث',
             ),

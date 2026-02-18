@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/colors.dart';
 import '../models/provider_portfolio_item.dart';
+import '../screens/home_media_viewer_screen.dart';
 import '../services/home_feed_service.dart';
 
 class BannerWidget extends StatefulWidget {
@@ -57,7 +58,7 @@ class _BannerWidgetState extends State<BannerWidget> {
   void _startAutoSlide() {
     _timer?.cancel();
     if (_banners.length < 2) return;
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!_controller.hasClients || !mounted) return;
       _index = (_index + 1) % _banners.length;
       _controller.animateToPage(
@@ -113,14 +114,22 @@ class _BannerWidgetState extends State<BannerWidget> {
             onPageChanged: (i) => setState(() => _index = i),
             itemBuilder: (_, i) {
               final item = _banners[i];
+              final isVideo = item.fileType.toLowerCase().contains('video');
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    item.fileUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(color: Colors.grey.shade300),
-                  ),
+                  if (!isVideo)
+                    Image.network(
+                      item.fileUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, error, stackTrace) => Container(color: Colors.grey.shade300),
+                    )
+                  else
+                    Container(
+                      color: Colors.grey.shade300,
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.videocam_rounded, size: 44, color: Colors.black54),
+                    ),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -131,6 +140,37 @@ class _BannerWidgetState extends State<BannerWidget> {
                           Colors.black.withValues(alpha: 0.10),
                         ],
                       ),
+                    ),
+                  ),
+                  if (isVideo)
+                    Center(
+                      child: Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.40),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 34),
+                      ),
+                    ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          PageRouteBuilder(
+                            transitionDuration: const Duration(milliseconds: 280),
+                            pageBuilder: (context, animation, secondaryAnimation) => FadeTransition(
+                              opacity: animation,
+                              child: HomeMediaViewerScreen(
+                                items: _banners,
+                                initialIndex: i,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Positioned(

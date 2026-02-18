@@ -297,3 +297,124 @@ def test_urgent_accept_rejects_non_urgent_request():
 
     assert res.status_code == 400
     assert res.json()["detail"] == "هذا الطلب ليس عاجلًا"
+
+
+@pytest.mark.django_db
+def test_urgent_request_disappears_from_available_for_other_providers_after_accept():
+    client = APIClient()
+
+    # Provider #1
+    send1 = client.post("/api/accounts/otp/send/", {"phone": "0500000051"}, format="json")
+    assert send1.status_code == 200
+    code1 = send1.json().get("dev_code") or OTP.objects.filter(phone="0500000051").order_by("-id").values_list("code", flat=True).first()
+    assert code1
+    verify1 = client.post("/api/accounts/otp/verify/", {"phone": "0500000051", "code": code1}, format="json")
+    assert verify1.status_code == 200
+    access1 = verify1.json()["access"]
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access1}")
+    complete1 = client.post(
+        "/api/accounts/complete/",
+        {
+            "first_name": "مزود",
+            "last_name": "أول",
+            "username": "provider_urgent_0051",
+            "email": "0500000051@example.com",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+            "accept_terms": True,
+        },
+        format="json",
+    )
+    assert complete1.status_code in (200, 400)
+    reg1 = client.post(
+        "/api/providers/register/",
+        {
+            "provider_type": "individual",
+            "display_name": "مزود عاجل 1",
+            "bio": "bio",
+            "years_experience": 1,
+            "city": "الرياض",
+            "accepts_urgent": True,
+        },
+        format="json",
+    )
+    assert reg1.status_code in (201, 400)
+    p1 = ProviderProfile.objects.get(display_name="مزود عاجل 1")
+
+    # Provider #2
+    client2 = APIClient()
+    send2 = client2.post("/api/accounts/otp/send/", {"phone": "0500000052"}, format="json")
+    assert send2.status_code == 200
+    code2 = send2.json().get("dev_code") or OTP.objects.filter(phone="0500000052").order_by("-id").values_list("code", flat=True).first()
+    assert code2
+    verify2 = client2.post("/api/accounts/otp/verify/", {"phone": "0500000052", "code": code2}, format="json")
+    assert verify2.status_code == 200
+    access2 = verify2.json()["access"]
+    client2.credentials(HTTP_AUTHORIZATION=f"Bearer {access2}")
+    complete2 = client2.post(
+        "/api/accounts/complete/",
+        {
+            "first_name": "مزود",
+            "last_name": "ثان",
+            "username": "provider_urgent_0052",
+            "email": "0500000052@example.com",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+            "accept_terms": True,
+        },
+        format="json",
+    )
+    assert complete2.status_code in (200, 400)
+    reg2 = client2.post(
+        "/api/providers/register/",
+        {
+            "provider_type": "individual",
+            "display_name": "مزود عاجل 2",
+            "bio": "bio",
+            "years_experience": 1,
+            "city": "الرياض",
+            "accepts_urgent": True,
+        },
+        format="json",
+    )
+    assert reg2.status_code in (201, 400)
+    p2 = ProviderProfile.objects.get(display_name="مزود عاجل 2")
+
+    cat = Category.objects.create(name="صيانة", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="كهرباء", is_active=True)
+    ProviderCategory.objects.get_or_create(provider=p1, subcategory=sub)
+    ProviderCategory.objects.get_or_create(provider=p2, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=p1.user,
+        subcategory=sub,
+        title="طلب عاجل مشترك",
+        description="desc",
+        request_type=RequestType.URGENT,
+        city="الرياض",
+        is_urgent=True,
+        status=RequestStatus.SENT,
+    )
+
+    before_1 = client.get("/api/marketplace/provider/urgent/available/")
+    assert before_1.status_code == 200
+    assert sr.id in {item["id"] for item in before_1.json()}
+
+    before_2 = client2.get("/api/marketplace/provider/urgent/available/")
+    assert before_2.status_code == 200
+    assert sr.id in {item["id"] for item in before_2.json()}
+
+    accepted = client.post(
+        "/api/marketplace/requests/urgent/accept/",
+        {"request_id": sr.id},
+        format="json",
+    )
+    assert accepted.status_code == 200
+
+    sr.refresh_from_db()
+    assert sr.provider_id == p1.id
+    assert sr.status == RequestStatus.ACCEPTED
+
+    after_2 = client2.get("/api/marketplace/provider/urgent/available/")
+    assert after_2.status_code == 200
+    assert sr.id not in {item["id"] for item in after_2.json()}

@@ -50,7 +50,7 @@ class NotificationsApi {
     required String platform,
   }) async {
     await _dio.post(
-      '${ApiConfig.apiPrefix}/notifications/device/register/',
+      '${ApiConfig.apiPrefix}/notifications/device-token/',
       data: {
         'token': token,
         'platform': platform,

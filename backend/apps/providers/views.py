@@ -292,6 +292,19 @@ class MyProviderPortfolioListCreateView(generics.ListCreateAPIView):
 		serializer.save(provider=pp)
 
 
+class MyProviderPortfolioDetailView(generics.RetrieveDestroyAPIView):
+	"""Provider-owned single portfolio item (retrieve/delete)."""
+
+	permission_classes = [IsAtLeastProvider]
+	serializer_class = ProviderPortfolioItemSerializer
+
+	def get_queryset(self):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			return ProviderPortfolioItem.objects.none()
+		return ProviderPortfolioItem.objects.filter(provider=pp).order_by("-created_at", "-id")
+
+
 class MyLikedPortfolioItemsView(generics.ListAPIView):
 	"""Portfolio media the current user liked (Favorites: images/videos)."""
 

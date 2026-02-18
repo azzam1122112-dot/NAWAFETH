@@ -1,16 +1,16 @@
 import pytest
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import User, UserRole
 from apps.marketplace.models import RequestStatus, RequestType, ServiceRequest
 from apps.providers.models import Category, ProviderCategory, ProviderProfile, SubCategory
 
 
 @pytest.mark.django_db
 def test_messaging_flow_participants_only():
-    client_user = User.objects.create_user(phone="0501000001")
-    provider_user = User.objects.create_user(phone="0501000002")
-    other_user = User.objects.create_user(phone="0501000003")
+    client_user = User.objects.create_user(phone="0501000001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0501000002", role_state=UserRole.PROVIDER)
+    other_user = User.objects.create_user(phone="0501000003", role_state=UserRole.PHONE_ONLY)
 
     provider = ProviderProfile.objects.create(
         user=provider_user,
@@ -81,3 +81,38 @@ def test_messaging_flow_participants_only():
     target = next((m for m in results_after if m.get("id") == sent_message_id), None)
     assert target is not None
     assert provider_user.id in target.get("read_by_ids", [])
+
+
+@pytest.mark.django_db
+def test_direct_thread_requires_phone_only_or_higher():
+    visitor_user = User.objects.create_user(phone="0501000011", role_state=UserRole.VISITOR)
+    phone_only_user = User.objects.create_user(phone="0501000012", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0501000013", role_state=UserRole.PROVIDER)
+
+    ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود مباشر",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    api = APIClient()
+
+    api.force_authenticate(user=visitor_user)
+    forbidden = api.post(
+        "/api/messaging/direct/thread/",
+        {"provider_id": provider_user.provider_profile.id},
+        format="json",
+    )
+    assert forbidden.status_code == 403
+
+    api.force_authenticate(user=phone_only_user)
+    ok = api.post(
+        "/api/messaging/direct/thread/",
+        {"provider_id": provider_user.provider_profile.id},
+        format="json",
+    )
+    assert ok.status_code == 200

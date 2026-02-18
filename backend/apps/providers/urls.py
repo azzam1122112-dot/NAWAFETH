@@ -15,6 +15,7 @@ from .views import (
     MyProviderServicesListCreateView,
     MyProviderSubcategoriesView,
     MyProviderPortfolioListCreateView,
+    MyProviderPortfolioDetailView,
     ProviderServicesPublicListView,
     ProviderCreateView,
     ProviderDetailView,
@@ -43,6 +44,7 @@ urlpatterns = [
 
     # Portfolio (provider projects/media)
     path("me/portfolio/", MyProviderPortfolioListCreateView.as_view(), name="my_portfolio"),
+    path("me/portfolio/<int:pk>/", MyProviderPortfolioDetailView.as_view(), name="my_portfolio_detail"),
     path("me/favorites/", MyLikedPortfolioItemsView.as_view(), name="my_favorites_media"),
     path("<int:provider_id>/portfolio/", ProviderPortfolioListView.as_view(), name="provider_portfolio"),
     path("<int:provider_id>/services/", ProviderServicesPublicListView.as_view(), name="provider_services"),

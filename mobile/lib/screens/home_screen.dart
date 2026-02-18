@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/banner_widget.dart';
 import '../widgets/video_reels.dart';
-import '../widgets/service_grid.dart';
-import '../widgets/testimonials_slider.dart';
 import '../widgets/provider_media_grid.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
@@ -20,7 +18,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static bool _introShownThisSession = false;
-  bool _isIntroDialogOpen = false;
 
   @override
   void initState() {
@@ -48,7 +45,6 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      _isIntroDialogOpen = true;
       showGeneralDialog(
         context: context,
         barrierDismissible: true,
@@ -64,61 +60,63 @@ class _HomeScreenState extends State<HomeScreen> {
         pageBuilder: (ctx, anim, secondAnim) {
           return const IntroWelcomeDialog();
         },
-      ).whenComplete(() {
-        _isIntroDialogOpen = false;
-      });
+      );
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+    final iconColor =
+        theme.brightness == Brightness.dark ? Colors.white : Colors.deepPurple;
+
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      drawer: const CustomDrawer(), // ✅ فتح القائمة من اليسار
+      backgroundColor: const Color(0xFFF3F1F5),
+      drawer: const CustomDrawer(),
 
       extendBody: true,
       extendBodyBehindAppBar: true,
-
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(60),
-        child: CustomAppBar(
-          showSearchField: false,
-          forceDrawerIcon: true, // ✅ إجبار إظهار أيقونة القائمة دائماً
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                NotificationsIconButton(iconColor: iconColor),
+                const Spacer(),
+                const _NawafethMark(),
+                const Spacer(),
+                Builder(
+                  builder: (ctx) => IconButton(
+                    icon: Icon(Icons.menu_rounded, color: iconColor),
+                    onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
 
       body: const SingleChildScrollView(
         padding: EdgeInsets.only(
-          top: 0,
-          bottom: 140, // ✅ لضمان عدم اختفاء المحتوى خلف الشريط السفلي
+          top: 6,
+          bottom: 140,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ✅ البنر
-            SizedBox(height: 320, child: BannerWidget()),
-
-            // ✅ الريلز بدون هوامش
+            SizedBox(height: 292, child: BannerWidget()),
             VideoReels(),
-
-            // ✅ البروفايلات أيضاً بدون هوامش
             profiles.ProfilesSlider(),
-
-            // ✅ باقي المحتوى داخل حواف ثابتة
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(height: 6),
                   ProviderMediaGrid(),
-                  SizedBox(height: 12),
-                  ServiceGrid(),
-                  SizedBox(height: 12),
-                  TestimonialsSlider(),
-                  SizedBox(height: 16),
                 ],
               ),
             ),
@@ -126,7 +124,49 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
 
-      bottomNavigationBar: const CustomBottomNav(currentIndex: 0),
+      bottomNavigationBar: const CustomBottomNav(
+        currentIndex: 0,
+        homeVariant: true,
+      ),
+    );
+  }
+}
+
+class _NawafethMark extends StatelessWidget {
+  const _NawafethMark();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget chip(Color c) => Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: c,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            chip(const Color(0xFFE97885)),
+            const SizedBox(width: 3),
+            chip(const Color(0xFFF2B24C)),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            chip(const Color(0xFFB68DF6)),
+            const SizedBox(width: 3),
+            chip(const Color(0xFF7DB2F8)),
+          ],
+        ),
+      ],
     );
   }
 }

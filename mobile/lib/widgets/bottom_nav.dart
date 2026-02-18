@@ -5,15 +5,20 @@ import '../utils/auth_guard.dart';
 
 class CustomBottomNav extends StatelessWidget {
   final int currentIndex;
+  final bool homeVariant;
 
-  const CustomBottomNav({required this.currentIndex, super.key});
+  const CustomBottomNav({
+    required this.currentIndex,
+    this.homeVariant = false,
+    super.key,
+  });
 
   Future<void> _navigate(BuildContext context, int index) async {
     if (currentIndex >= 0 && index == currentIndex) return;
     final role = RoleController.instance.notifier.value;
-    if (index == 1 && role.isProvider) return;
+    if (!homeVariant && index == 1 && role.isProvider) return;
 
-    // Guard Profile and Orders tabs
+    // Guard profile and secondary tabs
     if (index == 1 || index == 3) {
       if (!await checkAuth(context)) return;
     }
@@ -25,7 +30,11 @@ class CustomBottomNav extends StatelessWidget {
         Navigator.pushReplacementNamed(context, '/home');
         break;
       case 1:
-        Navigator.pushReplacementNamed(context, '/orders');
+        if (homeVariant) {
+          Navigator.pushNamed(context, '/chats');
+        } else {
+          Navigator.pushReplacementNamed(context, '/orders');
+        }
         break;
       case 2:
         Navigator.pushReplacementNamed(context, '/interactive');
@@ -48,7 +57,7 @@ class CustomBottomNav extends StatelessWidget {
     return ValueListenableBuilder<RoleState>(
       valueListenable: RoleController.instance.notifier,
       builder: (context, role, _) {
-        final disableOrders = role.isProvider;
+        final disableOrders = !homeVariant && role.isProvider;
         return Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
@@ -79,8 +88,10 @@ class CustomBottomNav extends StatelessWidget {
                       onTap: () => _navigate(context, 0),
                     ),
                     IconWithLabel(
-                      icon: Icons.list_alt,
-                      label: "طلباتي",
+                      icon: homeVariant
+                          ? Icons.chat_bubble_outline_rounded
+                          : Icons.list_alt,
+                      label: homeVariant ? "محادثاتي" : "طلباتي",
                       selected: currentIndex == 1,
                       enabled: !disableOrders,
                       onTap: () => _navigate(context, 1),

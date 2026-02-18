@@ -242,3 +242,91 @@ def test_accept_offer_forbidden_for_non_owner():
 
     res = other_api.post(f"/api/marketplace/offers/{offer_id}/accept/", {}, format="json")
     assert res.status_code == 403
+
+
+@pytest.mark.django_db
+def test_accept_offer_assigns_request_and_removes_from_competitive_available():
+    cat = Category.objects.create(name="خدمات", is_active=True)
+    sub = SubCategory.objects.create(category=cat, name="تبريد", is_active=True)
+
+    # Client creates competitive request
+    client_api = APIClient()
+    client_phone = "0500001111"
+    client_access = _login_via_otp(client_api, client_phone)
+    _complete_registration(client_api, client_access, client_phone)
+    created = client_api.post(
+        "/api/marketplace/requests/create/",
+        {
+            "subcategory": sub.id,
+            "title": "طلب تنافسي للإسناد",
+            "description": "desc",
+            "request_type": "competitive",
+            "city": "Riyadh",
+        },
+        format="json",
+    )
+    assert created.status_code == 201
+    request_id = created.json()["id"]
+    sr = ServiceRequest.objects.get(id=request_id)
+    sr.status = RequestStatus.SENT
+    sr.save(update_fields=["status"])
+
+    # Provider #1
+    p1_api = APIClient()
+    p1_phone = "0500001112"
+    p1_access = _login_via_otp(p1_api, p1_phone)
+    p1 = _ensure_provider_profile(p1_api, p1_access, p1_phone, city="Riyadh")
+    ProviderCategory.objects.get_or_create(provider=p1, subcategory=sub)
+
+    # Provider #2
+    p2_api = APIClient()
+    p2_phone = "0500001113"
+    p2_access = _login_via_otp(p2_api, p2_phone)
+    p2 = _ensure_provider_profile(p2_api, p2_access, p2_phone, city="Riyadh")
+    ProviderCategory.objects.get_or_create(provider=p2, subcategory=sub)
+
+    # Both send offers
+    o1 = p1_api.post(
+        f"/api/marketplace/requests/{request_id}/offers/create/",
+        {"price": "320.00", "duration_days": 3, "note": "عرض 1"},
+        format="json",
+    )
+    assert o1.status_code == 201
+
+    o2 = p2_api.post(
+        f"/api/marketplace/requests/{request_id}/offers/create/",
+        {"price": "300.00", "duration_days": 4, "note": "عرض 2"},
+        format="json",
+    )
+    assert o2.status_code == 201
+    offer2_id = o2.json()["offer_id"]
+
+    # Client accepts provider #2 offer
+    accepted = client_api.post(
+        f"/api/marketplace/offers/{offer2_id}/accept/",
+        {},
+        format="json",
+    )
+    assert accepted.status_code == 200
+
+    sr.refresh_from_db()
+    assert sr.provider_id == p2.id
+    assert sr.status == RequestStatus.SENT
+
+    # Must disappear from competitive available list for all providers
+    p1_available = p1_api.get("/api/marketplace/provider/competitive/available/")
+    assert p1_available.status_code == 200
+    assert request_id not in {item["id"] for item in p1_available.json()}
+
+    p2_available = p2_api.get("/api/marketplace/provider/competitive/available/")
+    assert p2_available.status_code == 200
+    assert request_id not in {item["id"] for item in p2_available.json()}
+
+    # Should appear only in selected provider assigned requests
+    p2_assigned = p2_api.get("/api/marketplace/provider/requests/?status_group=new")
+    assert p2_assigned.status_code == 200
+    assert request_id in {item["id"] for item in p2_assigned.json()}
+
+    p1_assigned = p1_api.get("/api/marketplace/provider/requests/?status_group=new")
+    assert p1_assigned.status_code == 200
+    assert request_id not in {item["id"] for item in p1_assigned.json()}

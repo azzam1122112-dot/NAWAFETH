@@ -5,6 +5,7 @@ import '../services/billing_api.dart';
 import '../services/extras_api.dart';
 import '../services/payment_checkout.dart';
 import '../services/promo_api.dart';
+import '../utils/auth_guard.dart';
 import '../widgets/bottom_nav.dart';
 
 class AdditionalServicesScreen extends StatefulWidget {
@@ -68,7 +69,21 @@ class _AdditionalServicesScreenState extends State<AdditionalServicesScreen> wit
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _reloadAll();
+
+    // Initialize futures to keep build safe before auth check.
+    _catalogFuture = Future.value(const <Map<String, dynamic>>[]);
+    _myExtrasFuture = Future.value(const <Map<String, dynamic>>[]);
+    _myPromoFuture = Future.value(const <Map<String, dynamic>>[]);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ok = await checkAuth(context);
+      if (!ok && mounted) {
+        Navigator.of(context).maybePop();
+        return;
+      }
+      _reloadAll();
+    });
   }
 
   @override

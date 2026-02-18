@@ -628,7 +628,7 @@ class RequestOffersListView(generics.ListAPIView):
 
 
 class AcceptOfferView(APIView):
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, offer_id):
 		with transaction.atomic():
@@ -923,7 +923,7 @@ class RequestCompleteView(APIView):
 
 
 class RequestCancelView(APIView):
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
 		s = RequestActionSerializer(data=request.data)
@@ -971,7 +971,7 @@ class RequestCancelView(APIView):
 
 
 class RequestReopenView(APIView):
-	permission_classes = [permissions.IsAuthenticated]
+	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
 		s = RequestActionSerializer(data=request.data)

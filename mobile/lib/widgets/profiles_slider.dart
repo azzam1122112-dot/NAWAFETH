@@ -45,15 +45,24 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
   }
 
   void _startAutoScroll() {
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (_scrollController.hasClients && mounted && _providers.isNotEmpty) {
-        _scrollPosition += 1.0;
+        _scrollPosition += 116.0; // card width + spacing
         final maxScroll = _scrollController.position.maxScrollExtent;
         if (maxScroll > 0 && _scrollPosition >= maxScroll) {
-          _scrollController.jumpTo(0);
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOut,
+          );
           _scrollPosition = 0;
         } else {
-          _scrollController.jumpTo(_scrollPosition);
+          _scrollController.animateTo(
+            _scrollPosition,
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOut,
+          );
         }
       }
     });
@@ -92,11 +101,11 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const SizedBox(height: 140, child: Center(child: CircularProgressIndicator()));
-    if (_providers.isEmpty) return const SizedBox.shrink();
+    if (_loading) return const SizedBox(height: 78, child: Center(child: CircularProgressIndicator()));
+    if (_providers.isEmpty) return const SizedBox(height: 8);
 
     return SizedBox(
-      height: 140,
+      height: 82,
       child: ListView.builder(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
@@ -107,55 +116,60 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
           return GestureDetector(
             onTap: () => _openProfileDetail(context, profile),
             child: Container(
-              width: 90,
-              margin: const EdgeInsets.symmetric(horizontal: 5),
+              width: 84,
+              margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primaryDark.withValues(alpha: 0.18)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Stack(
-                    clipBehavior: Clip.none,
                     children: [
                       CircleAvatar(
-                        radius: 35,
+                        radius: 20,
                         backgroundColor: AppColors.softBlue,
                         child: CircleAvatar(
-                          radius: 32,
+                          radius: 18,
                           backgroundImage: avatar,
                           child: avatar == null
-                              ? const Icon(Icons.person, color: Colors.white)
+                              ? const Icon(Icons.person, color: Colors.white, size: 18)
                               : null,
                         ),
                       ),
-                      if (profile.isVerifiedBlue)
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Transform.translate(
-                            offset: const Offset(6, 6),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.verified,
-                                color: Colors.blue,
-                                size: 18,
-                              ),
+                      Positioned(
+                        left: -2,
+                        top: -2,
+                        child: Container(
+                          width: 17,
+                          height: 17,
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.2),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            (profile.ratingAvg > 0 ? profile.ratingAvg.round() : 4).toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    profile.displayName ?? 'مستخدم',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

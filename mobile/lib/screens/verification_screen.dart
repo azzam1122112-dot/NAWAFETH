@@ -7,6 +7,7 @@ import '../constants/colors.dart';
 import '../services/billing_api.dart';
 import '../services/payment_checkout.dart';
 import '../services/verification_api.dart';
+import '../utils/auth_guard.dart';
 
 class VerificationScreen extends StatefulWidget {
   const VerificationScreen({super.key});
@@ -37,6 +38,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   final ImagePicker _picker = ImagePicker();
   String _selectedPaymentMethod = "apple"; // apple / card
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ok = await checkFullClient(context);
+      if (!ok && mounted) {
+        Navigator.of(context).maybePop();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -142,6 +155,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   Future<void> _submitVerificationRequest() async {
     if (_submitting || selectedType == null) return;
+
+    final ok = await checkFullClient(context);
+    if (!ok) return;
 
     setState(() => _submitting = true);
     try {
