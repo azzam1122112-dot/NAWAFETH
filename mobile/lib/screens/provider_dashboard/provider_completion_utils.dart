@@ -69,4 +69,45 @@ class ProviderCompletionUtils {
 
     return (baseCompletionFromMe(me, baseMax: baseMax) + (completedOptional / 100.0)).clamp(0.0, 1.0);
   }
+
+  static Map<String, bool> deriveSectionDone({
+    required Map<String, dynamic>? providerProfile,
+    required List<int> subcategories,
+  }) {
+    bool hasAnyList(dynamic v) =>
+        v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
+    bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
+
+    int asInt(dynamic v) {
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse((v ?? '').toString().trim()) ?? 0;
+    }
+
+    final p = providerProfile ?? const <String, dynamic>{};
+    final done = <String, bool>{
+      'service_details': subcategories.isNotEmpty,
+      'contact_full':
+          hasAnyString(p['whatsapp']) ||
+          hasAnyString(p['website']) ||
+          hasAnyList(p['social_links']),
+      'lang_loc':
+          hasAnyList(p['languages']) ||
+          (p['lat'] != null && p['lng'] != null),
+      'additional':
+          hasAnyString(p['about_details']) ||
+          asInt(p['years_experience']) > 0 ||
+          hasAnyList(p['qualifications']) ||
+          hasAnyList(p['experiences']),
+      'content': hasAnyList(p['content_sections']),
+      'seo':
+          hasAnyString(p['seo_keywords']) ||
+          hasAnyString(p['seo_meta_description']) ||
+          hasAnyString(p['seo_slug']),
+    };
+    for (final key in sectionKeys) {
+      done.putIfAbsent(key, () => false);
+    }
+    return done;
+  }
 }

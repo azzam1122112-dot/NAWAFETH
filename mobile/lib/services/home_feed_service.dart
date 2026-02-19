@@ -43,7 +43,11 @@ class HomeFeedService {
   }
 
   Future<List<ProviderProfile>> getProviders({bool forceRefresh = false}) async {
-    if (!forceRefresh && _providersCache != null && _isFresh(_providersAt)) {
+    if (
+        !forceRefresh &&
+        _providersCache != null &&
+        _providersCache!.isNotEmpty &&
+        _isFresh(_providersAt)) {
       return _providersCache!;
     }
     if (!forceRefresh && _providersInFlight != null) {
@@ -71,7 +75,11 @@ class HomeFeedService {
   }
 
   Future<List<ProviderPortfolioItem>> _getPortfolioPool({bool forceRefresh = false}) async {
-    if (!forceRefresh && _portfolioCache != null && _isFresh(_portfolioAt)) {
+    if (
+        !forceRefresh &&
+        _portfolioCache != null &&
+        _portfolioCache!.isNotEmpty &&
+        _isFresh(_portfolioAt)) {
       return _portfolioCache!;
     }
     if (!forceRefresh && _portfolioInFlight != null) {
@@ -132,7 +140,11 @@ class HomeFeedService {
     int limit = 8,
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh && _testimonialsCache != null && _isFresh(_testimonialsAt)) {
+    if (
+        !forceRefresh &&
+        _testimonialsCache != null &&
+        _testimonialsCache!.isNotEmpty &&
+        _isFresh(_testimonialsAt)) {
       return _testimonialsCache!.take(limit).toList();
     }
     if (!forceRefresh && _testimonialsInFlight != null) {

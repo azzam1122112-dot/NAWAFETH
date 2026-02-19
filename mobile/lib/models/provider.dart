@@ -65,6 +65,17 @@ class ProviderProfile {
       return int.tryParse(v.toString()) ?? fallback;
     }
 
+    bool parseBool(dynamic v, {bool fallback = false}) {
+      if (v == null) return fallback;
+      if (v is bool) return v;
+      if (v is num) return v != 0;
+      final s = v.toString().trim().toLowerCase();
+      if (s.isEmpty) return fallback;
+      if (s == 'true' || s == '1' || s == 'yes') return true;
+      if (s == 'false' || s == '0' || s == 'no') return false;
+      return fallback;
+    }
+
     return ProviderProfile(
       id: parseInt(json['id']),
       displayName: json['display_name'],
@@ -76,10 +87,10 @@ class ProviderProfile {
       whatsapp: json['whatsapp']?.toString(),
       lat: parseNullableDouble(json['lat']),
       lng: parseNullableDouble(json['lng']),
-      isOnline: (json['is_online'] == true),
-      acceptsUrgent: json['accepts_urgent'] ?? false,
-      isVerifiedBlue: json['is_verified_blue'] ?? false,
-      isVerifiedGreen: json['is_verified_green'] ?? false,
+      isOnline: parseBool(json['is_online']),
+      acceptsUrgent: parseBool(json['accepts_urgent']),
+      isVerifiedBlue: parseBool(json['is_verified_blue']),
+      isVerifiedGreen: parseBool(json['is_verified_green']),
       imageUrl: (json['logo'] ??
               json['logo_url'] ??
               json['avatar'] ??

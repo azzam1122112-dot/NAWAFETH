@@ -114,31 +114,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       final accountLastName = (me['last_name'] ?? '').toString().trim();
 
       // --- Profile Completion Logic (backend-driven) ---
-      bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
-      bool hasAnyList(dynamic v) =>
-          v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
-      final sectionDone = <String, bool>{
-        'service_details': subcategoryIds.isNotEmpty,
-        'contact_full':
-            hasAnyString(myProfile?['whatsapp']) ||
-            hasAnyString(myProfile?['website']) ||
-            hasAnyList(myProfile?['social_links']),
-        'lang_loc':
-            hasAnyList(myProfile?['languages']) ||
-            (myProfile?['lat'] != null && myProfile?['lng'] != null),
-        'additional':
-            hasAnyString(myProfile?['about_details']) ||
-            hasAnyList(myProfile?['qualifications']) ||
-            hasAnyList(myProfile?['experiences']),
-        'content': hasAnyList(myProfile?['content_sections']),
-        'seo':
-            hasAnyString(myProfile?['seo_keywords']) ||
-            hasAnyString(myProfile?['seo_meta_description']) ||
-            hasAnyString(myProfile?['seo_slug']),
-      };
-      for (final key in ProviderCompletionUtils.sectionKeys) {
-        sectionDone.putIfAbsent(key, () => false);
-      }
+      final sectionDone = ProviderCompletionUtils.deriveSectionDone(
+        providerProfile: myProfile,
+        subcategories: subcategoryIds,
+      );
       final completionPercent = ProviderCompletionUtils.completionPercent(
         me: me,
         sectionDone: sectionDone,

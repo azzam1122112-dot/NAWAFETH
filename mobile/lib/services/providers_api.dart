@@ -51,10 +51,14 @@ class ProvidersApi {
     try {
       final res = await _dio.get('${ApiConfig.apiPrefix}/providers/list/');
       final rawList = _extractList(res.data);
-      final list = rawList
-          .whereType<Map>()
-          .map((e) => ProviderProfile.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final list = <ProviderProfile>[];
+      for (final raw in rawList.whereType<Map>()) {
+        try {
+          list.add(ProviderProfile.fromJson(Map<String, dynamic>.from(raw)));
+        } catch (_) {
+          // Skip malformed rows instead of dropping the entire feed.
+        }
+      }
       return list;
     } catch (e) {
       return [];
@@ -80,10 +84,14 @@ class ProvidersApi {
       );
 
       final rawList = _extractList(res.data);
-      final list = rawList
-          .whereType<Map>()
-          .map((e) => ProviderProfile.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final list = <ProviderProfile>[];
+      for (final raw in rawList.whereType<Map>()) {
+        try {
+          list.add(ProviderProfile.fromJson(Map<String, dynamic>.from(raw)));
+        } catch (_) {
+          // Skip malformed rows instead of dropping the entire result.
+        }
+      }
       return list;
     } catch (e) {
       return [];

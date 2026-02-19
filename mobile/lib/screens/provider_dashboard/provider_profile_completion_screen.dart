@@ -77,37 +77,10 @@ class _ProviderProfileCompletionScreenState
     required Map<String, dynamic>? providerProfile,
     required List<int> subcategories,
   }) {
-    bool hasAnyList(dynamic v) =>
-        v is List && v.any((e) => (e ?? '').toString().trim().isNotEmpty);
-    bool hasAnyString(dynamic v) => (v ?? '').toString().trim().isNotEmpty;
-
-    int asInt(dynamic v) {
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      return int.tryParse((v ?? '').toString().trim()) ?? 0;
-    }
-
-    final p = providerProfile ?? const <String, dynamic>{};
-    return <String, bool>{
-      "service_details": subcategories.isNotEmpty,
-      "contact_full":
-          hasAnyString(p['whatsapp']) ||
-          hasAnyString(p['website']) ||
-          hasAnyList(p['social_links']),
-      "lang_loc":
-          hasAnyList(p['languages']) ||
-          (p['lat'] != null && p['lng'] != null),
-      "additional":
-          hasAnyString(p['about_details']) ||
-          asInt(p['years_experience']) > 0 ||
-          hasAnyList(p['qualifications']) ||
-          hasAnyList(p['experiences']),
-      "content": hasAnyList(p['content_sections']),
-      "seo":
-          hasAnyString(p['seo_keywords']) ||
-          hasAnyString(p['seo_meta_description']) ||
-          hasAnyString(p['seo_slug']),
-    };
+    return ProviderCompletionUtils.deriveSectionDone(
+      providerProfile: providerProfile,
+      subcategories: subcategories,
+    );
   }
 
   Future<void> _reloadSectionFlags() async {
@@ -259,6 +232,20 @@ class _ProviderProfileCompletionScreenState
 
     // ✅ لا نضع علامة صح إلا إذا رجعت الشاشة بـ true
     if (result == true && id != "basic") {
+      if (mounted) {
+        final labels = <String, String>{
+          'service_details': 'تفاصيل الخدمة',
+          'additional': 'المعلومات الإضافية',
+          'contact_full': 'معلومات التواصل',
+          'lang_loc': 'اللغة والموقع',
+          'content': 'معرض الخدمات',
+          'seo': 'إعدادات الظهور في البحث',
+        };
+        final sectionLabel = labels[id] ?? 'القسم';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم حفظ $sectionLabel بنجاح')),
+        );
+      }
       try {
         final prefs = await SharedPreferences.getInstance();
         final userId = await UserScopedPrefs.readUserId();
@@ -1105,7 +1092,7 @@ class _BasicInfoScreenState extends State<_BasicInfoScreen> {
     });
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool showSuccess = false}) async {
     if (_saving) return;
     setState(() {
       _saving = true;
@@ -1136,6 +1123,11 @@ class _BasicInfoScreenState extends State<_BasicInfoScreen> {
         _username = (res['username'] ?? _username)?.toString().trim();
         _saving = false;
       });
+      if (showSuccess && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم حفظ البيانات الأساسية بنجاح')),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -1271,7 +1263,7 @@ class _BasicInfoScreenState extends State<_BasicInfoScreen> {
                       const SizedBox(height: 18),
                       ElevatedButton.icon(
                         onPressed: _saving ? null : () async {
-                          await _save();
+                          await _save(showSuccess: true);
                         },
                         icon: const Icon(Icons.save),
                         label: const Text('حفظ الآن', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),

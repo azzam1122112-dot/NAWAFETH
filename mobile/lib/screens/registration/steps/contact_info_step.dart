@@ -391,17 +391,14 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
           .where((s) => s.isNotEmpty)
           .toList(growable: false);
       final socialSignature = jsonEncode(social);
-      if (_initialWhatsapp == null) {
-        // If we didn't prefill, still keep a baseline to avoid spamming PATCH.
-        _initialWhatsapp = whatsapp;
-        _initialWebsite = website;
-        _initialSocialSignature = socialSignature;
-        return true;
-      }
-      final sameWhatsapp = whatsapp == _initialWhatsapp;
+      final sameWhatsapp = whatsapp == (_initialWhatsapp ?? '');
       final sameWebsite = website == (_initialWebsite ?? '');
       final sameSocial = socialSignature == _initialSocialSignature;
-      if (sameWhatsapp && sameWebsite && sameSocial) return true;
+      final hasBaseline =
+          _initialWhatsapp != null ||
+          _initialWebsite != null ||
+          _initialSocialSignature != '[]';
+      if (hasBaseline && sameWhatsapp && sameWebsite && sameSocial) return true;
 
       final updated = await ProvidersApi().updateMyProviderProfile({
         'whatsapp': whatsapp,
