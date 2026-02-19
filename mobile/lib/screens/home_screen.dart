@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/banner_widget.dart';
 import '../widgets/video_reels.dart';
@@ -8,6 +9,7 @@ import '../widgets/custom_drawer.dart';
 import '../widgets/profiles_slider.dart' as profiles;
 import '../widgets/intro_welcome_dialog.dart';
 import '../services/home_feed_service.dart';
+import '../widgets/nawafeth_mark.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,13 +19,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static bool _introShownThisSession = false;
+  static const String _introLastShownKey = 'intro_last_shown_yyyy_mm_dd';
+  static bool _introCheckedThisSession = false;
 
   @override
   void initState() {
     super.initState();
     _warmupHomeFeed();
-    _showIntroDialogOnce();
+    _maybeShowIntroDialogOncePerDay();
   }
 
   void _warmupHomeFeed() {
@@ -38,9 +41,24 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _showIntroDialogOnce() {
-    if (_introShownThisSession) return;
-    _introShownThisSession = true;
+  static String _formatDayKey(DateTime dt) {
+    final y = dt.year.toString();
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  Future<void> _maybeShowIntroDialogOncePerDay() async {
+    if (_introCheckedThisSession) return;
+    _introCheckedThisSession = true;
+
+    final prefs = await SharedPreferences.getInstance();
+    final todayKey = _formatDayKey(DateTime.now());
+    final lastShown = prefs.getString(_introLastShownKey);
+    if (lastShown == todayKey) return;
+
+    // Mark as shown for today as soon as we decide to display it.
+    await prefs.setString(_introLastShownKey, todayKey);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -136,36 +154,6 @@ class _NawafethMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(Color c) => Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: c,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        );
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            chip(const Color(0xFFE97885)),
-            const SizedBox(width: 3),
-            chip(const Color(0xFFF2B24C)),
-          ],
-        ),
-        const SizedBox(height: 3),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            chip(const Color(0xFFB68DF6)),
-            const SizedBox(width: 3),
-            chip(const Color(0xFF7DB2F8)),
-          ],
-        ),
-      ],
-    );
+    return const NawafethMark();
   }
 }

@@ -65,6 +65,13 @@ class CompleteRegistrationSerializer(serializers.Serializer):
             "invalid": "يجب الموافقة على الشروط والأحكام",
         }
     )
+    # Optional for forward compatibility with mobile payloads.
+    city = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
 
     def validate_username(self, value: str) -> str:
         value = (value or "").strip()

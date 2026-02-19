@@ -732,10 +732,10 @@ class _MyProfileScreenState extends State<MyProfileScreen>
           title: 'إعدادات التنبيهات',
           icon: Icons.notifications_outlined,
           onTap: () async {
+            final navigator = Navigator.of(context);
             if (!await checkFullClient(context)) return;
-            if (!context.mounted) return;
-            Navigator.push(
-              context,
+            if (!mounted) return;
+            navigator.push(
               MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()),
             );
           },

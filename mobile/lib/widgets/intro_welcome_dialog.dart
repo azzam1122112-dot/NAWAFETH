@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../constants/colors.dart';
+import 'nawafeth_mark.dart';
 
-/// نافذة تعريفية فخمة تظهر عند فتح التطبيق لأول مرة في الجلسة.
+/// نافذة تعريفية فخمة تظهر عند فتح التطبيق (مرة واحدة يوميًا).
 class IntroWelcomeDialog extends StatefulWidget {
   const IntroWelcomeDialog({super.key});
 
@@ -48,13 +49,13 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: AppColors.deepPurple.withOpacity(0.25),
+                color: AppColors.deepPurple.withValues(alpha: 0.25),
                 blurRadius: 30,
                 spreadRadius: 1,
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: AppColors.accentOrange.withOpacity(0.10),
+                color: AppColors.accentOrange.withValues(alpha: 0.10),
                 blurRadius: 40,
                 spreadRadius: -5,
                 offset: const Offset(0, -6),
@@ -170,7 +171,7 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
           colors: [
             AppColors.deepPurple,
             AppColors.lightPurple,
-            AppColors.deepPurple.withOpacity(0.85),
+            AppColors.deepPurple.withValues(alpha: 0.85),
           ],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
@@ -189,7 +190,7 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withValues(alpha: 0.18),
                     blurRadius: 14,
                     spreadRadius: 1,
                   ),
@@ -198,13 +199,11 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
               child: ClipOval(
                 child: Padding(
                   padding: const EdgeInsets.all(8),
-                  child: Image.asset(
-                    'assets/images/p.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.window_rounded,
-                      size: 32,
-                      color: AppColors.deepPurple,
+                  child: const Center(
+                    child: NawafethMark(
+                      chipSize: 14,
+                      gap: 4,
+                      radius: 4,
                     ),
                   ),
                 ),
@@ -238,7 +237,7 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.18),
+                color: Colors.white.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Text(
@@ -269,13 +268,13 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withOpacity(0.06)
-            : AppColors.primaryLight.withOpacity(0.35),
+            ? Colors.white.withValues(alpha: 0.06)
+            : AppColors.primaryLight.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark
-              ? AppColors.deepPurple.withOpacity(0.20)
-              : AppColors.deepPurple.withOpacity(0.08),
+              ? AppColors.deepPurple.withValues(alpha: 0.20)
+              : AppColors.deepPurple.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
@@ -287,8 +286,8 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppColors.deepPurple.withOpacity(0.15),
-                  AppColors.lightPurple.withOpacity(0.10),
+                  AppColors.deepPurple.withValues(alpha: 0.15),
+                  AppColors.lightPurple.withValues(alpha: 0.10),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -357,7 +356,7 @@ class _IntroWelcomeDialogState extends State<IntroWelcomeDialog>
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: AppColors.deepPurple.withOpacity(0.30),
+              color: AppColors.deepPurple.withValues(alpha: 0.30),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),

@@ -84,6 +84,7 @@ def _me_payload(user: User) -> dict:
     # Counts for client-side profile (best-effort)
     following_count = 0
     likes_count = 0
+    favorites_media_count = 0
     try:
         following_count = user.provider_follows.count()
     except Exception:
@@ -92,6 +93,11 @@ def _me_payload(user: User) -> dict:
         likes_count = user.provider_likes.count()
     except Exception:
         likes_count = 0
+    try:
+        # Source of truth for "مفضلتي" media in Interactive tab.
+        favorites_media_count = user.portfolio_likes.count()
+    except Exception:
+        favorites_media_count = 0
 
     provider_profile_id = None
     provider_display_name = None
@@ -128,6 +134,7 @@ def _me_payload(user: User) -> dict:
         "is_provider": is_provider,
         "following_count": following_count,
         "likes_count": likes_count,
+        "favorites_media_count": favorites_media_count,
         "provider_profile_id": provider_profile_id,
         "provider_display_name": provider_display_name,
         "provider_city": provider_city,

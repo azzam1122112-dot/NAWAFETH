@@ -61,6 +61,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _isDirect = false;
   bool _isProviderAccount = false;
   bool _peerOnline = false;
+  DateTime? _lastPeerActivityAt;
   bool _isFavorite = false;
   bool _isBlocked = false;
   int _reconnectAttempts = 0;
@@ -81,6 +82,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _isDirect = widget.isDirect;
     _isProviderAccount = RoleController.instance.notifier.value.isProvider;
     _peerOnline = widget.isOnline;
+    if (_peerOnline) {
+      _lastPeerActivityAt = DateTime.now();
+    }
     _bootstrap();
   }
 
@@ -256,20 +260,29 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         _onWsEvent,
         onDone: () {
           if (mounted) {
-            setState(() => _wsConnected = false);
+            setState(() {
+              _wsConnected = false;
+              _peerTyping = false;
+            });
           }
           _scheduleReconnect();
         },
         onError: (_) {
           if (mounted) {
-            setState(() => _wsConnected = false);
+            setState(() {
+              _wsConnected = false;
+              _peerTyping = false;
+            });
           }
           _scheduleReconnect();
         },
       );
     } catch (_) {
       if (mounted) {
-        setState(() => _wsConnected = false);
+        setState(() {
+          _wsConnected = false;
+          _peerTyping = false;
+        });
       }
       _scheduleReconnect();
     } finally {
@@ -328,7 +341,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (mounted) {
         setState(() {
           _peerTyping = payload['is_typing'] == true;
-          if (_peerTyping) _peerOnline = true;
+          if (_peerTyping) {
+            _peerOnline = true;
+            _lastPeerActivityAt = DateTime.now();
+          }
         });
       }
       return;
@@ -337,6 +353,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (type == 'read') {
       final userId = _asInt(payload['user_id']);
       if (_myUserId != null && userId == _myUserId) return;
+      if (mounted) {
+        setState(() {
+          _peerOnline = true;
+          _lastPeerActivityAt = DateTime.now();
+        });
+      }
       final messageIds = _asIntList(payload['message_ids']);
       if (messageIds.isNotEmpty) {
         _markMyMessagesReadByIds(messageIds);
@@ -367,6 +389,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           _messages.add(msg);
           if (_myUserId == null || msg['senderId'] != _myUserId) {
             _peerOnline = true;
+            _lastPeerActivityAt = DateTime.now();
           }
         });
       }
@@ -592,6 +615,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final hasRecentPeerActivity =
+        _lastPeerActivityAt != null &&
+        now.difference(_lastPeerActivityAt!) <= const Duration(minutes: 2);
+    final showPeerOnline = hasRecentPeerActivity || (_wsConnected && _peerOnline);
+
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
@@ -609,7 +638,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             Text(
               _peerTyping
                   ? 'يكتب الآن...'
-                  : (_peerOnline ? 'متصل' : 'غير متصل'),
+                  : (showPeerOnline ? 'متصل' : 'غير متصل'),
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
             ),
           ],
@@ -618,13 +647,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (_threadId == null) return;
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
               if (v == 'favorite') {
                 try {
                   await _api.setThreadFavorite(threadId: _threadId!, favorite: !_isFavorite);
                   await _loadThreadState();
                 } catch (_) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('تعذر تحديث المفضلة.')),
                   );
                 }
@@ -660,12 +691,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   final res = await _api.reportThread(threadId: _threadId!, description: text.trim());
                   final code = (res['ticket_code'] ?? '').toString();
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text(code.isEmpty ? 'تم إرسال البلاغ.' : 'تم إرسال البلاغ: $code')),
                   );
                 } catch (_) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('تعذر إرسال البلاغ.')),
                   );
                 }
@@ -688,10 +719,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 try {
                   await _api.setThreadBlocked(threadId: _threadId!, blocked: true);
                   if (!mounted) return;
-                  Navigator.pop(context);
+                  navigator.pop();
                 } catch (_) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('تعذر الحظر.')),
                   );
                 }
@@ -714,10 +745,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 try {
                   await _api.setThreadArchived(threadId: _threadId!, archived: true);
                   if (!mounted) return;
-                  Navigator.pop(context);
+                  navigator.pop();
                 } catch (_) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('تعذر حذف المحادثة.')),
                   );
                 }
