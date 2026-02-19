@@ -1,4 +1,5 @@
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
@@ -254,3 +255,143 @@ def test_block_prevents_peer_sending_request_and_direct():
         format="json",
     )
     assert blocked_direct_send.status_code == 403
+
+
+@pytest.mark.django_db
+def test_send_request_message_with_attachment():
+    client_user = User.objects.create_user(phone="0504000001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0504000002", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+    cat = Category.objects.create(name="صيانة")
+    sub = SubCategory.objects.create(category=cat, name="كهرباء")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    f = SimpleUploadedFile("voice.aac", b"fake-audio-bytes", content_type="audio/aac")
+    r = api.post(
+        f"/api/messaging/requests/{sr.id}/messages/send/",
+        {"body": "رسالة صوتية", "attachment": f, "attachment_type": "audio"},
+        format="multipart",
+    )
+    assert r.status_code == 201
+
+    api.force_authenticate(user=provider_user)
+    list_r = api.get(f"/api/messaging/requests/{sr.id}/messages/")
+    assert list_r.status_code == 200
+    results = list_r.data.get("results", []) if isinstance(list_r.data, dict) else list_r.data
+    assert results
+    latest = results[0]
+    assert latest.get("attachment_url")
+    assert latest.get("attachment_type") == "audio"
+
+
+@pytest.mark.django_db
+def test_send_direct_message_with_attachment():
+    client_user = User.objects.create_user(phone="0505000001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0505000002", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود مباشر",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    thread_r = api.post(
+        "/api/messaging/direct/thread/",
+        {"provider_id": provider.id},
+        format="json",
+    )
+    assert thread_r.status_code == 200
+    thread_id = thread_r.data["id"]
+
+    f = SimpleUploadedFile("sample.txt", b"hello", content_type="text/plain")
+    send_r = api.post(
+        f"/api/messaging/direct/thread/{thread_id}/messages/send/",
+        {"body": "", "attachment": f, "attachment_type": "file"},
+        format="multipart",
+    )
+    assert send_r.status_code == 201
+
+    api.force_authenticate(user=provider_user)
+    list_r = api.get(f"/api/messaging/direct/thread/{thread_id}/messages/")
+    assert list_r.status_code == 200
+    results = list_r.data.get("results", []) if isinstance(list_r.data, dict) else list_r.data
+    assert results
+    latest = results[0]
+    assert latest.get("attachment_url")
+    assert latest.get("attachment_type") == "file"
+
+
+@pytest.mark.django_db
+def test_thread_report_accepts_reason_and_details():
+    client_user = User.objects.create_user(phone="0506000001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0506000002", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود بلاغ",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+    cat = Category.objects.create(name="نظافة")
+    sub = SubCategory.objects.create(category=cat, name="تنظيف")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    thread_res = api.post(f"/api/messaging/requests/{sr.id}/thread/", {}, format="json")
+    assert thread_res.status_code == 200
+    thread_id = thread_res.data["id"]
+
+    report_res = api.post(
+        f"/api/messaging/thread/{thread_id}/report/",
+        {
+            "reason": "محتوى غير لائق",
+            "details": "تفاصيل اختبار",
+            "reported_label": "مزود بلاغ",
+        },
+        format="json",
+    )
+    assert report_res.status_code == 201
+    assert report_res.data.get("ticket_id") is not None

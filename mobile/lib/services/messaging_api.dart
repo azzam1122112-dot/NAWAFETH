@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 
@@ -41,6 +42,26 @@ class MessagingApi {
     final res = await _dio.post(
       '${ApiConfig.apiPrefix}/messaging/requests/$requestId/messages/send/',
       data: {'body': body},
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> sendMessageAttachment({
+    required int requestId,
+    required File file,
+    String body = '',
+    String attachmentType = 'file',
+  }) async {
+    final filename = file.path.split(Platform.pathSeparator).last;
+    final form = FormData.fromMap({
+      'body': body,
+      'attachment_type': attachmentType,
+      'attachment_name': filename,
+      'attachment': await MultipartFile.fromFile(file.path, filename: filename),
+    });
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/requests/$requestId/messages/send/',
+      data: form,
     );
     return _asMap(res.data);
   }
@@ -95,10 +116,37 @@ class MessagingApi {
     return _asMap(res.data);
   }
 
-  Future<Map<String, dynamic>> reportThread({required int threadId, required String description}) async {
+  Future<Map<String, dynamic>> reportThread({
+    required int threadId,
+    String? reason,
+    String? details,
+    String? description,
+    String? reportedLabel,
+  }) async {
+    final payload = <String, dynamic>{};
+    final r = (reason ?? '').trim();
+    if (r.isNotEmpty) payload['reason'] = r;
+
+    final d = (details ?? description ?? '').trim();
+    if (d.isNotEmpty) payload['details'] = d;
+    final reported = (reportedLabel ?? '').trim();
+    if (reported.isNotEmpty) payload['reported_label'] = reported;
+
+    // Legacy field for backwards compatibility
+    final legacy = (description ?? '').trim();
+    if (legacy.isNotEmpty) payload['description'] = legacy;
+
     final res = await _dio.post(
       '${ApiConfig.apiPrefix}/messaging/thread/$threadId/report/',
-      data: {'description': description},
+      data: payload,
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> markThreadUnread({required int threadId}) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/unread/',
+      data: const {},
     );
     return _asMap(res.data);
   }
@@ -140,6 +188,26 @@ class MessagingApi {
     final res = await _dio.post(
       '${ApiConfig.apiPrefix}/messaging/direct/thread/$threadId/messages/send/',
       data: {'body': body},
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> sendDirectAttachment({
+    required int threadId,
+    required File file,
+    String body = '',
+    String attachmentType = 'file',
+  }) async {
+    final filename = file.path.split(Platform.pathSeparator).last;
+    final form = FormData.fromMap({
+      'body': body,
+      'attachment_type': attachmentType,
+      'attachment_name': filename,
+      'attachment': await MultipartFile.fromFile(file.path, filename: filename),
+    });
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/direct/thread/$threadId/messages/send/',
+      data: form,
     );
     return _asMap(res.data);
   }

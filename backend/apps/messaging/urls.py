@@ -17,6 +17,7 @@ from .views import (
     ThreadArchiveView,
     ThreadBlockView,
     ThreadReportView,
+    ThreadMarkUnreadView,
 )
 
 app_name = "messaging"
@@ -44,4 +45,5 @@ urlpatterns = [
     path("thread/<int:thread_id>/archive/", ThreadArchiveView.as_view(), name="thread_archive"),
     path("thread/<int:thread_id>/block/", ThreadBlockView.as_view(), name="thread_block"),
     path("thread/<int:thread_id>/report/", ThreadReportView.as_view(), name="thread_report"),
+    path("thread/<int:thread_id>/unread/", ThreadMarkUnreadView.as_view(), name="thread_mark_unread"),
 ]

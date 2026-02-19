@@ -47,6 +47,9 @@ class Message(models.Model):
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name="messages")
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_messages")
     body = models.TextField(max_length=2000)
+    attachment = models.FileField(upload_to="messaging/attachments/%Y/%m/%d/", null=True, blank=True)
+    attachment_type = models.CharField(max_length=20, blank=True, default="")  # audio, image, file
+    attachment_name = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

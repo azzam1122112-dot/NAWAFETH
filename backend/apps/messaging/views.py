@@ -1,5 +1,7 @@
 import json
 import logging
+import mimetypes
+import os
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
@@ -10,6 +12,7 @@ from django.utils import timezone
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from rest_framework import generics, permissions, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -33,6 +36,21 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LEN = 2000
+
+
+def _infer_attachment_type(file_obj, requested_type: str | None = None) -> str:
+	req_type = (requested_type or "").strip().lower()
+	if req_type in {"audio", "image", "file"}:
+		return req_type
+
+	name = getattr(file_obj, "name", "") or ""
+	mime, _ = mimetypes.guess_type(name)
+	if mime:
+		if mime.startswith("audio/"):
+			return "audio"
+		if mime.startswith("image/"):
+			return "image"
+	return "file"
 
 
 def _can_access_request(user, sr: ServiceRequest) -> bool:
@@ -195,6 +213,7 @@ class ThreadMessagesListView(generics.ListAPIView):
 
 class SendMessageView(APIView):
 	permission_classes = [IsAtLeastPhoneOnly, IsRequestParticipant]
+	parser_classes = [JSONParser, MultiPartParser, FormParser]
 
 	def post(self, request, request_id):
 		service_request = get_object_or_404(ServiceRequest, id=request_id)
@@ -205,14 +224,23 @@ class SendMessageView(APIView):
 
 		serializer = MessageCreateSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
-
+		attachment = serializer.validated_data.get("attachment")
+		attachment_type = _infer_attachment_type(
+			attachment,
+			serializer.validated_data.get("attachment_type"),
+		) if attachment else ""
+		attachment_name = ""
+		if attachment:
+			attachment_name = os.path.basename(getattr(attachment, "name", "") or "").strip()
 		message = Message.objects.create(
 			thread=thread,
 			sender=request.user,
 			body=serializer.validated_data["body"],
+			attachment=attachment,
+			attachment_type=attachment_type,
+			attachment_name=attachment_name,
 			created_at=timezone.now(),
 		)
-		_unarchive_for_participants(thread)
 		_unarchive_for_participants(thread)
 
 		return Response(
@@ -314,6 +342,7 @@ class DirectThreadMessagesListView(generics.ListAPIView):
 class DirectThreadSendMessageView(APIView):
 	"""Send a message in a direct thread."""
 	permission_classes = [IsAtLeastPhoneOnly]
+	parser_classes = [JSONParser, MultiPartParser, FormParser]
 
 	def post(self, request, thread_id):
 		thread = get_object_or_404(Thread, id=thread_id, is_direct=True)
@@ -325,11 +354,21 @@ class DirectThreadSendMessageView(APIView):
 
 		serializer = MessageCreateSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
-
+		attachment = serializer.validated_data.get("attachment")
+		attachment_type = _infer_attachment_type(
+			attachment,
+			serializer.validated_data.get("attachment_type"),
+		) if attachment else ""
+		attachment_name = ""
+		if attachment:
+			attachment_name = os.path.basename(getattr(attachment, "name", "") or "").strip()
 		message = Message.objects.create(
 			thread=thread,
 			sender=request.user,
 			body=serializer.validated_data["body"],
+			attachment=attachment,
+			attachment_type=attachment_type,
+			attachment_name=attachment_name,
 			created_at=timezone.now(),
 		)
 
@@ -546,14 +585,45 @@ class ThreadReportView(APIView):
 			id=thread_id,
 		)
 
-		description = (request.data.get("description") or request.data.get("text") or "").strip()
-		if not description:
-			return Response({"detail": "description مطلوب"}, status=status.HTTP_400_BAD_REQUEST)
+		reason = (request.data.get("reason") or "").strip()
+		details = (request.data.get("details") or "").strip()
+		reported_label = (request.data.get("reported_label") or "").strip()
+		legacy = (request.data.get("description") or request.data.get("text") or "").strip()
+		if not details:
+			details = legacy
+
+		# Reason is required in the new UI (matches mobile screenshot).
+		# For legacy clients that only send description/text, default reason to "أخرى".
+		if not reason and details:
+			reason = "أخرى"
+		if not reason:
+			return Response({"detail": "reason مطلوب"}, status=status.HTTP_400_BAD_REQUEST)
 
 		prefix = f"بلاغ محادثة (Thread#{thread.id})"
 		if thread.request_id:
 			prefix += f" طلب#{thread.request_id}"
-		full = f"{prefix}: {description}".strip()[:300]
+
+		reported_user_id = None
+		try:
+			if thread.is_direct:
+				if thread.participant_1_id == request.user.id:
+					reported_user_id = thread.participant_2_id
+				else:
+					reported_user_id = thread.participant_1_id
+			elif thread.request_id and getattr(thread.request, "provider_id", None):
+				reported_user_id = thread.request.provider.user_id
+		except Exception:
+			reported_user_id = None
+
+		if reported_user_id:
+			prefix += f" المبلغ_عنه#{reported_user_id}"
+
+		full = f"{prefix} - السبب: {reason}"
+		if details:
+			full += f" - التفاصيل: {details}"
+		if reported_label:
+			full += f" - الاسم: {reported_label}"
+		full = full.strip()[:300]
 
 		ticket = SupportTicket.objects.create(
 			requester=request.user,
@@ -563,3 +633,39 @@ class ThreadReportView(APIView):
 		)
 
 		return Response({"ok": True, "ticket_id": ticket.id, "ticket_code": ticket.code}, status=status.HTTP_201_CREATED)
+
+
+class ThreadMarkUnreadView(APIView):
+	"""Mark a thread as unread for the current user.
+
+	Implementation detail: removes the MessageRead row for the latest message sent by the peer.
+	This makes unread_count >= 1 without affecting the other participant.
+	"""
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def post(self, request, thread_id: int):
+		thread = get_object_or_404(Thread, id=thread_id)
+
+		last_peer_message = (
+			Message.objects.filter(thread=thread)
+			.exclude(sender=request.user)
+			.order_by("-created_at", "-id")
+			.first()
+		)
+
+		if not last_peer_message:
+			return Response(
+				{"ok": True, "marked": 0, "detail": "لا توجد رسائل من الطرف الآخر"},
+				status=status.HTTP_200_OK,
+			)
+
+		deleted, _ = MessageRead.objects.filter(message=last_peer_message, user=request.user).delete()
+		return Response(
+			{
+				"ok": True,
+				"marked": 1,
+				"message_id": last_peer_message.id,
+				"deleted": deleted,
+			},
+			status=status.HTTP_200_OK,
+		)

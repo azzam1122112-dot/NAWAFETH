@@ -2,7 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../services/marketplace_api.dart';
 import '../services/messaging_api.dart';
@@ -45,6 +49,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final MarketplaceApi _marketplaceApi = MarketplaceApi();
   final SessionStorage _session = const SessionStorage();
   final TextEditingController _controller = TextEditingController();
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
 
   final List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
@@ -64,6 +69,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   DateTime? _lastPeerActivityAt;
   bool _isFavorite = false;
   bool _isBlocked = false;
+  bool _isRecording = false;
+  bool _recorderInitialized = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 5;
 
@@ -95,6 +102,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _typingDebounce?.cancel();
     _socketSub?.cancel();
     _socket?.close();
+    if (_recorderInitialized) {
+      _recorder.closeRecorder();
+    }
     _controller.dispose();
     super.dispose();
   }
@@ -198,6 +208,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             'id': _asInt(m['id']),
             'senderId': _asInt(m['sender']),
             'text': (m['body'] ?? '').toString(),
+            'attachmentUrl': (m['attachment_url'] ?? '').toString(),
+            'attachmentType': (m['attachment_type'] ?? '').toString(),
+            'attachmentName': (m['attachment_name'] ?? '').toString(),
             'sentAt':
                 DateTime.tryParse((m['created_at'] ?? '').toString()) ??
                 DateTime.now(),
@@ -225,6 +238,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             'id': _asInt(m['id']),
             'senderId': _asInt(m['sender']),
             'text': (m['body'] ?? '').toString(),
+            'attachmentUrl': (m['attachment_url'] ?? '').toString(),
+            'attachmentType': (m['attachment_type'] ?? '').toString(),
+            'attachmentName': (m['attachment_name'] ?? '').toString(),
             'sentAt':
                 DateTime.tryParse((m['created_at'] ?? '').toString()) ??
                 DateTime.now(),
@@ -378,6 +394,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         'id': id,
         'senderId': _asInt(payload['sender_id']),
         'text': (payload['text'] ?? '').toString(),
+        'attachmentUrl': '',
+        'attachmentType': '',
+        'attachmentName': '',
         'sentAt':
             DateTime.tryParse((payload['sent_at'] ?? '').toString()) ??
             DateTime.now(),
@@ -613,6 +632,619 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return text.contains('__SERVICE_REQUEST_LINK__');
   }
 
+  static const List<String> _reportReasons = <String>[
+    'محتوى غير لائق',
+    'إساءة أو ألفاظ مسيئة',
+    'احتيال أو محاولة خداع',
+    'انتحال شخصية',
+    'رسائل مزعجة',
+    'سبب آخر',
+  ];
+
+  void _showInfo(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _showConversationReportDialog() async {
+    if (_threadId == null) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final detailsController = TextEditingController();
+    String selectedReason = _reportReasons.first;
+    bool submitting = false;
+    const maxDetails = 500;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !submitting,
+      builder: (dialogContext) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              final reportedName = (widget.name).trim().isEmpty ? 'مزود خدمة' : widget.name.trim();
+              final reportedId = int.tryParse((widget.peerId ?? '').trim());
+              final reportedLabel = reportedId == null ? reportedName : '$reportedName ($reportedId#)';
+              final theme = Theme.of(dialogContext);
+              final primary = theme.colorScheme.primary;
+              return Dialog(
+                insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(23),
+                            ),
+                            child: Icon(Icons.priority_high_rounded, color: primary),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'إبلاغ عن مزود خدمة',
+                              style: TextStyle(fontFamily: 'Cairo', fontSize: 24, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'بيانات المُبلّغ عنه:',
+                        style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          reportedLabel,
+                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 14.5, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'سبب الإبلاغ:',
+                        style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedReason,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: _reportReasons
+                            .map(
+                              (r) => DropdownMenuItem<String>(
+                                value: r,
+                                child: Text(r, style: const TextStyle(fontFamily: 'Cairo')),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: submitting
+                            ? null
+                            : (v) {
+                                if (v == null) return;
+                                setDialogState(() => selectedReason = v);
+                              },
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'تفاصيل إضافية (اختياري):',
+                        style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: detailsController,
+                        maxLength: maxDetails,
+                        minLines: 4,
+                        maxLines: 5,
+                        enabled: !submitting,
+                        decoration: InputDecoration(
+                          hintText: 'اكتب التفاصيل هنا...',
+                          hintStyle: const TextStyle(fontFamily: 'Cairo'),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: submitting
+                                ? null
+                                : () async {
+                                    setDialogState(() => submitting = true);
+                                    final details = detailsController.text.trim();
+                                    try {
+                                      final res = await _api.reportThread(
+                                        threadId: _threadId!,
+                                        reason: selectedReason,
+                                        details: details,
+                                        reportedLabel: reportedLabel,
+                                        description: details.isEmpty ? null : details,
+                                      );
+                                      final code = (res['ticket_code'] ?? '').toString();
+                                      if (!mounted) return;
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            code.isEmpty ? 'تم إرسال البلاغ.' : 'تم إرسال البلاغ: $code',
+                                          ),
+                                        ),
+                                      );
+                                      if (dialogContext.mounted) {
+                                        Navigator.pop(dialogContext);
+                                      }
+                                    } catch (_) {
+                                      if (!mounted) return;
+                                      setDialogState(() => submitting = false);
+                                      messenger.showSnackBar(
+                                        const SnackBar(content: Text('تعذر إرسال البلاغ.')),
+                                      );
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: submitting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('إرسال البلاغ', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                          const SizedBox(width: 12),
+                          TextButton(
+                            onPressed: submitting ? null : () => Navigator.pop(dialogContext),
+                            child: const Text(
+                              'إلغاء',
+                              style: TextStyle(fontFamily: 'Cairo', color: Colors.black54),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _initRecorder() async {
+    if (_recorderInitialized) return;
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      _showInfo('يجب السماح بالوصول للميكروفون.');
+      return;
+    }
+    await _recorder.openRecorder();
+    if (!mounted) return;
+    setState(() {
+      _recorderInitialized = true;
+    });
+  }
+
+  Future<void> _sendAttachmentWithRecovery({
+    required File file,
+    required String attachmentType,
+    String body = '',
+  }) async {
+    if (_isDirect) {
+      Object? directError;
+      if (_threadId != null) {
+        try {
+          await _api.sendDirectAttachment(
+            threadId: _threadId!,
+            file: file,
+            body: body,
+            attachmentType: attachmentType,
+          );
+          await _loadDirectMessages();
+          return;
+        } catch (error) {
+          directError = error;
+          final status = _api.statusCodeOf(error);
+          final canRecover = status == 403 || status == 404;
+          if (!canRecover) rethrow;
+        }
+      }
+
+      final providerId = int.tryParse((widget.peerId ?? '').trim());
+      if (providerId == null) {
+        if (directError != null) throw directError;
+        throw Exception('تعذر تحديد مزود الخدمة للمحادثة.');
+      }
+
+      final thread = await _api.getOrCreateDirectThread(providerId);
+      final recoveredThreadId = _asInt(thread['id']);
+      if (recoveredThreadId == null) {
+        throw Exception('تعذر استعادة المحادثة المباشرة.');
+      }
+
+      _threadId = recoveredThreadId;
+      await _api.sendDirectAttachment(
+        threadId: recoveredThreadId,
+        file: file,
+        body: body,
+        attachmentType: attachmentType,
+      );
+      await _loadDirectMessages();
+      await _connectWs();
+      return;
+    }
+
+    if (_requestId == null) {
+      throw Exception('تعذر تحديد المحادثة.');
+    }
+    await _api.sendMessageAttachment(
+      requestId: _requestId!,
+      file: file,
+      body: body,
+      attachmentType: attachmentType,
+    );
+    await _loadMessages();
+  }
+
+  Future<void> _uploadAttachmentFile(
+    File file, {
+    required String attachmentType,
+    String body = '',
+  }) async {
+    if (_isBlocked || _isSending) return;
+    setState(() => _isSending = true);
+    try {
+      await _sendAttachmentWithRecovery(
+        file: file,
+        attachmentType: attachmentType,
+        body: body,
+      );
+    } catch (_) {
+      _showInfo('تعذر إرسال المرفق حالياً.');
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_isBlocked || _isSending) return;
+    if (!_recorderInitialized) {
+      await _initRecorder();
+      if (!_recorderInitialized) return;
+    }
+
+    if (_isRecording) {
+      final path = await _recorder.stopRecorder();
+      if (!mounted) return;
+      setState(() {
+        _isRecording = false;
+      });
+      if (path == null || path.trim().isEmpty) {
+        _showInfo('تعذر حفظ التسجيل الصوتي.');
+        return;
+      }
+      await _uploadAttachmentFile(
+        File(path),
+        attachmentType: 'audio',
+        body: 'رسالة صوتية',
+      );
+      return;
+    }
+
+    final path =
+        '${Directory.systemTemp.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
+    await _recorder.startRecorder(toFile: path);
+    if (!mounted) return;
+    setState(() {
+      _isRecording = true;
+    });
+  }
+
+  Future<void> _pickChatAttachment(String source) async {
+    if (_isBlocked) return;
+    if (source == 'gallery') {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+      await _uploadAttachmentFile(
+        File(image.path),
+        attachmentType: 'image',
+        body: 'صورة',
+      );
+      return;
+    }
+
+    if (source == 'camera') {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.camera);
+      if (image == null) return;
+      await _uploadAttachmentFile(
+        File(image.path),
+        attachmentType: 'image',
+        body: 'صورة من الكاميرا',
+      );
+      return;
+    }
+
+    if (source == 'file') {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+      final path = result?.files.single.path;
+      if (path == null || path.trim().isEmpty) return;
+      await _uploadAttachmentFile(
+        File(path),
+        attachmentType: 'file',
+        body: 'ملف مرفق',
+      );
+    }
+  }
+
+  Future<void> _showAttachmentSheet() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text(
+                'Photo album',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text(
+                'Open Camera',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text(
+                'Send a file',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
+              onTap: () => Navigator.pop(ctx, 'file'),
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await _pickChatAttachment(picked);
+  }
+
+  Future<void> _showClientChatOptionsSheet() async {
+    if (_threadId == null) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: StatefulBuilder(
+            builder: (sheetContext, setSheetState) {
+              Widget optionRow({required String text, Widget? subtitle}) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Icon(Icons.circle, size: 6),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(text, style: const TextStyle(fontFamily: 'Cairo')),
+                          if (subtitle != null) ...[
+                            const SizedBox(height: 2),
+                            DefaultTextStyle(
+                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+                              child: subtitle,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+                  left: 16,
+                  right: 16,
+                  top: 16,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: Text(
+                          'خيارات المحادثة',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      InkWell(
+                        onTap: () async {
+                          try {
+                            await _api.markThreadUnread(threadId: _threadId!);
+                            if (!mounted) return;
+                            messenger.showSnackBar(const SnackBar(content: Text('تم جعل المحادثة غير مقروءة.')));
+                          } catch (_) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(const SnackBar(content: Text('تعذر جعل المحادثة غير مقروءة.')));
+                          }
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: optionRow(text: 'اجعلها غير مقروءة'),
+                        ),
+                      ),
+
+                      InkWell(
+                        onTap: () async {
+                          try {
+                            await _api.setThreadFavorite(threadId: _threadId!, favorite: !_isFavorite);
+                            await _loadThreadState();
+                          } catch (_) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(const SnackBar(content: Text('تعذر تحديث المفضلة.')));
+                          }
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: optionRow(
+                            text: 'مفضلة',
+                            subtitle: const Text('(محادثة مهمة – تواصل غير مكتمل)'),
+                          ),
+                        ),
+                      ),
+
+                      InkWell(
+                        onTap: () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('حظر مقدم الخدمة', style: TextStyle(fontFamily: 'Cairo')),
+                              content: const Text('سيتم إخفاء هذه المحادثة ولن تتمكن من إرسال رسائل إليها.', style: TextStyle(fontFamily: 'Cairo')),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حظر')),
+                              ],
+                            ),
+                          );
+                          if (ok != true) return;
+                          try {
+                            await _api.setThreadBlocked(threadId: _threadId!, blocked: true);
+                            if (!mounted) return;
+                            navigator.pop();
+                          } catch (_) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(const SnackBar(content: Text('تعذر الحظر.')));
+                          }
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: optionRow(text: 'حظر مقدم الخدمة'),
+                        ),
+                      ),
+
+                      InkWell(
+                        onTap: () async {
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                          await _showConversationReportDialog();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: optionRow(text: 'الإبلاغ عن مقدم الخدمة'),
+                        ),
+                      ),
+
+                      InkWell(
+                        onTap: () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+                              content: const Text('سيتم إخفاء هذه المحادثة من قائمتك.', style: TextStyle(fontFamily: 'Cairo')),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+                              ],
+                            ),
+                          );
+                          if (ok != true) return;
+                          try {
+                            await _api.setThreadArchived(threadId: _threadId!, archived: true);
+                            if (!mounted) return;
+                            navigator.pop();
+                          } catch (_) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(const SnackBar(content: Text('تعذر حذف المحادثة.')));
+                          }
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: optionRow(text: 'حذف المحادثة'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -644,145 +1276,122 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ],
         ),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (v) async {
-              if (_threadId == null) return;
-              final messenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(context);
-              if (v == 'favorite') {
-                try {
-                  await _api.setThreadFavorite(threadId: _threadId!, favorite: !_isFavorite);
-                  await _loadThreadState();
-                } catch (_) {
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('تعذر تحديث المفضلة.')),
-                  );
+          if (_isProviderAccount)
+            IconButton(
+              onPressed: () => Navigator.pushNamed(context, '/orders'),
+              tooltip: 'الطلبات الحالية/السابقة للعميل',
+              icon: const Icon(Icons.assignment_turned_in_outlined),
+            ),
+          if (_isProviderAccount)
+            PopupMenuButton<String>(
+              onSelected: (v) async {
+                if (_threadId == null) return;
+                final messenger = ScaffoldMessenger.of(context);
+                final navigator = Navigator.of(context);
+                if (v == 'favorite') {
+                  try {
+                    await _api.setThreadFavorite(threadId: _threadId!, favorite: !_isFavorite);
+                    await _loadThreadState();
+                  } catch (_) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('تعذر تحديث المفضلة.')),
+                    );
+                  }
+                  return;
                 }
-                return;
-              }
 
-              if (v == 'report') {
-                final controller = TextEditingController();
-                final text = await showDialog<String>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
-                    content: TextField(
-                      controller: controller,
-                      maxLength: 300,
-                      minLines: 2,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                        hintText: 'اكتب تفاصيل البلاغ (حتى 300 حرف)',
-                      ),
+                if (v == 'report') {
+                  await _showConversationReportDialog();
+                  return;
+                }
+
+                if (v == 'block') {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+                      content: const Text('سيتم إخفاء هذه المحادثة ولن تتمكن من إرسال رسائل إليها.', style: TextStyle(fontFamily: 'Cairo')),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حظر')),
+                      ],
                     ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('إلغاء')),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-                        child: const Text('إرسال'),
-                      ),
-                    ],
-                  ),
-                );
-                if (text == null || text.trim().isEmpty) return;
-                try {
-                  final res = await _api.reportThread(threadId: _threadId!, description: text.trim());
-                  final code = (res['ticket_code'] ?? '').toString();
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    SnackBar(content: Text(code.isEmpty ? 'تم إرسال البلاغ.' : 'تم إرسال البلاغ: $code')),
                   );
-                } catch (_) {
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('تعذر إرسال البلاغ.')),
-                  );
+                  if (ok != true) return;
+                  try {
+                    await _api.setThreadBlocked(threadId: _threadId!, blocked: true);
+                    if (!mounted) return;
+                    navigator.pop();
+                  } catch (_) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('تعذر الحظر.')),
+                    );
+                  }
+                  return;
                 }
-                return;
-              }
 
-              if (v == 'block') {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
-                    content: const Text('سيتم إخفاء هذه المحادثة ولن تتمكن من إرسال رسائل إليها.', style: TextStyle(fontFamily: 'Cairo')),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-                      ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حظر')),
-                    ],
-                  ),
-                );
-                if (ok != true) return;
-                try {
-                  await _api.setThreadBlocked(threadId: _threadId!, blocked: true);
-                  if (!mounted) return;
-                  navigator.pop();
-                } catch (_) {
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('تعذر الحظر.')),
+                if (v == 'archive') {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+                      content: const Text('سيتم إخفاء هذه المحادثة من قائمتك.', style: TextStyle(fontFamily: 'Cairo')),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+                      ],
+                    ),
                   );
+                  if (ok != true) return;
+                  try {
+                    await _api.setThreadArchived(threadId: _threadId!, archived: true);
+                    if (!mounted) return;
+                    navigator.pop();
+                  } catch (_) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('تعذر حذف المحادثة.')),
+                    );
+                  }
+                  return;
                 }
-                return;
-              }
-
-              if (v == 'archive') {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
-                    content: const Text('سيتم إخفاء هذه المحادثة من قائمتك.', style: TextStyle(fontFamily: 'Cairo')),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-                      ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
-                    ],
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'favorite',
+                  child: Text(
+                    _isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة',
+                    style: const TextStyle(fontFamily: 'Cairo'),
                   ),
-                );
-                if (ok != true) return;
-                try {
-                  await _api.setThreadArchived(threadId: _threadId!, archived: true);
-                  if (!mounted) return;
-                  navigator.pop();
-                } catch (_) {
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('تعذر حذف المحادثة.')),
-                  );
-                }
-                return;
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'favorite',
-                child: Text(
-                  _isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة',
-                  style: const TextStyle(fontFamily: 'Cairo'),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'report',
-                child: Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
-              ),
-              const PopupMenuItem(
-                value: 'block',
-                child: Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
-              ),
-              const PopupMenuItem(
-                value: 'archive',
-                child: Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
-              ),
-            ],
-          ),
+                const PopupMenuItem(
+                  value: 'report',
+                  child: Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
+                ),
+                const PopupMenuItem(
+                  value: 'block',
+                  child: Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+                ),
+                const PopupMenuItem(
+                  value: 'archive',
+                  child: Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+                ),
+              ],
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'خيارات المحادثة',
+              onPressed: _showClientChatOptionsSheet,
+            ),
           // Provider can send a service request link to the client
           if (_isProviderAccount && _isDirect)
             IconButton(
               onPressed: _sendServiceRequestLink,
-              tooltip: 'إرسال رابط طلب خدمة',
-              icon: const Icon(Icons.add_shopping_cart_rounded),
+              tooltip: 'تحويل العميل لصفحة الطلبات',
+              icon: const Icon(Icons.assignment_outlined),
             ),
         ],
       ),
@@ -862,6 +1471,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       final sentAt =
                           (m['sentAt'] as DateTime?) ?? DateTime.now();
                       final text = (m['text'] ?? '').toString();
+                      final attachmentUrl =
+                          (m['attachmentUrl'] ?? '').toString().trim();
+                      final attachmentType =
+                          (m['attachmentType'] ?? '').toString().trim();
+                      final attachmentName =
+                          (m['attachmentName'] ?? '').toString().trim();
+                      final hasAttachment = attachmentUrl.isNotEmpty;
 
                       // Service request link card
                       if (_isServiceRequestLink(text)) {
@@ -893,13 +1509,60 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                (m['text'] ?? '').toString(),
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  color: isMe ? Colors.white : Colors.black87,
+                              if (hasAttachment)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isMe
+                                        ? Colors.white.withValues(alpha: 0.18)
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        attachmentType == 'audio'
+                                            ? Icons.mic
+                                            : Icons.attach_file,
+                                        size: 16,
+                                        color: isMe
+                                            ? Colors.white
+                                            : Colors.deepPurple,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          attachmentName.isEmpty
+                                              ? (attachmentType == 'audio'
+                                                  ? 'رسالة صوتية'
+                                                  : 'مرفق')
+                                              : attachmentName,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontFamily: 'Cairo',
+                                            fontSize: 12,
+                                            color: isMe
+                                                ? Colors.white
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                              if (text.trim().isNotEmpty)
+                                Text(
+                                  text,
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    color: isMe ? Colors.white : Colors.black87,
+                                  ),
+                                ),
                               const SizedBox(height: 4),
                               Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -948,6 +1611,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             child: Row(
               children: [
+                if (_isProviderAccount && _isDirect) ...[
+                  IconButton(
+                    onPressed: _isBlocked ? null : _toggleVoiceRecording,
+                    tooltip: _isRecording ? 'إيقاف التسجيل وإرسال' : 'تسجيل رسالة صوتية',
+                    icon: Icon(_isRecording ? Icons.stop_circle : Icons.mic_rounded),
+                    color: _isRecording ? Colors.red : Colors.deepPurple,
+                  ),
+                  IconButton(
+                    onPressed: (_isSending || _isBlocked) ? null : _sendServiceRequestLink,
+                    tooltip: 'تحويل العميل لصفحة الطلبات',
+                    icon: const Icon(Icons.assignment_outlined),
+                    color: Colors.deepPurple,
+                  ),
+                ],
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -958,6 +1635,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     decoration: InputDecoration(
                       hintText: _isBlocked ? 'تم حظر هذه المحادثة' : 'اكتب رسالتك',
                       hintStyle: const TextStyle(fontFamily: 'Cairo'),
+                      prefixIcon: IconButton(
+                        onPressed: _isBlocked ? null : _showAttachmentSheet,
+                        tooltip: 'مرفقات',
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
                       filled: true,
                       fillColor: Colors.grey.shade100,
                       border: OutlineInputBorder(
