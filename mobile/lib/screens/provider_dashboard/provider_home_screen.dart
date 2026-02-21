@@ -1580,14 +1580,16 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     Navigator.push(context, MaterialPageRoute(builder: (_) => const ProviderOrdersScreen()));
   }
 
-  void _navToReviews() {
-     Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+  Future<void> _navToReviews() async {
+     await Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
       appBar: AppBar(title: const Text('التقييمات', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: providerPrimary, foregroundColor: Colors.white,),
       body: ReviewsTab(
         embedded: true,
         providerId: _providerId,
       ),
     )));
+    if (!mounted) return;
+    await _loadProviderData();
   }
 
   Future<void> _onSelectMode(AccountMode mode) async {

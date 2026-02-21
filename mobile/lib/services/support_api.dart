@@ -34,6 +34,35 @@ class SupportApi {
     return _asMap(res.data);
   }
 
+  Future<Map<String, dynamic>> createComplaintTicket({
+    required String reason,
+    required String details,
+    String? contextLabel,
+    String? contextValue,
+    String? reportedEntityValue,
+  }) async {
+    final parts = <String>[
+      'بلاغ من التطبيق',
+      'السبب: ${reason.trim()}',
+      if ((reportedEntityValue ?? '').trim().isNotEmpty)
+        'المبلغ عنه: ${reportedEntityValue!.trim()}',
+      if ((contextLabel ?? '').trim().isNotEmpty &&
+          (contextValue ?? '').trim().isNotEmpty)
+        '${contextLabel!.trim()}: ${contextValue!.trim()}',
+      if (details.trim().isNotEmpty) 'التفاصيل: ${details.trim()}',
+    ];
+
+    var description = parts.join(' - ').trim();
+    if (description.length > 300) {
+      description = description.substring(0, 300);
+    }
+
+    return createTicket(
+      ticketType: 'complaint',
+      description: description,
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getMyTickets({
     String? status,
     String? type,

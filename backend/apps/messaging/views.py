@@ -502,9 +502,13 @@ class ThreadFavoriteView(APIView):
 	def post(self, request, thread_id: int):
 		action = (request.data.get("action") or "").strip().lower()
 		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
-		obj.is_favorite = action != "remove"
-		obj.save(update_fields=["is_favorite", "updated_at"])
-		return Response({"ok": True, "is_favorite": obj.is_favorite}, status=status.HTTP_200_OK)
+		if action == "remove":
+			obj.is_favorite = False
+			obj.favorite_label = ""
+		else:
+			obj.is_favorite = True
+		obj.save(update_fields=["is_favorite", "favorite_label", "updated_at"])
+		return Response({"ok": True, "is_favorite": obj.is_favorite, "favorite_label": obj.favorite_label}, status=status.HTTP_200_OK)
 
 
 class ThreadArchiveView(APIView):
@@ -667,5 +671,52 @@ class ThreadMarkUnreadView(APIView):
 				"message_id": last_peer_message.id,
 				"deleted": deleted,
 			},
+			status=status.HTTP_200_OK,
+		)
+
+
+class ThreadFavoriteLabelView(APIView):
+	"""Set the favorite label for a thread (potential_client / important_conversation / incomplete_contact)."""
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	VALID_LABELS = {"potential_client", "important_conversation", "incomplete_contact", ""}
+
+	def post(self, request, thread_id: int):
+		label = (request.data.get("label") or "").strip().lower()
+		if label not in self.VALID_LABELS:
+			return Response(
+				{"detail": f"قيمة label غير صحيحة. القيم المقبولة: {', '.join(self.VALID_LABELS - {''})}"},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
+		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
+		obj.favorite_label = label
+		# Setting a label auto-marks as favorite
+		if label:
+			obj.is_favorite = True
+		obj.save(update_fields=["favorite_label", "is_favorite", "updated_at"])
+		return Response(
+			{"ok": True, "favorite_label": obj.favorite_label, "is_favorite": obj.is_favorite},
+			status=status.HTTP_200_OK,
+		)
+
+
+class ThreadClientLabelView(APIView):
+	"""Tag a client in the thread as potential / current / past."""
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	VALID_LABELS = {"potential", "current", "past", ""}
+
+	def post(self, request, thread_id: int):
+		label = (request.data.get("label") or "").strip().lower()
+		if label not in self.VALID_LABELS:
+			return Response(
+				{"detail": f"قيمة label غير صحيحة. القيم المقبولة: {', '.join(self.VALID_LABELS - {''})}"},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
+		obj, _ = ThreadUserState.objects.get_or_create(thread_id=thread_id, user=request.user)
+		obj.client_label = label
+		obj.save(update_fields=["client_label", "updated_at"])
+		return Response(
+			{"ok": True, "client_label": obj.client_label},
 			status=status.HTTP_200_OK,
 		)

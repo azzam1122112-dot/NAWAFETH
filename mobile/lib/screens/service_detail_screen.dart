@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/providers_api.dart';
 import '../services/reviews_api.dart';
+import '../services/support_api.dart';
 import '../utils/auth_guard.dart';
 import '../widgets/platform_report_dialog.dart';
 import 'service_request_form_screen.dart';
@@ -35,6 +36,7 @@ class ServiceDetailScreen extends StatefulWidget {
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   final ProvidersApi _providersApi = ProvidersApi();
   final ReviewsApi _reviewsApi = ReviewsApi();
+  final SupportApi _supportApi = SupportApi();
   final TextEditingController _commentController = TextEditingController();
 
   int _currentIndex = 0;
@@ -121,6 +123,39 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('إضافة تعليق متاحة بعد إكمال الطلب عبر التقييم.')),
     );
+  }
+
+  Future<void> _submitComplaintFromDialog({
+    required String reason,
+    required String details,
+    required String reportedEntity,
+    String? contextLabel,
+    String? contextValue,
+  }) async {
+    if (!await checkAuth(context)) return;
+    try {
+      final res = await _supportApi.createComplaintTicket(
+        reason: reason,
+        details: details,
+        reportedEntityValue: reportedEntity,
+        contextLabel: contextLabel,
+        contextValue: contextValue,
+      );
+      if (!mounted) return;
+      final code = (res['code'] ?? '').toString().trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            code.isEmpty ? 'تم إرسال البلاغ بنجاح' : 'تم إرسال البلاغ: $code',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إرسال البلاغ حالياً')),
+      );
+    }
   }
 
   @override
@@ -225,6 +260,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               reportedEntityValue: widget.title,
               contextLabel: 'مزود الخدمة',
               contextValue: '${widget.providerName} (${widget.providerHandle})',
+              onSubmit: ({required reason, required details}) {
+                return _submitComplaintFromDialog(
+                  reason: reason,
+                  details: details,
+                  reportedEntity: widget.title,
+                  contextLabel: 'مزود الخدمة',
+                  contextValue: '${widget.providerName} (${widget.providerHandle})',
+                );
+              },
             );
           },
           icon: const Icon(Icons.flag_outlined, size: 18),
@@ -534,6 +578,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   reportedEntityValue: '${c['name'] ?? ''}: ${c['comment'] ?? ''}',
                   contextLabel: 'الخدمة',
                   contextValue: widget.title,
+                  onSubmit: ({required reason, required details}) {
+                    return _submitComplaintFromDialog(
+                      reason: reason,
+                      details: details,
+                      reportedEntity: '${c['name'] ?? ''}: ${c['comment'] ?? ''}',
+                      contextLabel: 'الخدمة',
+                      contextValue: widget.title,
+                    );
+                  },
                 );
               }
             },

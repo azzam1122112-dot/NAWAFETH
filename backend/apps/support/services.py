@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import SupportTicket, SupportStatusLog, SupportTicketStatus
+from apps.notifications.services import create_notification
 
 
 def change_ticket_status(*, ticket: SupportTicket, new_status: str, by_user, note: str = ""):
@@ -36,6 +37,37 @@ def change_ticket_status(*, ticket: SupportTicket, new_status: str, by_user, not
         to_status=new_status,
         changed_by=by_user,
         note=(note or "")[:200],
+    )
+
+    # Notify ticket requester immediately when support status changes.
+    status_labels = {
+        SupportTicketStatus.NEW: "جديد",
+        SupportTicketStatus.IN_PROGRESS: "تحت المعالجة",
+        SupportTicketStatus.RETURNED: "معاد للعميل",
+        SupportTicketStatus.CLOSED: "مغلق",
+    }
+    from_label = status_labels.get(old, old)
+    to_label = status_labels.get(new_status, new_status)
+    body = f"تم تحديث حالة البلاغ ({ticket.code or ticket.id}) من {from_label} إلى {to_label}."
+    trimmed_note = (note or "").strip()
+    if trimmed_note:
+        body += f" ملاحظة: {trimmed_note}"
+    body = body[:500]
+
+    create_notification(
+        user=ticket.requester,
+        title="تحديث على البلاغ",
+        body=body,
+        kind="report_status_change",
+        url=f"/support/tickets/{ticket.id}/",
+        actor=by_user,
+        meta={
+            "ticket_id": ticket.id,
+            "ticket_code": ticket.code or "",
+            "from_status": old,
+            "to_status": new_status,
+        },
+        pref_key="report_status_change",
     )
     return ticket
 

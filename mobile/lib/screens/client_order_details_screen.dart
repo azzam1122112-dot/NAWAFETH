@@ -53,6 +53,18 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
   bool _isLoadingOffers = false;
   Timer? _autoRefreshTimer;
 
+  bool _hasReview(ClientOrder order) {
+    if (order.reviewId != null && order.reviewId! > 0) return true;
+    final criteria = <double?>[
+      order.ratingResponseSpeed,
+      order.ratingCostValue,
+      order.ratingQuality,
+      order.ratingCredibility,
+      order.ratingOnTime,
+    ];
+    return criteria.any((v) => v != null && v > 0);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +78,7 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
     _ratingCredibility = _order.ratingCredibility ?? 0;
     _ratingOnTime = _order.ratingOnTime ?? 0;
     _ratingCommentController.text = _order.ratingComment ?? '';
+    _didSubmitReview = _hasReview(_order);
 
     _refreshFromBackend();
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -96,6 +109,10 @@ class _ClientOrderDetailsScreenState extends State<ClientOrderDetailsScreen> {
       if (!mounted) return;
       setState(() {
         _order = fresh;
+        _didSubmitReview = _hasReview(fresh);
+        if (_didSubmitReview) {
+          _showRatingForm = false;
+        }
         if (!_editTitle) _titleController.text = fresh.title;
         if (!_editDetails) _detailsController.text = fresh.details;
         _approveProviderInputs = fresh.providerInputsApproved == true;

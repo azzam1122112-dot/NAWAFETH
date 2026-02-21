@@ -334,7 +334,7 @@ class MyProviderRequestsView(generics.ListAPIView):
 		_expire_urgent_requests()
 		provider = self.request.user.provider_profile
 		qs = (
-			ServiceRequest.objects.select_related("client", "subcategory", "subcategory__category")
+			ServiceRequest.objects.select_related("client", "review", "subcategory", "subcategory__category")
 			.filter(provider=provider)
 			.order_by("-created_at")
 		)
@@ -356,6 +356,7 @@ class ProviderRequestDetailView(generics.RetrieveAPIView):
 			"client",
 			"provider",
 			"provider__user",
+			"review",
 			"subcategory",
 			"subcategory__category",
 		).prefetch_related("attachments", "status_logs", "status_logs__actor")
@@ -401,7 +402,7 @@ class MyClientRequestsView(generics.ListAPIView):
 	def get_queryset(self):
 		_expire_urgent_requests()
 		qs = (
-			ServiceRequest.objects.select_related("provider", "subcategory", "subcategory__category")
+			ServiceRequest.objects.select_related("provider", "review", "subcategory", "subcategory__category")
 			.filter(client=self.request.user)
 			.order_by("-created_at")
 		)
@@ -542,6 +543,7 @@ class MyClientRequestDetailView(generics.RetrieveUpdateAPIView):
 	def get_queryset(self):
 		return ServiceRequest.objects.select_related(
 			"provider",
+			"review",
 			"subcategory",
 			"subcategory__category",
 		).prefetch_related(

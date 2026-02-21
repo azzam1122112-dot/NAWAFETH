@@ -35,6 +35,8 @@ class ClientOrder {
   final double? actualServiceAmountSR;
 
   // Service rating (for completed orders)
+  final int? reviewId;
+  final double? reviewRating;
   final double? ratingResponseSpeed;
   final double? ratingCostValue;
   final double? ratingQuality;
@@ -68,6 +70,8 @@ class ClientOrder {
     this.latestStatusAt,
     this.deliveredAt,
     this.actualServiceAmountSR,
+    this.reviewId,
+    this.reviewRating,
     this.ratingResponseSpeed,
     this.ratingCostValue,
     this.ratingQuality,
@@ -164,6 +168,22 @@ class ClientOrder {
       actualServiceAmountSR: double.tryParse(
         (json['actual_service_amount'] ?? '').toString(),
       ),
+      reviewId: int.tryParse((json['review_id'] ?? '').toString()),
+      reviewRating: double.tryParse((json['review_rating'] ?? '').toString()),
+      ratingResponseSpeed: double.tryParse(
+        (json['review_response_speed'] ?? '').toString(),
+      ),
+      ratingCostValue: double.tryParse(
+        (json['review_cost_value'] ?? '').toString(),
+      ),
+      ratingQuality: double.tryParse((json['review_quality'] ?? '').toString()),
+      ratingCredibility: double.tryParse(
+        (json['review_credibility'] ?? '').toString(),
+      ),
+      ratingOnTime: double.tryParse((json['review_on_time'] ?? '').toString()),
+      ratingComment: (json['review_comment'] ?? '').toString().trim().isEmpty
+          ? null
+          : (json['review_comment'] ?? '').toString(),
       canceledAt: DateTime.tryParse((json['canceled_at'] ?? '').toString()),
       cancelReason: (json['cancel_reason'] ?? '').toString().trim().isEmpty
           ? null
@@ -193,6 +213,8 @@ class ClientOrder {
     DateTime? latestStatusAt,
     DateTime? deliveredAt,
     double? actualServiceAmountSR,
+    int? reviewId,
+    double? reviewRating,
     double? ratingResponseSpeed,
     double? ratingCostValue,
     double? ratingQuality,
@@ -229,6 +251,8 @@ class ClientOrder {
       deliveredAt: deliveredAt ?? this.deliveredAt,
       actualServiceAmountSR:
           actualServiceAmountSR ?? this.actualServiceAmountSR,
+      reviewId: reviewId ?? this.reviewId,
+      reviewRating: reviewRating ?? this.reviewRating,
       ratingResponseSpeed: ratingResponseSpeed ?? this.ratingResponseSpeed,
       ratingCostValue: ratingCostValue ?? this.ratingCostValue,
       ratingQuality: ratingQuality ?? this.ratingQuality,

@@ -188,6 +188,38 @@ class _BannerWidgetState extends State<BannerWidget> {
                       },
                     ),
                   ),
+                  // شارة "إعلان" في الزاوية العلوية
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.campaign_rounded, color: Colors.white, size: 12),
+                          SizedBox(width: 4),
+                          Text(
+                            'إعلان',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   Positioned(
                     right: 14,
                     left: 14,

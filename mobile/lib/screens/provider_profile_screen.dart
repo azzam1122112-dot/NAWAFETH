@@ -22,6 +22,7 @@ import '../models/user_summary.dart';
 import '../services/chat_nav.dart';
 import '../services/messaging_api.dart';
 import '../services/account_api.dart';
+import '../services/support_api.dart';
 import '../utils/auth_guard.dart'; // Added
 import '../utils/whatsapp_helper.dart';
 
@@ -186,6 +187,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   String get providerSnapchatUrl => '';
 
   ProviderProfile? _fullProfile;
+  final SupportApi _supportApi = SupportApi();
 
   @override
   void initState() {
@@ -625,6 +627,36 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       reportedEntityValue: '$providerName ($providerHandle)',
                       contextLabel: 'نوع البلاغ',
                       contextValue: 'مزود خدمة',
+                      onSubmit: ({required reason, required details}) async {
+                        if (!await checkAuth(context)) return;
+                        if (!mounted) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          final res = await _supportApi.createComplaintTicket(
+                            reason: reason,
+                            details: details,
+                            contextLabel: 'نوع البلاغ',
+                            contextValue: 'مزود خدمة',
+                            reportedEntityValue: '$providerName ($providerHandle)',
+                          );
+                          if (!mounted) return;
+                          final code = (res['code'] ?? '').toString().trim();
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                code.isEmpty
+                                    ? 'تم إرسال البلاغ بنجاح'
+                                    : 'تم إرسال البلاغ: $code',
+                              ),
+                            ),
+                          );
+                        } catch (_) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('تعذر إرسال البلاغ حالياً')),
+                          );
+                        }
+                      },
                     );
                   },
                   leading: const Icon(Icons.flag_outlined, color: Colors.red),

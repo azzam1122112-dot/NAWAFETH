@@ -151,6 +151,28 @@ class MessagingApi {
     return _asMap(res.data);
   }
 
+  Future<Map<String, dynamic>> setThreadFavoriteLabel({
+    required int threadId,
+    required String label,
+  }) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/favorite-label/',
+      data: {'label': label},
+    );
+    return _asMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> setThreadClientLabel({
+    required int threadId,
+    required String label,
+  }) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/client-label/',
+      data: {'label': label},
+    );
+    return _asMap(res.data);
+  }
+
   // ─── Direct Messaging (no request required) ───────────────────
 
   /// Create or get a direct thread with a provider.

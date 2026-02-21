@@ -4,6 +4,7 @@ import '../models/app_notification.dart';
 import '../models/client_order.dart';
 import '../models/provider_order.dart';
 import '../screens/client_order_details_screen.dart';
+import '../screens/contact_screen.dart';
 import '../screens/provider_dashboard/provider_order_details_screen.dart';
 import 'chat_nav.dart';
 import 'marketplace_api.dart';
@@ -13,6 +14,7 @@ class NotificationLinkHandler {
   static final RegExp _requestChatPath = RegExp(r'^/?requests/(\d+)/chat/?$', caseSensitive: false);
   static final RegExp _requestPath = RegExp(r'^/?requests/(\d+)/?$', caseSensitive: false);
   static final RegExp _threadPath = RegExp(r'^/?thread[s]?/(\d+)(?:/chat)?/?$', caseSensitive: false);
+  static final RegExp _supportTicketPath = RegExp(r'^/?support/tickets/(\d+)/?$', caseSensitive: false);
 
   static int? tryExtractRequestId({
     required String kind,
@@ -76,6 +78,15 @@ class NotificationLinkHandler {
     if (target.openRequestDetails && target.requestId != null) {
       return _openRequestDetails(context, requestId: target.requestId!);
     }
+    if (target.supportTicketId != null) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ContactScreen(initialTicketId: target.supportTicketId),
+        ),
+      );
+      return true;
+    }
     if (target.threadId != null || target.requestId != null) {
       await ChatNav.openThread(
         context,
@@ -104,6 +115,18 @@ class NotificationLinkHandler {
       return _Target(
         threadId: threadIdFromPayload,
         requestId: _extractRequestIdFromPayload(payload),
+        supportTicketId: null,
+        openInbox: false,
+        openRequestDetails: false,
+      );
+    }
+
+    final supportTicketIdFromPayload = _extractSupportTicketIdFromPayload(payload);
+    if (supportTicketIdFromPayload != null) {
+      return _Target(
+        threadId: null,
+        requestId: null,
+        supportTicketId: supportTicketIdFromPayload,
         openInbox: false,
         openRequestDetails: false,
       );
@@ -114,6 +137,7 @@ class NotificationLinkHandler {
       return _Target(
         threadId: threadIdFromUrl,
         requestId: _extractRequestIdFromUrl(url),
+        supportTicketId: null,
         openInbox: false,
         openRequestDetails: false,
       );
@@ -124,8 +148,20 @@ class NotificationLinkHandler {
       return _Target(
         threadId: null,
         requestId: requestIdFromUrl,
+        supportTicketId: null,
         openInbox: false,
         openRequestDetails: !_isChatUrl(url),
+      );
+    }
+
+    final supportTicketIdFromUrl = _extractSupportTicketIdFromUrl(url);
+    if (supportTicketIdFromUrl != null) {
+      return _Target(
+        threadId: null,
+        requestId: null,
+        supportTicketId: supportTicketIdFromUrl,
+        openInbox: false,
+        openRequestDetails: false,
       );
     }
 
@@ -134,6 +170,7 @@ class NotificationLinkHandler {
       return _Target(
         threadId: null,
         requestId: requestIdFromText,
+        supportTicketId: null,
         openInbox: false,
         openRequestDetails: false,
       );
@@ -143,6 +180,7 @@ class NotificationLinkHandler {
       return const _Target(
         threadId: null,
         requestId: null,
+        supportTicketId: null,
         openInbox: true,
         openRequestDetails: false,
       );
@@ -289,6 +327,16 @@ class NotificationLinkHandler {
     return _asInt(payload['request_id'] ?? payload['requestId'] ?? payload['request']);
   }
 
+  static int? _extractSupportTicketIdFromPayload(Map<String, dynamic>? payload) {
+    if (payload == null) return null;
+    return _asInt(
+      payload['ticket_id'] ??
+          payload['ticketId'] ??
+          payload['support_ticket_id'] ??
+          payload['supportTicketId'],
+    );
+  }
+
   static int? _extractThreadIdFromUrl(String? rawUrl) {
     final s = (rawUrl ?? '').trim();
     if (s.isEmpty) return null;
@@ -337,6 +385,28 @@ class NotificationLinkHandler {
     return int.tryParse(m2.group(1) ?? '');
   }
 
+  static int? _extractSupportTicketIdFromUrl(String? rawUrl) {
+    final s = (rawUrl ?? '').trim();
+    if (s.isEmpty) return null;
+
+    final uri = Uri.tryParse(s);
+    if (uri != null) {
+      final fromQuery = _asInt(
+        uri.queryParameters['ticket_id'] ??
+            uri.queryParameters['ticketId'] ??
+            uri.queryParameters['support_ticket_id'],
+      );
+      if (fromQuery != null) return fromQuery;
+      final m = _supportTicketPath.firstMatch(uri.path);
+      if (m != null) return int.tryParse(m.group(1) ?? '');
+      return null;
+    }
+
+    final m = _supportTicketPath.firstMatch(s);
+    if (m == null) return null;
+    return int.tryParse(m.group(1) ?? '');
+  }
+
   static bool _isChatUrl(String? rawUrl) {
     final s = (rawUrl ?? '').trim();
     if (s.isEmpty) return false;
@@ -362,12 +432,14 @@ class NotificationLinkHandler {
 class _Target {
   final int? threadId;
   final int? requestId;
+  final int? supportTicketId;
   final bool openInbox;
   final bool openRequestDetails;
 
   const _Target({
     required this.threadId,
     required this.requestId,
+    required this.supportTicketId,
     required this.openInbox,
     required this.openRequestDetails,
   });

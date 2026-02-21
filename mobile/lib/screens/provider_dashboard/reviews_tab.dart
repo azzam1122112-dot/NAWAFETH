@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/account_api.dart';
 import '../../services/reviews_api.dart';
+import '../../services/support_api.dart';
 
 class ReviewsTab extends StatefulWidget {
   final int? providerId;
@@ -552,23 +553,31 @@ class _ReviewOptions extends StatelessWidget {
             );
             return;
           case _ReviewAction.report:
-            if (!context.mounted) return;
-            await showDialog<void>(
-              context: context,
-              builder: (_) => AlertDialog(
-                title: const Text('الإبلاغ', style: TextStyle(fontFamily: 'Cairo')),
-                content: const Text(
-                  'إذا كانت هذه المراجعة مخالفة، تواصل مع الدعم لاتخاذ الإجراء اللازم.',
-                  style: TextStyle(fontFamily: 'Cairo'),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+            try {
+              final res = await SupportApi().createComplaintTicket(
+                reason: 'بلاغ مراجعة',
+                details: comment.trim().isEmpty
+                    ? 'تم الإبلاغ عن مراجعة بدون تعليق نصي.'
+                    : 'نص المراجعة: ${comment.trim()}',
+                contextLabel: 'رقم العميل',
+                contextValue: clientPhone.trim().isEmpty ? 'غير متوفر' : clientPhone.trim(),
+                reportedEntityValue: 'مراجعة على ملف المزود',
+              );
+              if (!context.mounted) return;
+              final code = (res['code'] ?? '').toString().trim();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    code.isEmpty ? 'تم إرسال البلاغ' : 'تم إرسال البلاغ: $code',
                   ),
-                ],
-              ),
-            );
+                ),
+              );
+            } catch (_) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تعذر إرسال البلاغ حالياً')),
+              );
+            }
             return;
         }
       },

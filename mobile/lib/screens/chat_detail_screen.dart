@@ -68,6 +68,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _peerOnline = false;
   DateTime? _lastPeerActivityAt;
   bool _isFavorite = false;
+  String _favoriteLabel = '';
+  String _clientLabel = '';
   bool _isBlocked = false;
   bool _isRecording = false;
   bool _recorderInitialized = false;
@@ -159,6 +161,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (!mounted) return;
       setState(() {
         _isFavorite = st['is_favorite'] == true;
+        _favoriteLabel = (st['favorite_label'] ?? '').toString();
+        _clientLabel = (st['client_label'] ?? '').toString();
         _isBlocked = st['is_blocked'] == true || st['blocked_by_other'] == true;
       });
     } catch (_) {}
@@ -663,7 +667,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           textDirection: TextDirection.rtl,
           child: StatefulBuilder(
             builder: (dialogContext, setDialogState) {
-              final reportedName = (widget.name).trim().isEmpty ? 'مزود خدمة' : widget.name.trim();
+              final reportedName = (widget.name).trim().isEmpty ? 'المستخدم' : widget.name.trim();
               final reportedId = int.tryParse((widget.peerId ?? '').trim());
               final reportedLabel = reportedId == null ? reportedName : '$reportedName ($reportedId#)';
               final theme = Theme.of(dialogContext);
@@ -691,7 +695,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
-                              'إبلاغ عن مزود خدمة',
+                              'تقديم بلاغ',
                               style: TextStyle(fontFamily: 'Cairo', fontSize: 24, fontWeight: FontWeight.w700),
                             ),
                           ),
@@ -1256,61 +1260,194 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              widget.name,
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    _peerTyping
+                        ? 'يكتب الآن...'
+                        : (showPeerOnline ? 'متصل' : 'غير متصل'),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ],
               ),
             ),
-            Text(
-              _peerTyping
-                  ? 'يكتب الآن...'
-                  : (showPeerOnline ? 'متصل' : 'غير متصل'),
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-            ),
+            if (_isProviderAccount) ...[  
+              const SizedBox(width: 2),
+              IconButton(
+                onPressed: () => Navigator.pushNamed(context, '/orders'),
+                tooltip: 'الطلبات الحالية/السابقة للعميل',
+                icon: const Icon(
+                  Icons.assignment_turned_in_outlined,
+                  size: 22,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                color: Colors.deepPurple,
+              ),
+            ],
           ],
         ),
         actions: [
           if (_isProviderAccount)
-            IconButton(
-              onPressed: () => Navigator.pushNamed(context, '/orders'),
-              tooltip: 'الطلبات الحالية/السابقة للعميل',
-              icon: const Icon(Icons.assignment_turned_in_outlined),
-            ),
-          if (_isProviderAccount)
             PopupMenuButton<String>(
+              tooltip: 'خيارات المحادثة',
               onSelected: (v) async {
                 if (_threadId == null) return;
                 final messenger = ScaffoldMessenger.of(context);
                 final navigator = Navigator.of(context);
-                if (v == 'favorite') {
+
+                // ─── غير مقروءة ───────────────────────────────────────
+                if (v == 'unread') {
                   try {
-                    await _api.setThreadFavorite(threadId: _threadId!, favorite: !_isFavorite);
-                    await _loadThreadState();
+                    await _api.markThreadUnread(threadId: _threadId!);
+                    if (!mounted) return;
+                    navigator.pop();
                   } catch (_) {
                     if (!mounted) return;
                     messenger.showSnackBar(
-                      const SnackBar(content: Text('تعذر تحديث المفضلة.')),
+                      const SnackBar(content: Text('تعذر تعيين المحادثة كغير مقروءة.')),
                     );
                   }
                   return;
                 }
 
+                // ─── مفضلة ────────────────────────────────────────────
+                if (v == 'favorite') {
+                  if (_isFavorite) {
+                    // إزالة من المفضلة
+                    try {
+                      await _api.setThreadFavorite(threadId: _threadId!, favorite: false);
+                      await _api.setThreadFavoriteLabel(threadId: _threadId!, label: '');
+                      await _loadThreadState();
+                    } catch (_) {
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('تعذر تحديث المفضلة.')),
+                      );
+                    }
+                  } else {
+                    // اختيار تصنيف المفضلة
+                    final label = await showDialog<String>(
+                      context: context,
+                      builder: (ctx) => Directionality(
+                        textDirection: TextDirection.rtl,
+                        child: SimpleDialog(
+                          title: const Text(
+                            'تصنيف المفضلة',
+                            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                          ),
+                          children: [
+                            SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, 'potential_client'),
+                              child: const Text('عميل محتمل', style: TextStyle(fontFamily: 'Cairo')),
+                            ),
+                            SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, 'important_conversation'),
+                              child: const Text('محادثة مهمة', style: TextStyle(fontFamily: 'Cairo')),
+                            ),
+                            SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, 'incomplete_contact'),
+                              child: const Text('تواصل غير مكتمل', style: TextStyle(fontFamily: 'Cairo')),
+                            ),
+                            SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, null),
+                              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (label == null) return;
+                    try {
+                      await _api.setThreadFavoriteLabel(threadId: _threadId!, label: label);
+                      await _loadThreadState();
+                    } catch (_) {
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('تعذر تحديث المفضلة.')),
+                      );
+                    }
+                  }
+                  return;
+                }
+
+                // ─── تميّز كعميل ──────────────────────────────────────
+                if (v == 'client_label') {
+                  final label = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => Directionality(
+                      textDirection: TextDirection.rtl,
+                      child: SimpleDialog(
+                        title: const Text(
+                          'تمييز العميل',
+                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                        ),
+                        children: [
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, 'potential'),
+                            child: const Text('عميل محتمل', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, 'current'),
+                            child: const Text('عميل حالي', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, 'past'),
+                            child: const Text('عميل سابق', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                          if (_clientLabel.isNotEmpty)
+                            SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, ''),
+                              child: const Text('إزالة التمييز', style: TextStyle(fontFamily: 'Cairo', color: Colors.orange)),
+                            ),
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, null),
+                            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                  if (label == null) return;
+                  try {
+                    await _api.setThreadClientLabel(threadId: _threadId!, label: label);
+                    await _loadThreadState();
+                  } catch (_) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('تعذر تحديث تمييز العميل.')),
+                    );
+                  }
+                  return;
+                }
+
+                // ─── إبلاغ ────────────────────────────────────────────
                 if (v == 'report') {
                   await _showConversationReportDialog();
                   return;
                 }
 
+                // ─── حظر ──────────────────────────────────────────────
                 if (v == 'block') {
                   final ok = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
+                      title: const Text('حظر العضو', style: TextStyle(fontFamily: 'Cairo')),
                       content: const Text('سيتم إخفاء هذه المحادثة ولن تتمكن من إرسال رسائل إليها.', style: TextStyle(fontFamily: 'Cairo')),
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
@@ -1332,6 +1469,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   return;
                 }
 
+                // ─── حذف المحادثة ──────────────────────────────────────
                 if (v == 'archive') {
                   final ok = await showDialog<bool>(
                     context: context,
@@ -1358,27 +1496,97 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   return;
                 }
               },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'favorite',
-                  child: Text(
-                    _isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة',
-                    style: const TextStyle(fontFamily: 'Cairo'),
+              itemBuilder: (_) {
+                String _favoriteLabelText() {
+                  switch (_favoriteLabel) {
+                    case 'potential_client': return 'مفضلة: عميل محتمل';
+                    case 'important_conversation': return 'مفضلة: محادثة مهمة';
+                    case 'incomplete_contact': return 'مفضلة: تواصل غير مكتمل';
+                    default: return _isFavorite ? 'إزالة من المفضلة' : 'مفضلة';
+                  }
+                }
+
+                String _clientLabelText() {
+                  switch (_clientLabel) {
+                    case 'potential': return 'تمييز كعميل: محتمل';
+                    case 'current': return 'تمييز كعميل: حالي';
+                    case 'past': return 'تمييز كعميل: سابق';
+                    default: return 'تميز كعميل';
+                  }
+                }
+
+                return [
+                  PopupMenuItem(
+                    value: 'unread',
+                    child: const Row(
+                      children: [
+                        Icon(Icons.mark_chat_unread_outlined, size: 18, color: Colors.deepPurple),
+                        SizedBox(width: 8),
+                        Text('اجعلها غير مقروءة', style: TextStyle(fontFamily: 'Cairo')),
+                      ],
+                    ),
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'report',
-                  child: Text('بلاغ/شكوى', style: TextStyle(fontFamily: 'Cairo')),
-                ),
-                const PopupMenuItem(
-                  value: 'block',
-                  child: Text('حظر', style: TextStyle(fontFamily: 'Cairo')),
-                ),
-                const PopupMenuItem(
-                  value: 'archive',
-                  child: Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
-                ),
-              ],
+                  PopupMenuItem(
+                    value: 'favorite',
+                    child: Row(
+                      children: [
+                        Icon(
+                          _isFavorite ? Icons.star : Icons.star_border,
+                          size: 18,
+                          color: _isFavorite ? Colors.amber : Colors.deepPurple,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_favoriteLabelText(), style: const TextStyle(fontFamily: 'Cairo')),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'client_label',
+                    child: Row(
+                      children: [
+                        Icon(
+                          _clientLabel.isNotEmpty ? Icons.person : Icons.person_outline,
+                          size: 18,
+                          color: Colors.deepPurple,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_clientLabelText(), style: const TextStyle(fontFamily: 'Cairo')),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'block',
+                    child: Row(
+                      children: [
+                        Icon(Icons.block, size: 18, color: Colors.orange),
+                        SizedBox(width: 8),
+                        Text('حظر العضو', style: TextStyle(fontFamily: 'Cairo')),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'report',
+                    child: Row(
+                      children: [
+                        Icon(Icons.flag_outlined, size: 18, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('الإبلاغ عن العضو', style: TextStyle(fontFamily: 'Cairo')),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'archive',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('حذف المحادثة', style: TextStyle(fontFamily: 'Cairo')),
+                      ],
+                    ),
+                  ),
+                ];
+              },
             )
           else
             IconButton(

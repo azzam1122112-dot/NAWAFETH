@@ -76,6 +76,8 @@ class ThreadUserStateSerializer(serializers.ModelSerializer):
         fields = (
             "thread",
             "is_favorite",
+            "favorite_label",
+            "client_label",
             "is_archived",
             "is_blocked",
             "blocked_at",

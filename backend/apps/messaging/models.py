@@ -72,10 +72,40 @@ class MessageRead(models.Model):
 
 
 class ThreadUserState(models.Model):
+    # Choices for favorite_label
+    FAVORITE_LABEL_POTENTIAL = "potential_client"
+    FAVORITE_LABEL_IMPORTANT = "important_conversation"
+    FAVORITE_LABEL_INCOMPLETE = "incomplete_contact"
+    FAVORITE_LABEL_CHOICES = [
+        (FAVORITE_LABEL_POTENTIAL, "عميل محتمل"),
+        (FAVORITE_LABEL_IMPORTANT, "محادثة مهمة"),
+        (FAVORITE_LABEL_INCOMPLETE, "تواصل غير مكتمل"),
+    ]
+
+    # Choices for client_label
+    CLIENT_LABEL_POTENTIAL = "potential"
+    CLIENT_LABEL_CURRENT = "current"
+    CLIENT_LABEL_PAST = "past"
+    CLIENT_LABEL_CHOICES = [
+        (CLIENT_LABEL_POTENTIAL, "عميل محتمل"),
+        (CLIENT_LABEL_CURRENT, "عميل حالي"),
+        (CLIENT_LABEL_PAST, "عميل سابق"),
+    ]
+
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name="user_states")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="thread_states")
 
     is_favorite = models.BooleanField(default=False)
+    favorite_label = models.CharField(
+        max_length=30, blank=True, default="",
+        choices=FAVORITE_LABEL_CHOICES,
+        help_text="تصنيف المفضلة: عميل محتمل / محادثة مهمة / تواصل غير مكتمل",
+    )
+    client_label = models.CharField(
+        max_length=20, blank=True, default="",
+        choices=CLIENT_LABEL_CHOICES,
+        help_text="تمييز العميل: محتمل / حالي / سابق",
+    )
     is_archived = models.BooleanField(default=False)
     is_blocked = models.BooleanField(default=False)
 

@@ -147,6 +147,14 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
     provider_phone = serializers.CharField(source="provider.user.phone", read_only=True)
     status_group = serializers.SerializerMethodField()
     status_label = serializers.SerializerMethodField()
+    review_id = serializers.SerializerMethodField()
+    review_rating = serializers.SerializerMethodField()
+    review_response_speed = serializers.SerializerMethodField()
+    review_cost_value = serializers.SerializerMethodField()
+    review_quality = serializers.SerializerMethodField()
+    review_credibility = serializers.SerializerMethodField()
+    review_on_time = serializers.SerializerMethodField()
+    review_comment = serializers.SerializerMethodField()
 
     def _status_group_value(self, raw: str) -> str:
         s = (raw or "").strip().lower()
@@ -181,6 +189,39 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
         name = f"{first} {last}".strip()
         return name or "-"
 
+    def _review_attr(self, obj, attr):
+        try:
+            review = getattr(obj, "review", None)
+        except Exception:
+            review = None
+        if not review:
+            return None
+        return getattr(review, attr, None)
+
+    def get_review_id(self, obj):
+        return self._review_attr(obj, "id")
+
+    def get_review_rating(self, obj):
+        return self._review_attr(obj, "rating")
+
+    def get_review_response_speed(self, obj):
+        return self._review_attr(obj, "response_speed")
+
+    def get_review_cost_value(self, obj):
+        return self._review_attr(obj, "cost_value")
+
+    def get_review_quality(self, obj):
+        return self._review_attr(obj, "quality")
+
+    def get_review_credibility(self, obj):
+        return self._review_attr(obj, "credibility")
+
+    def get_review_on_time(self, obj):
+        return self._review_attr(obj, "on_time")
+
+    def get_review_comment(self, obj):
+        return self._review_attr(obj, "comment")
+
     class Meta:
         model = ServiceRequest
         fields = (
@@ -207,6 +248,14 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
             "provider_inputs_approved",
             "provider_inputs_decided_at",
             "provider_inputs_decision_note",
+            "review_id",
+            "review_rating",
+            "review_response_speed",
+            "review_cost_value",
+            "review_quality",
+            "review_credibility",
+            "review_on_time",
+            "review_comment",
             "subcategory",
             "subcategory_name",
             "category_name",
