@@ -139,6 +139,7 @@ class UrgentRequestAcceptSerializer(serializers.Serializer):
 
 
 class ServiceRequestListSerializer(serializers.ModelSerializer):
+    client_id = serializers.IntegerField(source="client.id", read_only=True)
     subcategory_name = serializers.CharField(source="subcategory.name", read_only=True)
     category_name = serializers.CharField(source="subcategory.category.name", read_only=True)
     client_phone = serializers.CharField(source="client.phone", read_only=True)
@@ -226,6 +227,7 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
         model = ServiceRequest
         fields = (
             "id",
+            "client_id",
             "title",
             "description",
             "request_type",

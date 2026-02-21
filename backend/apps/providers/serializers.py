@@ -2,7 +2,14 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 
-from .models import Category, ProviderPortfolioItem, ProviderProfile, ProviderService, SubCategory
+from .models import (
+    Category,
+    ProviderPortfolioItem,
+    ProviderProfile,
+    ProviderService,
+    ProviderSpotlightItem,
+    SubCategory,
+)
 
 
 class SubCategorySerializer(serializers.ModelSerializer):
@@ -162,6 +169,39 @@ class ProviderPortfolioItemSerializer(serializers.ModelSerializer):
 class ProviderPortfolioItemCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProviderPortfolioItem
+        fields = (
+            "id",
+            "file_type",
+            "file",
+            "caption",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at")
+
+
+class ProviderSpotlightItemSerializer(serializers.ModelSerializer):
+    provider_id = serializers.IntegerField(source="provider.id", read_only=True)
+    provider_display_name = serializers.CharField(source="provider.display_name", read_only=True)
+    provider_username = serializers.CharField(source="provider.user.username", read_only=True)
+    file_url = serializers.FileField(source="file", read_only=True)
+
+    class Meta:
+        model = ProviderSpotlightItem
+        fields = (
+            "id",
+            "provider_id",
+            "provider_display_name",
+            "provider_username",
+            "file_type",
+            "file_url",
+            "caption",
+            "created_at",
+        )
+
+
+class ProviderSpotlightItemCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProviderSpotlightItem
         fields = (
             "id",
             "file_type",

@@ -343,6 +343,10 @@ class MyProviderRequestsView(generics.ListAPIView):
 		if group_value:
 			qs = qs.filter(status__in=_status_group_to_statuses(group_value))
 
+		client_user_id = (self.request.query_params.get("client_user_id") or "").strip()
+		if client_user_id.isdigit():
+			qs = qs.filter(client_id=int(client_user_id))
+
 		return qs
 
 

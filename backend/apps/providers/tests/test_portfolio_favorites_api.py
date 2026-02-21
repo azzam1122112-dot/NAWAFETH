@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import OTP
-from apps.providers.models import ProviderPortfolioItem, ProviderProfile
+from apps.providers.models import ProviderPortfolioItem, ProviderProfile, ProviderSpotlightItem
 
 
 def _login_via_otp(client: APIClient, phone: str) -> str:
@@ -191,3 +191,53 @@ def test_provider_can_delete_own_portfolio_item(settings, tmp_path):
     deleted = provider_api.delete(f"/api/providers/me/portfolio/{item_id}/")
     assert deleted.status_code == 204
     assert not ProviderPortfolioItem.objects.filter(id=item_id).exists()
+
+
+@pytest.mark.django_db
+def test_spotlights_are_separate_from_portfolio(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+
+    provider_api = APIClient()
+    provider_phone = "0500000731"
+    provider_access = _login_via_otp(provider_api, provider_phone)
+    _complete_registration(provider_api, provider_access, provider_phone)
+    provider_profile = _register_provider(provider_api)
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfeA\x89\x1e\x1b\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    video_bytes = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+    portfolio_upload = SimpleUploadedFile("portfolio.png", png_bytes, content_type="image/png")
+    spotlight_upload = SimpleUploadedFile("spotlight.mp4", video_bytes, content_type="video/mp4")
+
+    portfolio_created = provider_api.post(
+        "/api/providers/me/portfolio/",
+        {"file_type": "image", "caption": "portfolio only", "file": portfolio_upload},
+        format="multipart",
+    )
+    assert portfolio_created.status_code == 201
+    portfolio_id = portfolio_created.json()["id"]
+
+    spotlight_created = provider_api.post(
+        "/api/providers/me/spotlights/",
+        {"file_type": "video", "caption": "spotlight only", "file": spotlight_upload},
+        format="multipart",
+    )
+    assert spotlight_created.status_code == 201
+    spotlight_id = spotlight_created.json()["id"]
+
+    public_portfolio = provider_api.get(f"/api/providers/{provider_profile.id}/portfolio/")
+    assert public_portfolio.status_code == 200
+    portfolio_items = public_portfolio.json()
+    assert any(item["id"] == portfolio_id for item in portfolio_items)
+    assert all(item.get("caption") != "spotlight only" for item in portfolio_items)
+
+    public_spotlights = provider_api.get(f"/api/providers/{provider_profile.id}/spotlights/")
+    assert public_spotlights.status_code == 200
+    spotlight_items = public_spotlights.json()
+    assert any(item["id"] == spotlight_id for item in spotlight_items)
+    assert all(item.get("caption") != "portfolio only" for item in spotlight_items)
+
+    assert ProviderPortfolioItem.objects.filter(id=portfolio_id).exists()
+    assert ProviderSpotlightItem.objects.filter(id=spotlight_id).exists()

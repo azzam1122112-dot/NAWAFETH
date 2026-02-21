@@ -20,6 +20,7 @@ from .models import (
 	ProviderPortfolioLike,
 	ProviderProfile,
 	ProviderService,
+	ProviderSpotlightItem,
 	SubCategory,
 )
 from .serializers import (
@@ -33,6 +34,8 @@ from .serializers import (
 	ProviderProfileSerializer,
 	ProviderProfileMeSerializer,
 	ProviderPublicSerializer,
+	ProviderSpotlightItemCreateSerializer,
+	ProviderSpotlightItemSerializer,
 	UserPublicSerializer,
 )
 
@@ -321,6 +324,53 @@ class MyProviderPortfolioDetailView(generics.RetrieveDestroyAPIView):
 		if not pp:
 			return ProviderPortfolioItem.objects.none()
 		return ProviderPortfolioItem.objects.filter(provider=pp).order_by("-created_at", "-id")
+
+
+class ProviderSpotlightListView(generics.ListAPIView):
+	"""Public spotlight items for a provider (separate from portfolio)."""
+
+	serializer_class = ProviderSpotlightItemSerializer
+	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		provider_id = self.kwargs.get("provider_id")
+		return ProviderSpotlightItem.objects.filter(provider_id=provider_id).order_by("-created_at", "-id")
+
+
+class MyProviderSpotlightListCreateView(generics.ListCreateAPIView):
+	"""Spotlight items for the authenticated provider (list + add)."""
+
+	permission_classes = [IsAtLeastProvider]
+
+	def get_queryset(self):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			return ProviderSpotlightItem.objects.none()
+		return ProviderSpotlightItem.objects.filter(provider=pp).order_by("-created_at", "-id")
+
+	def get_serializer_class(self):
+		if self.request.method == "POST":
+			return ProviderSpotlightItemCreateSerializer
+		return ProviderSpotlightItemSerializer
+
+	def perform_create(self, serializer):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			raise NotFound("provider_profile_not_found")
+		serializer.save(provider=pp)
+
+
+class MyProviderSpotlightDetailView(generics.RetrieveDestroyAPIView):
+	"""Provider-owned single spotlight item (retrieve/delete)."""
+
+	permission_classes = [IsAtLeastProvider]
+	serializer_class = ProviderSpotlightItemSerializer
+
+	def get_queryset(self):
+		pp = getattr(self.request.user, "provider_profile", None)
+		if not pp:
+			return ProviderSpotlightItem.objects.none()
+		return ProviderSpotlightItem.objects.filter(provider=pp).order_by("-created_at", "-id")
 
 
 class MyLikedPortfolioItemsView(generics.ListAPIView):

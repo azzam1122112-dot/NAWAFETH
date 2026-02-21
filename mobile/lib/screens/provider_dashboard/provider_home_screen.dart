@@ -223,7 +223,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     if (!mounted) return;
     setState(() => _loadingSpotlights = true);
     try {
-      final items = await ProvidersApi().getMyPortfolio();
+      final items = await ProvidersApi().getMySpotlights();
       if (!mounted) return;
       setState(() {
         _mySpotlights = items;
@@ -259,7 +259,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     final fileType = _detectFileType(file.name);
     setState(() => _savingSpotlight = true);
     try {
-      final created = await ProvidersApi().createMyPortfolioItem(
+      final created = await ProvidersApi().createMySpotlightItem(
         file: file,
         fileType: fileType,
       );
@@ -401,7 +401,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   Future<void> _deleteSpotlight(ProviderPortfolioItem item) async {
-    final ok = await ProvidersApi().deleteMyPortfolioItem(item.id);
+    final ok = await ProvidersApi().deleteMySpotlightItem(item.id);
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(

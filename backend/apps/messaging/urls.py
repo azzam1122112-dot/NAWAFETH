@@ -18,6 +18,7 @@ from .views import (
     ThreadBlockView,
     ThreadReportView,
     ThreadMarkUnreadView,
+    ThreadDeleteMessageView,
     ThreadFavoriteLabelView,
     ThreadClientLabelView,
 )
@@ -48,6 +49,7 @@ urlpatterns = [
     path("thread/<int:thread_id>/block/", ThreadBlockView.as_view(), name="thread_block"),
     path("thread/<int:thread_id>/report/", ThreadReportView.as_view(), name="thread_report"),
     path("thread/<int:thread_id>/unread/", ThreadMarkUnreadView.as_view(), name="thread_mark_unread"),
+    path("thread/<int:thread_id>/messages/<int:message_id>/delete/", ThreadDeleteMessageView.as_view(), name="thread_message_delete"),
     path("thread/<int:thread_id>/favorite-label/", ThreadFavoriteLabelView.as_view(), name="thread_favorite_label"),
     path("thread/<int:thread_id>/client-label/", ThreadClientLabelView.as_view(), name="thread_client_label"),
 ]

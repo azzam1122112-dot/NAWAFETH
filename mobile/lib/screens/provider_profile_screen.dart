@@ -99,6 +99,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   // ✅ معرض خدماتي (API)
   bool _portfolioLoading = true;
   List<ProviderPortfolioItem> _portfolioItems = const [];
+  bool _spotlightsLoading = true;
+  List<ProviderPortfolioItem> _spotlightItems = const [];
 
   String get providerName => _fullProfile?.displayName ?? widget.providerName ?? '—';
 
@@ -197,6 +199,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       _loadProviderData();
       _loadProviderSubcategories();
       _loadProviderPortfolio();
+      _loadProviderSpotlights();
       _syncClientSocialState();
     }
   }
@@ -363,14 +366,31 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     });
   }
 
-  List<ProviderPortfolioItem> get _highlightItems {
-    return _portfolioItems
-        .where(
-          (item) =>
-              item.fileType.toLowerCase() == 'video' &&
-              item.fileUrl.trim().isNotEmpty,
-        )
-        .toList();
+  // Highlights are separate from portfolio and loaded from dedicated API.
+  List<ProviderPortfolioItem> get _highlightItems => _spotlightItems;
+
+  Future<void> _loadProviderSpotlights() async {
+    final id = int.tryParse(widget.providerId ?? '');
+    if (id == null) return;
+
+    if (mounted) {
+      setState(() => _spotlightsLoading = true);
+    }
+
+    try {
+      final items = await ProvidersApi().getProviderSpotlights(id);
+      if (!mounted) return;
+      setState(() {
+        _spotlightItems = items;
+        _spotlightsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _spotlightItems = const [];
+        _spotlightsLoading = false;
+      });
+    }
   }
 
   Future<void> _loadProviderPortfolio() async {
@@ -1122,7 +1142,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                   ],
                 ),
               ),
-              if (_highlightItems.isNotEmpty) ...[
+              if (_spotlightsLoading || _highlightItems.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1333,6 +1353,12 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     final items = _highlightItems;
     final textColor = isDark ? Colors.white : Colors.black;
     final sub = isDark ? Colors.grey[400]! : Colors.grey.shade700;
+    if (_spotlightsLoading) {
+      return const SizedBox(
+        height: 82,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
@@ -1371,6 +1397,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             itemBuilder: (context, index) {
               final item = items[index];
               final isFav = _favoriteHighlightIndexes.contains(index);
+              final isVideo = item.fileType.toLowerCase() == 'video';
               return InkWell(
                 onTap: () => _openHighlights(index),
                 borderRadius: BorderRadius.circular(999),
@@ -1393,9 +1420,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           shape: BoxShape.circle,
                           color: Colors.black.withValues(alpha: 0.18),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Icon(
-                            Icons.play_circle_fill,
+                            isVideo ? Icons.play_circle_fill : Icons.image_outlined,
                             size: 34,
                             color: Colors.white,
                           ),
@@ -1441,13 +1468,37 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     if (items.isEmpty) return;
     final safeIndex = initialIndex.clamp(0, items.length - 1);
     final item = items[safeIndex];
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => NetworkVideoPlayerScreen(
-          url: item.fileUrl,
-          title: providerName,
+    if (item.fileType.toLowerCase() == 'video') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NetworkVideoPlayerScreen(
+            url: item.fileUrl,
+            title: providerName,
+          ),
         ),
-      ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(12),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: InteractiveViewer(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                item.fileUrl,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

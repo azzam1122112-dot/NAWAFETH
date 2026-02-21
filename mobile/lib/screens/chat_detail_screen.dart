@@ -12,7 +12,9 @@ import '../services/marketplace_api.dart';
 import '../services/messaging_api.dart';
 import '../services/role_controller.dart';
 import '../services/session_storage.dart';
+import '../models/provider_order.dart';
 import 'service_request_form_screen.dart';
+import 'provider_dashboard/provider_order_details_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String name;
@@ -71,6 +73,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String _favoriteLabel = '';
   String _clientLabel = '';
   bool _isBlocked = false;
+  int? _chatClientUserId;
   bool _isRecording = false;
   bool _recorderInitialized = false;
   int _reconnectAttempts = 0;
@@ -198,6 +201,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         setState(() {
           _requestCode ??= 'R${_requestId.toString().padLeft(6, '0')}';
           _requestTitle ??= (providerDetail['title'] ?? '').toString().trim();
+          _chatClientUserId ??= _asInt(providerDetail['client_id']);
         });
       }
     } catch (_) {}
@@ -389,6 +393,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       return;
     }
 
+    if (type == 'message_deleted') {
+      final messageId = _asInt(payload['message_id']) ?? _asInt(payload['id']);
+      if (messageId != null) {
+        _removeMessageById(messageId);
+      }
+      return;
+    }
+
     if (type == 'message') {
       final id = _asInt(payload['id']);
       final alreadyExists = _messages.any((m) => id != null && m['id'] == id);
@@ -419,6 +431,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _sendReadIfPossible();
       return;
     }
+  }
+
+  void _removeMessageById(int messageId) {
+    if (!mounted) return;
+    setState(() {
+      _messages.removeWhere((m) => _asInt(m['id']) == messageId);
+    });
   }
 
   void _markMyMessagesRead({required int markedCount}) {
@@ -599,6 +618,300 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
+  Future<void> _confirmDeleteMessage(int messageId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الرسالة', style: TextStyle(fontFamily: 'Cairo')),
+        content: const Text(
+          'سيتم حذف الرسالة للطرفين. هل تريد المتابعة؟',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _deleteMessageForBoth(messageId);
+    }
+  }
+
+  Future<void> _deleteMessageForBoth(int messageId) async {
+    final threadId = _threadId;
+    if (threadId == null) return;
+    try {
+      await _api.deleteThreadMessage(threadId: threadId, messageId: messageId);
+      if (!mounted) return;
+      _removeMessageById(messageId);
+    } catch (error) {
+      if (!mounted) return;
+      final apiError = _api.errorMessageOf(error);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiError ?? 'تعذر حذف الرسالة.')),
+      );
+    }
+  }
+
+  Future<void> _showClientRequestsForProvider() async {
+    if (!_isProviderAccount) return;
+
+    int? clientUserId = _chatClientUserId;
+    if (clientUserId == null && _isDirect) {
+      clientUserId = int.tryParse((widget.peerId ?? '').trim());
+      _chatClientUserId = clientUserId;
+    }
+    if (clientUserId == null && _requestId != null) {
+      final detail = await _marketplaceApi.getProviderRequestDetail(requestId: _requestId!);
+      clientUserId = _asInt(detail?['client_id']);
+      _chatClientUserId = clientUserId;
+    }
+
+    if (clientUserId == null || clientUserId <= 0) {
+      _showInfo('تعذر تحديد العميل لعرض طلباته.');
+      return;
+    }
+
+    List<Map<String, dynamic>> requests = const [];
+    try {
+      final raw = await _marketplaceApi.getMyProviderRequests(clientUserId: clientUserId);
+      requests = raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحميل طلبات العميل حالياً.')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    bool isPast(Map<String, dynamic> r) {
+      final s = (r['status'] ?? '').toString().trim().toLowerCase();
+      return s == 'completed' || s == 'cancelled' || s == 'canceled' || s == 'expired';
+    }
+
+    final currentRequests = requests.where((r) => !isPast(r)).toList();
+    final previousRequests = requests.where(isPast).toList();
+
+    String statusLabel(Map<String, dynamic> r) {
+      final label = (r['status_label'] ?? '').toString().trim();
+      if (label.isNotEmpty) return label;
+      final s = (r['status'] ?? '').toString().trim().toLowerCase();
+      switch (s) {
+        case 'accepted':
+          return 'بانتظار اعتماد العميل';
+        case 'in_progress':
+          return 'تحت التنفيذ';
+        case 'completed':
+          return 'مكتمل';
+        case 'cancelled':
+        case 'canceled':
+        case 'expired':
+          return 'ملغي';
+        default:
+          return 'جديد';
+      }
+    }
+
+    Widget section({
+      required String title,
+      required List<Map<String, dynamic>> list,
+      required bool emptyCurrent,
+      required BuildContext sheetContext,
+    }) {
+      if (list.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 8),
+          child: Text(
+            emptyCurrent ? 'لا توجد طلبات حالية لهذا العميل.' : 'لا توجد طلبات سابقة لهذا العميل.',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: Colors.grey.shade600,
+              fontSize: 12.5,
+            ),
+          ),
+        );
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w800,
+              fontSize: 13.5,
+              color: Colors.deepPurple,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...list.map(
+            (r) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              onTap: () {
+                final id = _asInt(r['id']);
+                Navigator.of(sheetContext).pop(id);
+              },
+              title: Text(
+                (r['title'] ?? 'طلب خدمة').toString(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              ),
+              subtitle: Text(
+                'R${(r['id'] ?? '').toString()} • ${statusLabel(r)}',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_left_rounded),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final selectedRequestId = await showModalBottomSheet<int>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'طلبات العميل الحالية والسابقة',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  section(
+                    title: 'الطلبات الحالية',
+                    list: currentRequests,
+                    emptyCurrent: true,
+                    sheetContext: ctx,
+                  ),
+                  const Divider(height: 18),
+                  section(
+                    title: 'الطلبات السابقة',
+                    list: previousRequests,
+                    emptyCurrent: false,
+                    sheetContext: ctx,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted || selectedRequestId == null) return;
+    await _openProviderRequestDetails(requestId: selectedRequestId);
+  }
+
+  Future<void> _openProviderRequestDetails({required int requestId}) async {
+    final data = await _marketplaceApi.getProviderRequestDetail(requestId: requestId);
+    if (data == null || !mounted) return;
+
+    final logs = (data['status_logs'] is List)
+        ? (data['status_logs'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+        : const <Map<String, dynamic>>[];
+
+    final order = _toProviderOrder(data, requestId: requestId);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProviderOrderDetailsScreen(
+          order: order,
+          requestId: requestId,
+          rawStatus: (data['status'] ?? '').toString(),
+          requestType: (data['request_type'] ?? '').toString(),
+          statusLogs: logs,
+        ),
+      ),
+    );
+  }
+
+  ProviderOrder _toProviderOrder(Map<String, dynamic> data, {required int requestId}) {
+    DateTime parseDate(dynamic raw) =>
+        DateTime.tryParse((raw ?? '').toString()) ?? DateTime.now();
+
+    final attachments = <ProviderOrderAttachment>[];
+    if (data['attachments'] is List) {
+      for (final item in (data['attachments'] as List)) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final type = (map['file_type'] ?? 'file').toString();
+        final url = (map['file_url'] ?? '').toString();
+        attachments.add(ProviderOrderAttachment(name: url.isEmpty ? 'مرفق' : url, type: type));
+      }
+    }
+
+    final statusLabel = (data['status_label'] ?? '').toString().trim();
+    final rawStatus = (data['status'] ?? '').toString();
+
+    return ProviderOrder(
+      id: '#$requestId',
+      serviceCode: (data['subcategory_name'] ?? '').toString(),
+      createdAt: parseDate(data['created_at']),
+      status: statusLabel.isNotEmpty ? statusLabel : _mapStatus(rawStatus),
+      clientName: (data['client_name'] ?? '-').toString(),
+      clientHandle: '',
+      clientPhone: (data['client_phone'] ?? '').toString(),
+      clientCity: (data['city'] ?? '').toString(),
+      title: (data['title'] ?? '').toString(),
+      details: (data['description'] ?? '').toString(),
+      attachments: attachments,
+      expectedDeliveryAt: DateTime.tryParse((data['expected_delivery_at'] ?? '').toString()),
+      estimatedServiceAmountSR: double.tryParse((data['estimated_service_amount'] ?? '').toString()),
+      receivedAmountSR: double.tryParse((data['received_amount'] ?? '').toString()),
+      remainingAmountSR: double.tryParse((data['remaining_amount'] ?? '').toString()),
+      deliveredAt: DateTime.tryParse((data['delivered_at'] ?? '').toString()),
+      actualServiceAmountSR: double.tryParse((data['actual_service_amount'] ?? '').toString()),
+      canceledAt: DateTime.tryParse((data['canceled_at'] ?? '').toString()),
+      cancelReason: (data['cancel_reason'] ?? '').toString().trim().isEmpty
+          ? null
+          : (data['cancel_reason'] ?? '').toString(),
+    );
+  }
+
+  String _mapStatus(String status) {
+    final raw = status.trim().toLowerCase();
+    if (raw == 'open' || raw == 'pending' || raw == 'new' || raw == 'sent') return 'جديد';
+    if (raw == 'accepted') return 'بانتظار اعتماد العميل';
+    if (raw == 'in_progress') return 'تحت التنفيذ';
+    if (raw == 'completed') return 'مكتمل';
+    if (raw == 'cancelled' || raw == 'canceled' || raw == 'expired') return 'ملغي';
+    return 'جديد';
+  }
+
   Future<void> _sendDirectMessageWithRecovery(String body) async {
     Object? directError;
     if (_threadId != null) {
@@ -633,7 +946,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   bool _isServiceRequestLink(String text) {
-    return text.contains('__SERVICE_REQUEST_LINK__');
+    return text.contains(_serviceRequestLinkMarker);
   }
 
   static const List<String> _reportReasons = <String>[
@@ -1289,7 +1602,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             if (_isProviderAccount) ...[  
               const SizedBox(width: 2),
               IconButton(
-                onPressed: () => Navigator.pushNamed(context, '/orders'),
+                onPressed: _showClientRequestsForProvider,
                 tooltip: 'الطلبات الحالية/السابقة للعميل',
                 icon: const Icon(
                   Icons.assignment_turned_in_outlined,
@@ -1597,8 +1910,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           // Provider can send a service request link to the client
           if (_isProviderAccount && _isDirect)
             IconButton(
-              onPressed: _sendServiceRequestLink,
-              tooltip: 'تحويل العميل لصفحة الطلبات',
+              onPressed: _showClientRequestsForProvider,
+              tooltip: 'عرض طلبات العميل',
               icon: const Icon(Icons.assignment_outlined),
             ),
         ],
@@ -1676,6 +1989,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       final m = _messages[index];
                       final isMe =
                           _myUserId != null && m['senderId'] == _myUserId;
+                      final messageId = _asInt(m['id']);
+                      final canDelete = isMe && messageId != null;
+                      final VoidCallback? onDelete = canDelete
+                          ? () => _confirmDeleteMessage(messageId)
+                          : null;
                       final sentAt =
                           (m['sentAt'] as DateTime?) ?? DateTime.now();
                       final text = (m['text'] ?? '').toString();
@@ -1689,116 +2007,122 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
                       // Service request link card
                       if (_isServiceRequestLink(text)) {
-                        return _buildServiceRequestCard(
-                          isMe: isMe,
-                          sentAt: sentAt,
-                          readByPeer: m['readByPeer'] == true,
-                          senderId: _asInt(m['senderId']),
+                        return GestureDetector(
+                          onLongPress: onDelete,
+                          child: _buildServiceRequestCard(
+                            isMe: isMe,
+                            sentAt: sentAt,
+                            readByPeer: m['readByPeer'] == true,
+                            senderId: _asInt(m['senderId']),
+                          ),
                         );
                       }
 
-                      return Align(
-                        alignment: isMe
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          constraints: const BoxConstraints(maxWidth: 320),
-                          decoration: BoxDecoration(
-                            color: isMe
-                                ? Colors.deepPurple
-                                : Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (hasAttachment)
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isMe
-                                        ? Colors.white.withValues(alpha: 0.18)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        attachmentType == 'audio'
-                                            ? Icons.mic
-                                            : Icons.attach_file,
-                                        size: 16,
-                                        color: isMe
-                                            ? Colors.white
-                                            : Colors.deepPurple,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text(
-                                          attachmentName.isEmpty
-                                              ? (attachmentType == 'audio'
-                                                  ? 'رسالة صوتية'
-                                                  : 'مرفق')
-                                              : attachmentName,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontFamily: 'Cairo',
-                                            fontSize: 12,
-                                            color: isMe
-                                                ? Colors.white
-                                                : Colors.black87,
+                      return GestureDetector(
+                        onLongPress: onDelete,
+                        child: Align(
+                          alignment: isMe
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            decoration: BoxDecoration(
+                              color: isMe
+                                  ? Colors.deepPurple
+                                  : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (hasAttachment)
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isMe
+                                          ? Colors.white.withValues(alpha: 0.18)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          attachmentType == 'audio'
+                                              ? Icons.mic
+                                              : Icons.attach_file,
+                                          size: 16,
+                                          color: isMe
+                                              ? Colors.white
+                                              : Colors.deepPurple,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            attachmentName.isEmpty
+                                                ? (attachmentType == 'audio'
+                                                    ? 'رسالة صوتية'
+                                                    : 'مرفق')
+                                                : attachmentName,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontFamily: 'Cairo',
+                                              fontSize: 12,
+                                              color: isMe
+                                                  ? Colors.white
+                                                  : Colors.black87,
+                                            ),
                                           ),
                                         ),
+                                      ],
+                                    ),
+                                  ),
+                                if (text.trim().isNotEmpty)
+                                  Text(
+                                    text,
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      color: isMe ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isMe
+                                            ? Colors.white70
+                                            : Colors.black54,
+                                      ),
+                                    ),
+                                    if (isMe) ...[
+                                      const SizedBox(width: 6),
+                                      Icon(
+                                        m['readByPeer'] == true
+                                            ? Icons.done_all
+                                            : Icons.done,
+                                        size: 14,
+                                        color: m['readByPeer'] == true
+                                            ? Colors.lightBlueAccent
+                                            : Colors.white70,
                                       ),
                                     ],
-                                  ),
-                                ),
-                              if (text.trim().isNotEmpty)
-                                Text(
-                                  text,
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    color: isMe ? Colors.white : Colors.black87,
-                                  ),
-                                ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isMe
-                                          ? Colors.white70
-                                          : Colors.black54,
-                                    ),
-                                  ),
-                                  if (isMe) ...[
-                                    const SizedBox(width: 6),
-                                    Icon(
-                                      m['readByPeer'] == true
-                                          ? Icons.done_all
-                                          : Icons.done,
-                                      size: 14,
-                                      color: m['readByPeer'] == true
-                                          ? Colors.lightBlueAccent
-                                          : Colors.white70,
-                                    ),
                                   ],
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -1828,8 +2152,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                   IconButton(
                     onPressed: (_isSending || _isBlocked) ? null : _sendServiceRequestLink,
-                    tooltip: 'تحويل العميل لصفحة الطلبات',
-                    icon: const Icon(Icons.assignment_outlined),
+                    tooltip: 'إرسال طلب خدمة للعميل',
+                    icon: const Icon(Icons.request_quote_outlined),
                     color: Colors.deepPurple,
                   ),
                 ],

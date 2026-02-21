@@ -461,6 +461,15 @@ class ProvidersApi {
     }
   }
 
+  Future<bool> deleteMySpotlightItem(int itemId) async {
+    try {
+      await _dio.delete('${ApiConfig.apiPrefix}/providers/me/spotlights/$itemId/');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> likePortfolioItem(int itemId) async {
     try {
       await _dio.post(
@@ -647,6 +656,73 @@ class ProvidersApi {
       return Map<String, dynamic>.from(res.data as Map);
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<ProviderPortfolioItem?> createMySpotlightItem({
+    required PlatformFile file,
+    required String fileType,
+    String caption = '',
+  }) async {
+    try {
+      final bytes = file.bytes;
+      MultipartFile multipartFile;
+      if (bytes != null) {
+        multipartFile = MultipartFile.fromBytes(
+          bytes,
+          filename: file.name,
+        );
+      } else if ((file.path ?? '').trim().isNotEmpty) {
+        multipartFile = await MultipartFile.fromFile(
+          file.path!,
+          filename: file.name,
+        );
+      } else {
+        return null;
+      }
+
+      final formData = FormData.fromMap({
+        'file_type': fileType,
+        'caption': caption,
+        'file': multipartFile,
+      });
+
+      final res = await _dio.post(
+        '${ApiConfig.apiPrefix}/providers/me/spotlights/',
+        data: formData,
+      );
+      return ProviderPortfolioItem.fromJson(Map<String, dynamic>.from(res.data as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<ProviderPortfolioItem>> getMySpotlights() async {
+    try {
+      final res = await _dio.get('${ApiConfig.apiPrefix}/providers/me/spotlights/');
+      final rawList = _extractList(res.data);
+      return rawList
+          .whereType<Map>()
+          .map((e) => ProviderPortfolioItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<ProviderPortfolioItem>> getProviderSpotlights(
+    int providerId,
+  ) async {
+    try {
+      final res = await _dio.get(
+        '${ApiConfig.apiPrefix}/providers/$providerId/spotlights/',
+      );
+      final list = (res.data as List)
+          .map((e) => ProviderPortfolioItem.fromJson(e))
+          .toList();
+      return list;
+    } catch (_) {
+      return [];
     }
   }
 

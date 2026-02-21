@@ -675,6 +675,47 @@ class ThreadMarkUnreadView(APIView):
 		)
 
 
+class ThreadDeleteMessageView(APIView):
+	"""Delete one message from a thread for both participants.
+
+	Only the original sender can delete the message.
+	"""
+	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]
+
+	def post(self, request, thread_id: int, message_id: int):
+		thread = get_object_or_404(Thread, id=thread_id)
+		message = get_object_or_404(Message, id=message_id, thread=thread)
+
+		if message.sender_id != request.user.id:
+			return Response(
+				{"detail": "يمكنك حذف الرسائل التي أرسلتها فقط"},
+				status=status.HTTP_403_FORBIDDEN,
+			)
+
+		message.delete()
+
+		# Best-effort realtime sync for active chat screens.
+		try:
+			channel_layer = get_channel_layer()
+			if channel_layer is not None:
+				async_to_sync(channel_layer.group_send)(
+					f"thread_{thread_id}",
+					{
+						"type": "broadcast.message_deleted",
+						"thread_id": thread_id,
+						"message_id": message_id,
+						"deleted_by": request.user.id,
+					},
+				)
+		except Exception:
+			pass
+
+		return Response(
+			{"ok": True, "thread_id": thread_id, "message_id": message_id},
+			status=status.HTTP_200_OK,
+		)
+
+
 class ThreadFavoriteLabelView(APIView):
 	"""Set the favorite label for a thread (potential_client / important_conversation / incomplete_contact)."""
 	permission_classes = [IsAtLeastPhoneOnly, IsThreadParticipant]

@@ -128,7 +128,10 @@ class MarketplaceApi {
     }
   }
 
-  Future<List<dynamic>> getMyProviderRequests({String? statusGroup}) async {
+  Future<List<dynamic>> getMyProviderRequests({
+    String? statusGroup,
+    int? clientUserId,
+  }) async {
     final token = await _session.readAccessToken();
     if (token == null) return [];
 
@@ -136,6 +139,8 @@ class MarketplaceApi {
       final queryParameters = <String, dynamic>{
         if ((statusGroup ?? '').trim().isNotEmpty)
           'status_group': statusGroup!.trim(),
+        if (clientUserId != null && clientUserId > 0)
+          'client_user_id': clientUserId,
       };
 
       final response = await _dio.get(

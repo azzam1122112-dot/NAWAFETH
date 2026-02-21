@@ -103,6 +103,26 @@ class ProviderPortfolioItem(models.Model):
         return f"PortfolioItem {self.pk} ({self.file_type}) for Provider {self.provider_id}"
 
 
+class ProviderSpotlightItem(models.Model):
+    FILE_TYPE_CHOICES = (
+        ("image", "صورة"),
+        ("video", "فيديو"),
+    )
+
+    provider = models.ForeignKey(
+        ProviderProfile,
+        on_delete=models.CASCADE,
+        related_name="spotlight_items",
+    )
+    file_type = models.CharField(max_length=20, choices=FILE_TYPE_CHOICES)
+    file = models.FileField(upload_to="providers/spotlights/%Y/%m/")
+    caption = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"SpotlightItem {self.pk} ({self.file_type}) for Provider {self.provider_id}"
+
+
 class ProviderPortfolioLike(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

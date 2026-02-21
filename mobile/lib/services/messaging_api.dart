@@ -151,6 +151,17 @@ class MessagingApi {
     return _asMap(res.data);
   }
 
+  Future<Map<String, dynamic>> deleteThreadMessage({
+    required int threadId,
+    required int messageId,
+  }) async {
+    final res = await _dio.post(
+      '${ApiConfig.apiPrefix}/messaging/thread/$threadId/messages/$messageId/delete/',
+      data: const {},
+    );
+    return _asMap(res.data);
+  }
+
   Future<Map<String, dynamic>> setThreadFavoriteLabel({
     required int threadId,
     required String label,

@@ -350,6 +350,121 @@ def test_send_direct_message_with_attachment():
 
 
 @pytest.mark.django_db
+def test_sender_can_delete_own_request_message_for_both_participants():
+    client_user = User.objects.create_user(phone="0505100001", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0505100002", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود حذف",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+    cat = Category.objects.create(name="نقل")
+    sub = SubCategory.objects.create(category=cat, name="داخل المدينة")
+    ProviderCategory.objects.create(provider=provider, subcategory=sub)
+
+    sr = ServiceRequest.objects.create(
+        client=client_user,
+        provider=provider,
+        subcategory=sub,
+        title="طلب حذف",
+        description="وصف",
+        request_type=RequestType.COMPETITIVE,
+        status=RequestStatus.ACCEPTED,
+        city="الرياض",
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    thread_res = api.post(f"/api/messaging/requests/{sr.id}/thread/", {}, format="json")
+    assert thread_res.status_code == 200
+    thread_id = thread_res.data["id"]
+
+    send_res = api.post(
+        f"/api/messaging/requests/{sr.id}/messages/send/",
+        {"body": "رسالة غير مناسبة"},
+        format="json",
+    )
+    assert send_res.status_code == 201
+    message_id = send_res.data["message_id"]
+
+    # Receiver cannot delete peer message
+    api.force_authenticate(user=provider_user)
+    forbidden = api.post(
+        f"/api/messaging/thread/{thread_id}/messages/{message_id}/delete/",
+        {},
+        format="json",
+    )
+    assert forbidden.status_code == 403
+
+    # Sender can delete it for both
+    api.force_authenticate(user=client_user)
+    ok = api.post(
+        f"/api/messaging/thread/{thread_id}/messages/{message_id}/delete/",
+        {},
+        format="json",
+    )
+    assert ok.status_code == 200
+
+    api.force_authenticate(user=provider_user)
+    list_res = api.get(f"/api/messaging/requests/{sr.id}/messages/")
+    assert list_res.status_code == 200
+    results = list_res.data.get("results", []) if isinstance(list_res.data, dict) else list_res.data
+    assert all(item.get("id") != message_id for item in results)
+
+
+@pytest.mark.django_db
+def test_sender_can_delete_own_direct_message_for_both_participants():
+    client_user = User.objects.create_user(phone="0505100011", role_state=UserRole.PHONE_ONLY)
+    provider_user = User.objects.create_user(phone="0505100012", role_state=UserRole.PROVIDER)
+
+    provider = ProviderProfile.objects.create(
+        user=provider_user,
+        provider_type="individual",
+        display_name="مزود مباشر حذف",
+        bio="bio",
+        years_experience=1,
+        city="الرياض",
+        accepts_urgent=True,
+    )
+
+    api = APIClient()
+    api.force_authenticate(user=client_user)
+    thread_res = api.post(
+        "/api/messaging/direct/thread/",
+        {"provider_id": provider.id},
+        format="json",
+    )
+    assert thread_res.status_code == 200
+    thread_id = thread_res.data["id"]
+
+    send_res = api.post(
+        f"/api/messaging/direct/thread/{thread_id}/messages/send/",
+        {"body": "رسالة مباشرة غير مناسبة"},
+        format="json",
+    )
+    assert send_res.status_code == 201
+    message_id = send_res.data["message_id"]
+
+    ok = api.post(
+        f"/api/messaging/thread/{thread_id}/messages/{message_id}/delete/",
+        {},
+        format="json",
+    )
+    assert ok.status_code == 200
+
+    api.force_authenticate(user=provider_user)
+    list_res = api.get(f"/api/messaging/direct/thread/{thread_id}/messages/")
+    assert list_res.status_code == 200
+    results = list_res.data.get("results", []) if isinstance(list_res.data, dict) else list_res.data
+    assert all(item.get("id") != message_id for item in results)
+
+
+@pytest.mark.django_db
 def test_thread_report_accepts_reason_and_details():
     client_user = User.objects.create_user(phone="0506000001", role_state=UserRole.PHONE_ONLY)
     provider_user = User.objects.create_user(phone="0506000002", role_state=UserRole.PROVIDER)

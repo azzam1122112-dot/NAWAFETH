@@ -502,3 +502,12 @@ class ThreadConsumer(AsyncJsonWebsocketConsumer):
     async def broadcast_unblocked(self, event):
         # Inform clients; they may choose to re-enable UI
         await self.send_json({"type": "unblocked"})
+
+    async def broadcast_message_deleted(self, event):
+        await self.send_json(
+            {
+                "type": "message_deleted",
+                "message_id": event.get("message_id"),
+                "deleted_by": event.get("deleted_by"),
+            }
+        )
