@@ -16,7 +16,6 @@ class _ProviderMediaGridState extends State<ProviderMediaGrid> {
   final HomeFeedService _feed = HomeFeedService.instance;
   bool _loading = true;
   List<ProviderPortfolioItem> _items = const [];
-  int _visibleCount = 2;
 
   Future<void> _openItem(BuildContext context, ProviderPortfolioItem item) async {
     final idx = _items.indexWhere((e) => e.id == item.id);
@@ -69,7 +68,6 @@ class _ProviderMediaGridState extends State<ProviderMediaGrid> {
     }
     if (_items.isEmpty) return const SizedBox.shrink();
 
-    final visibleMedia = _items.take(_visibleCount).toList();
     final cardWidth = (MediaQuery.of(context).size.width - 48) / 2;
 
     return Directionality(
@@ -80,7 +78,7 @@ class _ProviderMediaGridState extends State<ProviderMediaGrid> {
           Wrap(
             spacing: 12,
             runSpacing: 12,
-            children: visibleMedia.map((item) {
+            children: _items.map((item) {
               final isVideo = item.fileType.toLowerCase().contains('video');
               return Material(
                 color: Colors.transparent,
@@ -133,39 +131,6 @@ class _ProviderMediaGridState extends State<ProviderMediaGrid> {
               );
             }).toList(),
           ),
-          const SizedBox(height: 16),
-          if (_items.length > 2)
-            Center(
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    if (_visibleCount < _items.length) {
-                      _visibleCount = (_visibleCount + 2).clamp(0, _items.length);
-                    } else {
-                      _visibleCount = 2;
-                    }
-                  });
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primaryDark,
-                  backgroundColor: AppColors.primaryLight.withValues(alpha: 0.35),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: Icon(
-                  _visibleCount < _items.length ? Icons.expand_more : Icons.expand_less,
-                  size: 20,
-                ),
-                label: Text(
-                  _visibleCount < _items.length ? 'عرض المزيد' : 'عرض أقل',
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );

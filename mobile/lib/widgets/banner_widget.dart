@@ -72,15 +72,11 @@ class _BannerWidgetState extends State<BannerWidget> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const SizedBox(
-        height: 320,
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_banners.isEmpty) {
       return Container(
-        height: 320,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: const LinearGradient(
@@ -151,8 +147,8 @@ class _BannerWidgetState extends State<BannerWidget> {
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                         colors: [
-                          Colors.black.withValues(alpha: 0.45),
-                          Colors.black.withValues(alpha: 0.10),
+                          const Color(0xAA7C2A90),
+                          const Color(0x557C2A90),
                         ],
                       ),
                     ),

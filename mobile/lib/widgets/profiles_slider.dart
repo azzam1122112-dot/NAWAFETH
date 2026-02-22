@@ -27,7 +27,7 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
 
   Future<void> _fetchProviders() async {
     final list = await HomeFeedService.instance.getTopProviders(
-      limit: 20,
+      limit: 10,
       forceRefresh: true,
     );
     if (mounted) {
@@ -107,78 +107,94 @@ class _ProfilesSliderState extends State<ProfilesSlider> {
     if (_loading) return const SizedBox(height: 78, child: Center(child: CircularProgressIndicator()));
     if (_providers.isEmpty) return const SizedBox(height: 8);
 
-    return SizedBox(
-      height: 82,
-      child: ListView.builder(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        itemCount: _providers.length,
-        itemBuilder: (context, index) {
-          final profile = _providers[index];
-          final avatar = _providerImage(profile);
-          return GestureDetector(
-            onTap: () => _openProfileDetail(context, profile),
-            child: Container(
-              width: 84,
-              margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primaryDark.withValues(alpha: 0.18)),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: AppColors.softBlue,
-                        child: CircleAvatar(
-                          radius: 18,
-                          backgroundImage: avatar,
-                          child: avatar == null
-                              ? const Icon(Icons.person, color: Colors.white, size: 18)
-                              : null,
-                        ),
-                      ),
-                      Positioned(
-                        left: -2,
-                        top: -2,
-                        child: Container(
-                          width: 17,
-                          height: 17,
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 1.2),
+    return Container(
+      color: const Color(0xFFF2F2F2),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: SizedBox(
+        height: 82,
+        child: ListView.builder(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          itemCount: _providers.length,
+          itemBuilder: (context, index) {
+            final profile = _providers[index];
+            final avatar = _providerImage(profile);
+            return GestureDetector(
+              onTap: () => _openProfileDetail(context, profile),
+              child: Container(
+                width: 84,
+                margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECECEC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: AppColors.softBlue,
+                          child: CircleAvatar(
+                            radius: 18,
+                            backgroundImage: avatar,
+                            child: avatar == null
+                                ? const Icon(Icons.person, color: Colors.white, size: 18)
+                                : null,
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            (profile.ratingAvg > 0 ? profile.ratingAvg.round() : 4).toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
+                        ),
+                        const Positioned(
+                          top: -4,
+                          left: -4,
+                          child: Icon(Icons.verified, size: 14, color: Color(0xFF2D9CDB)),
+                        ),
+                        Positioned(
+                          left: -2,
+                          bottom: -2,
+                          child: Container(
+                            width: 17,
+                            height: 17,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.2),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              (profile.ratingAvg > 0 ? profile.ratingAvg.round() : 4).toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        Positioned(
+                          right: -1,
+                          top: -1,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2ECC71),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

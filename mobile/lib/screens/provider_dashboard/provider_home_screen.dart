@@ -22,7 +22,7 @@ import '../../widgets/profile_account_modes_panel.dart';
 import '../../widgets/account_switch_sheet.dart';
 import '../../widgets/profile_quick_links_panel.dart';
 
-import 'provider_service_categories_screen.dart';
+import 'services_tab.dart';
 import 'reviews_tab.dart'; 
 import 'provider_completion_utils.dart';
 import 'provider_orders_screen.dart';
@@ -1571,7 +1571,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const ProviderServiceCategoriesScreen(),
+        builder: (_) => const ServicesTab(),
       ),
     );
   }

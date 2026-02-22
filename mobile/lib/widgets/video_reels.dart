@@ -15,7 +15,7 @@ class VideoReels extends StatefulWidget {
 
 class _VideoReelsState extends State<VideoReels> {
   final HomeFeedService _feed = HomeFeedService.instance;
-  final PageController _controller = PageController(viewportFraction: 0.28);
+  final PageController _controller = PageController(viewportFraction: 0.30);
   Timer? _autoTimer;
 
   bool _loading = true;
@@ -33,10 +33,10 @@ class _VideoReelsState extends State<VideoReels> {
       final media = await _feed.getMediaItems(limit: 24);
       var videos = media
           .where((e) => e.fileType.toLowerCase().contains('video'))
-          .take(9)
+          .take(3)
           .toList();
       if (videos.isEmpty) {
-        videos = media.take(9).toList();
+        videos = media.take(3).toList();
       }
       if (!mounted) return;
       setState(() {
@@ -71,15 +71,16 @@ class _VideoReelsState extends State<VideoReels> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const SizedBox(
-        height: 110,
+        height: 92,
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_items.isEmpty) return const SizedBox(height: 8);
+    if (_items.isEmpty) return const SizedBox(height: 12);
 
-    return SizedBox(
-      height: 110,
+    return Container(
+      height: 90,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: PageView.builder(
         controller: _controller,
         onPageChanged: (v) => setState(() => _active = v),
@@ -102,69 +103,45 @@ class _VideoReelsState extends State<VideoReels> {
               );
             },
             child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: active ? 72 : 62,
-                        height: active ? 72 : 62,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: active
-                              ? const LinearGradient(
-                                  colors: [Color(0xFF6A0DAD), Color(0xFF2C0066)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                              : null,
-                          color: active ? null : Colors.grey.shade200,
-                          boxShadow: active
-                              ? [
-                                  BoxShadow(
-                                    color: const Color(0xFF6A0DAD).withValues(alpha: 0.4),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  )
-                                ]
-                              : null,
-                        ),
-                        child: CustomPaint(
-                          painter: _DashedCirclePainter(
-                            color: active
-                                ? Colors.white.withValues(alpha: 0.5)
-                                : AppColors.primaryDark.withValues(alpha: 0.5),
-                            strokeWidth: 2,
-                            dashLength: 5,
-                            gapLength: 4,
-                          ),
-                          child: Container(
-                            margin: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: active ? Colors.white.withValues(alpha: 0.15) : Colors.white,
-                            ),
-                            child: Icon(
-                              Icons.play_arrow_rounded,
-                              color: active ? Colors.white : AppColors.deepPurple,
-                              size: 26,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'فيديو',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 10,
-                          fontWeight: active ? FontWeight.bold : FontWeight.w500,
-                          color: active ? const Color(0xFF2C0066) : Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
+              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Container(
+                width: active ? 68 : 60,
+                height: active ? 68 : 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: active
+                      ? const LinearGradient(
+                          colors: [Color(0xFF6A0DAD), Color(0xFF2C0066)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: active ? null : Colors.grey.shade200,
+                ),
+                child: CustomPaint(
+                  painter: _DashedCirclePainter(
+                    color: active
+                        ? Colors.white.withValues(alpha: 0.5)
+                        : AppColors.primaryDark.withValues(alpha: 0.5),
+                    strokeWidth: 2,
+                    dashLength: 5,
+                    gapLength: 4,
+                  ),
+                  child: Container(
+                    margin: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active ? Colors.white.withValues(alpha: 0.15) : Colors.white,
+                    ),
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      color: active ? Colors.white : AppColors.deepPurple,
+                      size: 26,
+                    ),
                   ),
                 ),
+              ),
+            ),
           );
         },
       ),

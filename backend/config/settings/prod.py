@@ -28,6 +28,13 @@ if ".onrender.com" not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 SECURE_SSL_REDIRECT = True
+# Render's port scan / health checks may hit the service over plain HTTP.
+# Exempt health endpoints (and root, which maps to liveness) so these checks
+# can succeed without being redirected to HTTPS.
+SECURE_REDIRECT_EXEMPT = [
+	r"^health/",
+	r"^$",
+]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
