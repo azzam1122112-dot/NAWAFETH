@@ -4,6 +4,7 @@ import '../widgets/app_bar.dart';
 import '../widgets/banner_widget.dart';
 import '../widgets/video_reels.dart';
 import '../widgets/provider_media_grid.dart';
+import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
 import '../widgets/profiles_slider.dart' as profiles;
 import '../widgets/intro_welcome_dialog.dart';
@@ -147,6 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: const CustomBottomNav(currentIndex: 0),
     );
   }
 }

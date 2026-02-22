@@ -7,6 +7,7 @@ from .views import (
     VerificationAddDocumentView,
 
     BackofficeVerificationRequestsListView,
+    BackofficeVerificationAssignView,
     BackofficeDecideDocumentView,
     BackofficeFinalizeRequestView,
 )
@@ -20,6 +21,7 @@ urlpatterns = [
 
     # backoffice
     path("backoffice/requests/", BackofficeVerificationRequestsListView.as_view(), name="bo_list"),
+    path("backoffice/requests/<int:pk>/assign/", BackofficeVerificationAssignView.as_view(), name="bo_assign"),
     path("backoffice/documents/<int:doc_id>/decision/", BackofficeDecideDocumentView.as_view(), name="bo_decide_doc"),
     path("backoffice/requests/<int:pk>/finalize/", BackofficeFinalizeRequestView.as_view(), name="bo_finalize"),
 ]

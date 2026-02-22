@@ -45,6 +45,16 @@ class VerificationRequest(models.Model):
         related_name="verification_requests",
     )
 
+    # Backoffice assignment (for AccessLevel.USER scoping)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_verification_requests",
+    )
+    assigned_at = models.DateTimeField(null=True, blank=True)
+
     badge_type = models.CharField(max_length=20, choices=VerificationBadgeType.choices)
 
     status = models.CharField(max_length=25, choices=VerificationStatus.choices, default=VerificationStatus.NEW)

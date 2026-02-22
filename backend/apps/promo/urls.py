@@ -9,6 +9,7 @@ from .views import (
     BackofficePromoRequestsListView,
     BackofficeQuoteView,
     BackofficeRejectView,
+    BackofficePromoAssignView,
 )
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
 
     # backoffice
     path("backoffice/requests/", BackofficePromoRequestsListView.as_view(), name="bo_list"),
+    path("backoffice/requests/<int:pk>/assign/", BackofficePromoAssignView.as_view(), name="bo_assign"),
     path("backoffice/requests/<int:pk>/quote/", BackofficeQuoteView.as_view(), name="bo_quote"),
     path("backoffice/requests/<int:pk>/reject/", BackofficeRejectView.as_view(), name="bo_reject"),
 ]

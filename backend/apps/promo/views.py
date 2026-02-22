@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from .models import PromoRequest, PromoAsset, PromoRequestStatus
 from .serializers import (
@@ -111,11 +112,7 @@ class BackofficePromoRequestsListView(generics.ListAPIView):
         if not ap:
             return PromoRequest.objects.none()
         if ap and ap.level == "user":
-            qs = qs.filter(status__in=[
-                PromoRequestStatus.NEW,
-                PromoRequestStatus.IN_REVIEW,
-                PromoRequestStatus.PENDING_PAYMENT,
-            ])
+            qs = qs.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
 
         status_q = self.request.query_params.get("status")
         ad_type_q = self.request.query_params.get("ad_type")
@@ -129,6 +126,42 @@ class BackofficePromoRequestsListView(generics.ListAPIView):
             qs = qs.filter(Q(code__icontains=q) | Q(title__icontains=q) | Q(requester__phone__icontains=q))
 
         return qs
+
+
+class BackofficePromoAssignView(APIView):
+    """تعيين طلب إعلان لموظف تشغيل (User-level scoping)."""
+
+    permission_classes = [IsOwnerOrBackofficePromo]
+
+    def patch(self, request, pk: int):
+        pr = get_object_or_404(PromoRequest, pk=pk)
+        self.check_object_permissions(request, pr)
+
+        ap = getattr(request.user, "access_profile", None)
+
+        user_id = request.data.get("assigned_to")
+        try:
+            user_id = int(user_id) if user_id not in (None, "") else None
+        except Exception:
+            return Response({"detail": "assigned_to غير صالح"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Action-level RBAC: user-level operators can only self-assign/unassign.
+        if ap and ap.level == "user":
+            if user_id is not None and user_id != request.user.id:
+                return Response({"detail": "لا يمكنك تعيين الطلب لمستخدم آخر."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Only staff users can be assigned
+        assigned_user = None
+        if user_id is not None:
+            from apps.accounts.models import User
+
+            assigned_user = get_object_or_404(User, pk=user_id, is_staff=True)
+
+        pr.assigned_to = assigned_user
+        pr.assigned_at = timezone.now() if assigned_user else None
+        pr.save(update_fields=["assigned_to", "assigned_at", "updated_at"])
+
+        return Response(PromoRequestDetailSerializer(pr).data, status=status.HTTP_200_OK)
 
 
 class BackofficeQuoteView(APIView):

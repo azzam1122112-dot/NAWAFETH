@@ -33,5 +33,10 @@ class IsBackofficeAnalytics(BasePermission):
         if ap.level in ("admin", "power"):
             return True
 
-        # user allow if has any module
-        return ap.is_allowed("finance") or ap.is_allowed("promo") or ap.is_allowed("verify")
+        # user allow if explicitly granted analytics, or legacy module-based access
+        return (
+            ap.is_allowed("analytics")
+            or ap.is_allowed("billing")
+            or ap.is_allowed("promo")
+            or ap.is_allowed("verify")
+        )

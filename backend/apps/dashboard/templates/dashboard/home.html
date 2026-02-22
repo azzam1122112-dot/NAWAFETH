@@ -9,7 +9,7 @@
       <p class="text-gray-500 mt-2">نظرة تشغيلية مباشرة على الطلبات والمزوّدين والفوترة والتفعيل.</p>
     </div>
     <a class="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-xl transition-all hover:scale-105 font-bold flex items-center gap-2"
-       href="{% url 'dashboard:requests_list' %}">
+       href="{% if can_content %}{% url 'dashboard:requests_list' %}{% elif can_support %}{% url 'dashboard:support_tickets_list' %}{% elif can_billing %}{% url 'dashboard:billing_invoices_list' %}{% else %}{% url 'dashboard:home' %}{% endif %}">
       <span>📋</span>
       <span>تشغيل الطلبات</span>
     </a>
@@ -150,9 +150,13 @@
                   <span class="px-3 py-1 rounded-lg bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 font-bold text-xs">{{ r.id }}</span>
                 </td>
                 <td class="px-6 py-4">
-                  <a href="{% url 'dashboard:request_detail' r.id %}" class="font-semibold text-gray-800 hover:text-purple-600 transition-colors">
-                    {{ r.title|default:"—" }}
-                  </a>
+                  {% if can_content %}
+                    <a href="{% url 'dashboard:request_detail' r.id %}" class="font-semibold text-gray-800 hover:text-purple-600 transition-colors">
+                      {{ r.title|default:"—" }}
+                    </a>
+                  {% else %}
+                    <span class="font-semibold text-gray-800">{{ r.title|default:"—" }}</span>
+                  {% endif %}
                   <div class="text-xs text-gray-500 mt-1">{{ r.created_at|date:"Y-m-d H:i" }}</div>
                 </td>
                 <td class="px-6 py-4">
@@ -188,16 +192,30 @@
         <h2 class="font-bold text-lg text-gray-800">وصول سريع</h2>
       </div>
       <div class="space-y-3">
-        <a href="{% url 'dashboard:requests_list' %}" class="block rounded-xl px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold transition-colors">إدارة الطلبات</a>
-        <a href="{% url 'dashboard:providers_list' %}" class="block rounded-xl px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold transition-colors">إدارة المزوّدين</a>
-        <a href="{% url 'dashboard:services_list' %}" class="block rounded-xl px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold transition-colors">خدمات المزوّدين</a>
-        <a href="{% url 'dashboard:categories_list' %}" class="block rounded-xl px-4 py-3 bg-violet-50 hover:bg-violet-100 text-violet-700 font-semibold transition-colors">التصنيفات</a>
-        <a href="{% url 'dashboard:billing_invoices_list' %}" class="block rounded-xl px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold transition-colors">إدارة الفوترة</a>
-        <a href="{% url 'dashboard:support_tickets_list' %}" class="block rounded-xl px-4 py-3 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 font-semibold transition-colors">إدارة الدعم</a>
-        <a href="{% url 'dashboard:verification_requests_list' %}" class="block rounded-xl px-4 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold transition-colors">إدارة التوثيق</a>
-        <a href="{% url 'dashboard:promo_requests_list' %}" class="block rounded-xl px-4 py-3 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 font-semibold transition-colors">إدارة الترويج</a>
-        <a href="{% url 'dashboard:subscriptions_list' %}" class="block rounded-xl px-4 py-3 bg-violet-50 hover:bg-violet-100 text-violet-700 font-semibold transition-colors">إدارة الاشتراكات</a>
-        <a href="{% url 'dashboard:access_profiles_list' %}" class="block rounded-xl px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors">صلاحيات التشغيل</a>
+        {% if can_content %}
+          <a href="{% url 'dashboard:requests_list' %}" class="block rounded-xl px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold transition-colors">إدارة الطلبات</a>
+          <a href="{% url 'dashboard:providers_list' %}" class="block rounded-xl px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold transition-colors">إدارة المزوّدين</a>
+          <a href="{% url 'dashboard:services_list' %}" class="block rounded-xl px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold transition-colors">خدمات المزوّدين</a>
+          <a href="{% url 'dashboard:categories_list' %}" class="block rounded-xl px-4 py-3 bg-violet-50 hover:bg-violet-100 text-violet-700 font-semibold transition-colors">التصنيفات</a>
+        {% endif %}
+        {% if can_billing %}
+          <a href="{% url 'dashboard:billing_invoices_list' %}" class="block rounded-xl px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold transition-colors">إدارة الفوترة</a>
+        {% endif %}
+        {% if can_support %}
+          <a href="{% url 'dashboard:support_tickets_list' %}" class="block rounded-xl px-4 py-3 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 font-semibold transition-colors">إدارة الدعم</a>
+        {% endif %}
+        {% if can_verify %}
+          <a href="{% url 'dashboard:verification_requests_list' %}" class="block rounded-xl px-4 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold transition-colors">إدارة التوثيق</a>
+        {% endif %}
+        {% if can_promo %}
+          <a href="{% url 'dashboard:promo_requests_list' %}" class="block rounded-xl px-4 py-3 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 font-semibold transition-colors">إدارة الترويج</a>
+        {% endif %}
+        {% if can_subs %}
+          <a href="{% url 'dashboard:subscriptions_list' %}" class="block rounded-xl px-4 py-3 bg-violet-50 hover:bg-violet-100 text-violet-700 font-semibold transition-colors">إدارة الاشتراكات</a>
+        {% endif %}
+        {% if can_access_mgmt %}
+          <a href="{% url 'dashboard:access_profiles_list' %}" class="block rounded-xl px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors">صلاحيات التشغيل</a>
+        {% endif %}
       </div>
 
       <div class="mt-6 pt-5 border-t border-gray-100">

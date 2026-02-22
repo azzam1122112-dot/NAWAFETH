@@ -6,6 +6,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
 
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from .models import VerificationRequest, VerificationDocument, VerificationStatus
 from .serializers import (
@@ -110,8 +112,7 @@ class BackofficeVerificationRequestsListView(generics.ListAPIView):
         if not ap:
             return VerificationRequest.objects.none()
         if ap and ap.level == "user":
-            # موظف توثيق: يشوف غير المعيّن/المجدد (نمط بسيط الآن)
-            qs = qs.filter(status__in=[VerificationStatus.NEW, VerificationStatus.IN_REVIEW, VerificationStatus.PENDING_PAYMENT])
+            qs = qs.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
 
         status_q = self.request.query_params.get("status")
         q = self.request.query_params.get("q")
@@ -121,6 +122,41 @@ class BackofficeVerificationRequestsListView(generics.ListAPIView):
             qs = qs.filter(Q(code__icontains=q) | Q(requester__phone__icontains=q))
 
         return qs
+
+
+class BackofficeVerificationAssignView(APIView):
+    """تعيين طلب توثيق لموظف تشغيل (User-level scoping)."""
+
+    permission_classes = [IsOwnerOrBackofficeVerify]
+
+    def patch(self, request, pk: int):
+        vr = VerificationRequest.objects.get(pk=pk)
+        self.check_object_permissions(request, vr)
+
+        ap = getattr(request.user, "access_profile", None)
+
+        user_id = request.data.get("assigned_to")
+        try:
+            user_id = int(user_id) if user_id not in (None, "") else None
+        except Exception:
+            return Response({"detail": "assigned_to غير صالح"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Action-level RBAC: user-level operators can only self-assign/unassign.
+        if ap and ap.level == "user":
+            if user_id is not None and user_id != request.user.id:
+                return Response({"detail": "لا يمكنك تعيين الطلب لمستخدم آخر."}, status=status.HTTP_403_FORBIDDEN)
+
+        assigned_user = None
+        if user_id is not None:
+            from apps.accounts.models import User
+
+            assigned_user = get_object_or_404(User, pk=user_id, is_staff=True)
+
+        vr.assigned_to = assigned_user
+        vr.assigned_at = timezone.now() if assigned_user else None
+        vr.save(update_fields=["assigned_to", "assigned_at", "updated_at"])
+
+        return Response(VerificationRequestDetailSerializer(vr).data, status=status.HTTP_200_OK)
 
 
 class BackofficeDecideDocumentView(APIView):

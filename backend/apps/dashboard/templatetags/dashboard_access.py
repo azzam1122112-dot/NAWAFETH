@@ -16,8 +16,7 @@ def can_access(user, dashboard_code: str, write: bool = False) -> bool:
 
     access_profile = getattr(user, "access_profile", None)
     if not access_profile:
-        # Backward compatibility for older staff accounts.
-        return True
+        return False
 
     if access_profile.is_revoked() or access_profile.is_expired():
         return False
@@ -30,4 +29,3 @@ def can_access(user, dashboard_code: str, write: bool = False) -> bool:
         code=dashboard_code,
         is_active=True,
     ).exists()
-

@@ -43,6 +43,21 @@ urlpatterns = [
 
     path("features/", views.features_overview, name="features_overview"),
     path("access-profiles/", views.access_profiles_list, name="access_profiles_list"),
+    path(
+        "access-profiles/actions/create/",
+        views.access_profile_create_action,
+        name="access_profile_create_action",
+    ),
+    path(
+        "access-profiles/<int:profile_id>/actions/update/",
+        views.access_profile_update_action,
+        name="access_profile_update_action",
+    ),
+    path(
+        "access-profiles/<int:profile_id>/actions/toggle-revoke/",
+        views.access_profile_toggle_revoke_action,
+        name="access_profile_toggle_revoke_action",
+    ),
 
     # Categories & Subcategories
     path("categories/", views.categories_list, name="categories_list"),

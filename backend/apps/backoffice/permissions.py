@@ -7,7 +7,7 @@ class BackofficeAccessPermission(BasePermission):
     """
     صلاحيات Backoffice:
     - يجب أن يكون المستخدم authenticated
-    - يجب أن يكون staff أو لديه access_profile
+    - يجب أن يملك access_profile صالح
     - إذا QA => يسمح فقط بالقراءة
     - يمنع الدخول إذا revoked أو expired
     """

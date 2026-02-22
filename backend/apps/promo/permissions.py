@@ -42,7 +42,16 @@ class IsOwnerOrBackofficePromo(BasePermission):
         user = request.user
 
         if self._is_backoffice_request(request):
-            return self._has_backoffice_access(request)
+            if not self._has_backoffice_access(request):
+                return False
+
+            ap = getattr(user, "access_profile", None)
+            if ap and ap.level == "user":
+                assigned_to_id = getattr(obj, "assigned_to_id", None)
+                if assigned_to_id is not None and assigned_to_id != user.id:
+                    self.message = "غير مصرح: هذا الطلب ليس ضمن المهام المكلّف بها."
+                    return False
+            return True
 
         if obj.requester_id == user.id:
             return True

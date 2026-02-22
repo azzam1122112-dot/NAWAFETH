@@ -99,9 +99,21 @@ class SupportTicketAssignView(APIView):
         ticket = SupportTicket.objects.get(pk=pk)
         self.check_object_permissions(request, ticket)
 
+        ap = getattr(request.user, "access_profile", None)
+
         team_id = request.data.get("assigned_team")
         user_id = request.data.get("assigned_to")
         note = request.data.get("note", "")
+
+        # Action-level RBAC: user-level operators can only self-assign/unassign.
+        if ap and ap.level == "user":
+            try:
+                parsed_user_id = int(user_id) if user_id not in (None, "") else None
+            except Exception:
+                parsed_user_id = None
+
+            if parsed_user_id is not None and parsed_user_id != request.user.id:
+                return Response({"detail": "لا يمكنك تعيين التذكرة لمستخدم آخر."}, status=status.HTTP_403_FORBIDDEN)
 
         ticket = assign_ticket(
             ticket=ticket,

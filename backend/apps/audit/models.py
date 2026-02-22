@@ -21,6 +21,11 @@ class AuditAction(models.TextChoices):
 	EXTRA_PURCHASE_CREATED = "extra_purchase_created", "شراء إضافة"
 	EXTRA_PURCHASE_ACTIVE = "extra_purchase_active", "تفعيل إضافة"
 
+	ACCESS_PROFILE_UPDATED = "access_profile_updated", "تحديث صلاحيات تشغيل"
+	ACCESS_PROFILE_CREATED = "access_profile_created", "إنشاء صلاحيات تشغيل"
+	ACCESS_PROFILE_REVOKED = "access_profile_revoked", "سحب صلاحيات تشغيل"
+	ACCESS_PROFILE_UNREVOKED = "access_profile_unrevoked", "إلغاء سحب صلاحيات تشغيل"
+
 	LOGIN_OTP_SENT = "login_otp_sent", "إرسال OTP"
 	LOGIN_OTP_VERIFIED = "login_otp_verified", "تأكيد OTP"
 
