@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
         feed.getTopProviders(limit: 20),
         feed.getBannerItems(limit: 6),
         feed.getMediaItems(limit: 12),
+        feed.getSpotlightItems(limit: 12),
         feed.getTestimonials(limit: 8),
       ]);
     });

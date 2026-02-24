@@ -23,6 +23,10 @@ class HomeFeedService {
   List<ProviderPortfolioItem>? _portfolioCache;
   Future<List<ProviderPortfolioItem>>? _portfolioInFlight;
 
+  DateTime? _spotlightsAt;
+  List<ProviderPortfolioItem>? _spotlightsCache;
+  Future<List<ProviderPortfolioItem>>? _spotlightsInFlight;
+
   DateTime? _bannersAt;
   List<ProviderPortfolioItem>? _bannersCache;
   Future<List<ProviderPortfolioItem>>? _bannersInFlight;
@@ -36,9 +40,11 @@ class HomeFeedService {
   final Map<String, Future<List<Map<String, dynamic>>>> _activePromosInFlightByKey = {};
   bool _lastBannerItemsLoadFailed = false;
   bool _lastMediaItemsLoadFailed = false;
+  bool _lastSpotlightItemsLoadFailed = false;
 
   bool get lastBannerItemsLoadFailed => _lastBannerItemsLoadFailed;
   bool get lastMediaItemsLoadFailed => _lastMediaItemsLoadFailed;
+  bool get lastSpotlightItemsLoadFailed => _lastSpotlightItemsLoadFailed;
 
   bool _isFresh(DateTime? at) {
     if (at == null) return false;
@@ -274,6 +280,55 @@ class HomeFeedService {
     }
   }
 
+  Future<List<ProviderPortfolioItem>> _getSpotlightsPool({bool forceRefresh = false}) async {
+    if (
+        !forceRefresh &&
+        _spotlightsCache != null &&
+        _spotlightsCache!.isNotEmpty &&
+        _isFresh(_spotlightsAt)) {
+      return _spotlightsCache!;
+    }
+    if (!forceRefresh && _spotlightsInFlight != null) {
+      return _spotlightsInFlight!;
+    }
+
+    final future = () async {
+      final providers = await getTopProviders(limit: 8, forceRefresh: forceRefresh);
+      if (providers.isEmpty) {
+        _lastSpotlightItemsLoadFailed = _providersApi.lastProvidersListFailed;
+        return <ProviderPortfolioItem>[];
+      }
+
+      var anySpotlightCallFailed = false;
+      final spotlights = await Future.wait(
+        providers.map((p) async {
+          final list = await _providersApi.getProviderSpotlights(p.id);
+          if (_providersApi.lastProviderPortfolioRequestFailed) {
+            anySpotlightCallFailed = true;
+          }
+          return list;
+        }),
+      );
+
+      final merged = <ProviderPortfolioItem>[
+        for (final list in spotlights) ...list.where((e) => e.fileUrl.trim().isNotEmpty),
+      ];
+      merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _lastSpotlightItemsLoadFailed = merged.isEmpty && anySpotlightCallFailed;
+      return merged;
+    }();
+
+    _spotlightsInFlight = future;
+    try {
+      final data = await future;
+      _spotlightsCache = data;
+      _spotlightsAt = DateTime.now();
+      return data;
+    } finally {
+      _spotlightsInFlight = null;
+    }
+  }
+
   Future<List<ProviderPortfolioItem>> getBannerItems({
     int limit = 6,
     bool forceRefresh = false,
@@ -352,6 +407,14 @@ class HomeFeedService {
     bool forceRefresh = false,
   }) async {
     final pool = await _getPortfolioPool(forceRefresh: forceRefresh);
+    return pool.take(limit).toList();
+  }
+
+  Future<List<ProviderPortfolioItem>> getSpotlightItems({
+    int limit = 12,
+    bool forceRefresh = false,
+  }) async {
+    final pool = await _getSpotlightsPool(forceRefresh: forceRefresh);
     return pool.take(limit).toList();
   }
 

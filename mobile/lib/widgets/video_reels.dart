@@ -31,7 +31,7 @@ class _VideoReelsState extends State<VideoReels> {
 
   Future<void> _load() async {
     try {
-      final media = await _feed.getMediaItems(limit: 24);
+      final media = await _feed.getSpotlightItems(limit: 24);
       var videos = media
           .where((e) => e.fileType.toLowerCase().contains('video'))
           .take(3)
@@ -42,7 +42,7 @@ class _VideoReelsState extends State<VideoReels> {
       if (!mounted) return;
       setState(() {
         _items = videos;
-        _loadFailed = _feed.lastMediaItemsLoadFailed;
+        _loadFailed = _feed.lastSpotlightItemsLoadFailed;
         _loading = false;
       });
       _startAutoScroll();
