@@ -148,6 +148,22 @@ def _want_pdf(request: HttpRequest) -> bool:
     return (request.GET.get("export") or "").strip().lower() == "pdf"
 
 
+def _dashboard_tile_meta(code: str) -> dict[str, str]:
+    mapping = {
+        "analytics": {"icon": "🏠", "from": "from-purple-500", "to": "to-indigo-600"},
+        "content": {"icon": "📋", "from": "from-blue-500", "to": "to-cyan-600"},
+        "billing": {"icon": "💳", "from": "from-sky-500", "to": "to-blue-600"},
+        "support": {"icon": "🎫", "from": "from-cyan-500", "to": "to-teal-600"},
+        "verify": {"icon": "✅", "from": "from-indigo-500", "to": "to-violet-600"},
+        "promo": {"icon": "📢", "from": "from-fuchsia-500", "to": "to-pink-600"},
+        "subs": {"icon": "📦", "from": "from-violet-500", "to": "to-indigo-600"},
+        "extras": {"icon": "➕", "from": "from-orange-500", "to": "to-amber-600"},
+        "features": {"icon": "🧩", "from": "from-teal-500", "to": "to-emerald-600"},
+        "access": {"icon": "🔐", "from": "from-slate-600", "to": "to-gray-800"},
+    }
+    return mapping.get(code, {"icon": "🗂️", "from": "from-gray-500", "to": "to-slate-600"})
+
+
 
 
 def _dashboard_allowed(user, dashboard_code: str, write: bool = False) -> bool:
@@ -4009,6 +4025,13 @@ def access_profiles_list(request: HttpRequest) -> HttpResponse:
             rows,
         )
 
+    all_dashboards = list(Dashboard.objects.filter(is_active=True).order_by("sort_order", "id"))
+    for d in all_dashboards:
+        meta = _dashboard_tile_meta(d.code)
+        d.ui_icon = meta["icon"]
+        d.ui_grad_from = meta["from"]
+        d.ui_grad_to = meta["to"]
+
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(request.GET.get("page") or "1")
     return render(
@@ -4019,7 +4042,7 @@ def access_profiles_list(request: HttpRequest) -> HttpResponse:
             "q": q,
             "level": level,
             "level_choices": UserAccessProfile._meta.get_field("level").choices,
-            "all_dashboards": Dashboard.objects.filter(is_active=True).order_by("sort_order", "id"),
+            "all_dashboards": all_dashboards,
             "can_write": _dashboard_allowed(request.user, "access", write=True),
         },
     )

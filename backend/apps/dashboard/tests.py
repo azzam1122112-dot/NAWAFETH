@@ -1295,6 +1295,28 @@ def test_access_profile_create_action_updates_existing_profile():
 
 
 @pytest.mark.django_db
+def test_staff_cannot_access_unallowed_dashboard_page_and_is_redirected():
+	staff_user = User.objects.create_user(
+		phone="0500000220",
+		password="Pass12345!",
+		is_staff=True,
+	)
+	content_dashboard = Dashboard.objects.create(code="content", name_ar="إدارة المحتوى", sort_order=20)
+	support_dashboard = Dashboard.objects.create(code="support", name_ar="الدعم", sort_order=30)
+	UserAccessProfile.objects.create(user=staff_user, level=AccessLevel.USER).allowed_dashboards.set([content_dashboard])
+
+	c = Client()
+	assert c.login(phone=staff_user.phone, password="Pass12345!")
+	s = c.session
+	s[SESSION_OTP_VERIFIED_KEY] = True
+	s.save()
+
+	res = c.get(reverse("dashboard:support_tickets_list"))
+	assert res.status_code == 302
+	assert reverse("dashboard:requests_list") in res["Location"]
+
+
+@pytest.mark.django_db
 def test_guard_prevents_demoting_last_active_admin():
 	admin_user = User.objects.create_user(
 		phone="0500000216",

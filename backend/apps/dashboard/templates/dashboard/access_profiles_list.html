@@ -41,11 +41,25 @@
   </div>
   <div class="mt-3">
     <label class="block text-xs text-gray-600 mb-1">اللوحات المسموحة</label>
-    <select name="dashboard_ids" multiple size="5" class="w-full rounded-lg border-gray-200 px-3 py-2">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 rounded-xl border border-gray-100 p-3 bg-gray-50/70">
       {% for d in all_dashboards %}
-        <option value="{{ d.id }}">{{ d.name_ar }} ({{ d.code }})</option>
+      <label class="relative cursor-pointer">
+        <input type="checkbox" name="dashboard_ids" value="{{ d.id }}" class="peer sr-only">
+        <div class="rounded-xl border border-gray-200 bg-white p-3 transition-all peer-checked:border-purple-400 peer-checked:ring-2 peer-checked:ring-purple-200 hover:border-gray-300">
+          <div class="flex items-center gap-2">
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-br {{ d.ui_grad_from }} {{ d.ui_grad_to }} text-white flex items-center justify-center text-base">
+              {{ d.ui_icon }}
+            </div>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-gray-800 truncate">{{ d.name_ar }}</div>
+              <div class="text-[11px] text-gray-500">{{ d.code }}</div>
+            </div>
+          </div>
+        </div>
+      </label>
       {% endfor %}
-    </select>
+    </div>
+    <p class="text-xs text-gray-500 mt-2">الموظف لن يرى في السايدبار إلا اللوحات المحددة، والوصول المباشر لغيرها سيتم منعه.</p>
   </div>
 </form>
 {% endif %}
@@ -104,13 +118,24 @@
                 </div>
                 <div>
                   <label class="block text-xs text-gray-600 mb-1">اللوحات المسموحة</label>
-                  <select name="dashboard_ids" multiple size="6" class="w-full rounded-lg border-gray-200 px-2 py-1.5">
+                  <div class="grid grid-cols-2 gap-2 rounded-xl border border-gray-100 p-2 bg-gray-50/70 max-h-72 overflow-y-auto">
                     {% for d in all_dashboards %}
-                      <option value="{{ d.id }}" {% if d in ap.allowed_dashboards.all %}selected{% endif %}>
-                        {{ d.name_ar }} ({{ d.code }})
-                      </option>
+                    <label class="relative cursor-pointer">
+                      <input type="checkbox" name="dashboard_ids" value="{{ d.id }}" class="peer sr-only" {% if d in ap.allowed_dashboards.all %}checked{% endif %}>
+                      <div class="rounded-lg border border-gray-200 bg-white p-2 transition-all peer-checked:border-purple-400 peer-checked:ring-2 peer-checked:ring-purple-200 hover:border-gray-300">
+                        <div class="flex items-center gap-2">
+                          <div class="w-8 h-8 rounded-lg bg-gradient-to-br {{ d.ui_grad_from }} {{ d.ui_grad_to }} text-white flex items-center justify-center text-sm">
+                            {{ d.ui_icon }}
+                          </div>
+                          <div class="min-w-0">
+                            <div class="text-xs font-semibold text-gray-800 truncate">{{ d.name_ar }}</div>
+                            <div class="text-[10px] text-gray-500">{{ d.code }}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </label>
                     {% endfor %}
-                  </select>
+                  </div>
                 </div>
                 <button class="w-full rounded-lg bg-slate-700 text-white px-3 py-2 text-sm font-semibold">حفظ التعديلات</button>
               </form>
