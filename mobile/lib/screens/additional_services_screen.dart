@@ -9,7 +9,12 @@ import '../utils/auth_guard.dart';
 import '../widgets/bottom_nav.dart';
 
 class AdditionalServicesScreen extends StatefulWidget {
-  const AdditionalServicesScreen({super.key});
+  final int initialTabIndex;
+
+  const AdditionalServicesScreen({
+    super.key,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<AdditionalServicesScreen> createState() => _AdditionalServicesScreenState();
@@ -68,7 +73,8 @@ class _AdditionalServicesScreenState extends State<AdditionalServicesScreen> wit
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    final initialIndex = widget.initialTabIndex.clamp(0, 2);
+    _tabController = TabController(length: 3, vsync: this, initialIndex: initialIndex);
 
     // Initialize futures to keep build safe before auth check.
     _catalogFuture = Future.value(const <Map<String, dynamic>>[]);

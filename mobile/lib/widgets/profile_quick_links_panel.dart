@@ -6,11 +6,19 @@ class ProfileQuickLinkItem {
   final String title;
   final IconData icon;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final String? badgeText;
+  final Color? badgeBackgroundColor;
+  final Color? badgeTextColor;
 
   const ProfileQuickLinkItem({
     required this.title,
     required this.icon,
     required this.onTap,
+    this.onLongPress,
+    this.badgeText,
+    this.badgeBackgroundColor,
+    this.badgeTextColor,
   });
 }
 
@@ -71,8 +79,10 @@ class ProfileQuickLinksPanel extends StatelessWidget {
   }
 
   Widget _itemTile(ProfileQuickLinkItem item) {
+    final badgeText = (item.badgeText ?? '').trim();
     return ListTile(
       onTap: item.onTap,
+      onLongPress: item.onLongPress,
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
@@ -89,7 +99,35 @@ class ProfileQuickLinksPanel extends StatelessWidget {
           color: AppColors.softBlue,
         ),
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badgeText.isNotEmpty)
+            Container(
+              constraints: const BoxConstraints(minWidth: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: item.badgeBackgroundColor ?? AppColors.deepPurple.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: (item.badgeBackgroundColor ?? AppColors.deepPurple).withValues(alpha: 0.22),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                badgeText,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  color: item.badgeTextColor ?? AppColors.deepPurple,
+                ),
+              ),
+            ),
+          if (badgeText.isNotEmpty) const SizedBox(width: 8),
+          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+        ],
+      ),
     );
   }
 }

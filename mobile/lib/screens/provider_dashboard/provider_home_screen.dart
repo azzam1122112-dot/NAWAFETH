@@ -13,6 +13,10 @@ import '../../services/providers_api.dart';
 import '../../services/reviews_api.dart';
 import '../../services/account_switcher.dart';
 import '../../services/marketplace_api.dart';
+import '../../services/subscriptions_api.dart';
+import '../../services/verification_api.dart';
+import '../../services/extras_api.dart';
+import '../../services/promo_api.dart';
 import '../../constants/colors.dart';
 import '../../models/provider_portfolio_item.dart';
 
@@ -28,6 +32,8 @@ import 'provider_completion_utils.dart';
 import 'provider_orders_screen.dart';
 import 'provider_profile_completion_screen.dart';
 import 'provider_portfolio_manage_screen.dart';
+import 'paid_services_hub_screen.dart';
+import '../verification_screen.dart';
 import '../plans_screen.dart';
 import '../additional_services_screen.dart';
 import '../../screens/network_video_player_screen.dart';
@@ -71,6 +77,16 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   bool _loadingSpotlights = false;
   bool _savingSpotlight = false;
   List<ProviderPortfolioItem> _mySpotlights = const [];
+  int _paidServicesPendingCount = 0;
+  bool _loadingPaidServicesBadge = false;
+  int _pendingVerificationCount = 0;
+  int _pendingSubscriptionsCount = 0;
+  int _pendingExtrasCount = 0;
+  int _pendingPromoCount = 0;
+  int _rejectedVerificationCount = 0;
+  int _rejectedSubscriptionsCount = 0;
+  int _rejectedExtrasCount = 0;
+  int _rejectedPromoCount = 0;
 
   @override
   void initState() {
@@ -181,6 +197,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
         _ratingCount = ratingCount;
         _isLoading = false;
       });
+      _loadPaidServicesBadge();
       await _loadCompletedOrdersCount();
       await _loadMySpotlights();
     } catch (e) {
@@ -217,6 +234,396 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
       if (!mounted) return;
       setState(() => _completedOrdersCount = 0);
     }
+  }
+
+  Future<void> _loadPaidServicesBadge() async {
+    if (!mounted) return;
+    setState(() => _loadingPaidServicesBadge = true);
+    try {
+      List<Map<String, dynamic>> verification = const [];
+      List<Map<String, dynamic>> subscriptions = const [];
+      List<Map<String, dynamic>> extras = const [];
+      List<Map<String, dynamic>> promo = const [];
+
+      await Future.wait([
+        () async {
+          try {
+            verification = await VerificationApi().getMyRequests();
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            subscriptions = await SubscriptionsApi().getMySubscriptions();
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            extras = await ExtrasApi().getMyExtras();
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            promo = await PromoApi().getMyRequests();
+          } catch (_) {}
+        }(),
+      ]);
+
+      final verificationPending = _countPendingLike(verification);
+      final subscriptionsPending = _countPendingLike(subscriptions);
+      final extrasPending = _countPendingLike(extras);
+      final promoPending = _countPendingLike(promo);
+      final verificationRejected = _countRejectedLike(verification);
+      final subscriptionsRejected = _countRejectedLike(subscriptions);
+      final extrasRejected = _countRejectedLike(extras);
+      final promoRejected = _countRejectedLike(promo);
+      final totalPending = verificationPending + subscriptionsPending + extrasPending + promoPending;
+
+      if (!mounted) return;
+      setState(() {
+        _paidServicesPendingCount = totalPending;
+        _pendingVerificationCount = verificationPending;
+        _pendingSubscriptionsCount = subscriptionsPending;
+        _pendingExtrasCount = extrasPending;
+        _pendingPromoCount = promoPending;
+        _rejectedVerificationCount = verificationRejected;
+        _rejectedSubscriptionsCount = subscriptionsRejected;
+        _rejectedExtrasCount = extrasRejected;
+        _rejectedPromoCount = promoRejected;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _paidServicesPendingCount = 0;
+        _pendingVerificationCount = 0;
+        _pendingSubscriptionsCount = 0;
+        _pendingExtrasCount = 0;
+        _pendingPromoCount = 0;
+        _rejectedVerificationCount = 0;
+        _rejectedSubscriptionsCount = 0;
+        _rejectedExtrasCount = 0;
+        _rejectedPromoCount = 0;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loadingPaidServicesBadge = false);
+      }
+    }
+  }
+
+  int _countPendingLike(List<Map<String, dynamic>> rows) {
+    const pendingStatuses = <String>{
+      'pending',
+      'submitted',
+      'processing',
+      'awaiting_payment',
+      'awaiting-review',
+      'awaiting_review',
+      'unpaid',
+      'created',
+      'new',
+    };
+    var count = 0;
+    for (final row in rows) {
+      final raw = (row['status'] ?? row['state'] ?? row['payment_status'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (raw.isEmpty) continue;
+      if (pendingStatuses.contains(raw)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  int _countRejectedLike(List<Map<String, dynamic>> rows) {
+    const rejectedStatuses = <String>{
+      'rejected',
+      'declined',
+      'failed',
+      'cancelled',
+      'canceled',
+      'expired',
+      'void',
+    };
+    var count = 0;
+    for (final row in rows) {
+      final raw = (row['status'] ?? row['state'] ?? row['payment_status'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (raw.isEmpty) continue;
+      if (rejectedStatuses.contains(raw)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  Future<void> _showPaidServicesBadgeBreakdown() async {
+    if (!mounted) return;
+    final total = _pendingVerificationCount +
+        _pendingSubscriptionsCount +
+        _pendingExtrasCount +
+        _pendingPromoCount;
+    final totalRejected = _rejectedVerificationCount +
+        _rejectedSubscriptionsCount +
+        _rejectedExtrasCount +
+        _rejectedPromoCount;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        Widget item({
+          required IconData icon,
+          required String title,
+          required int count,
+          required int rejectedCount,
+          required VoidCallback onTap,
+        }) {
+          final hasRejected = rejectedCount > 0;
+          final hasPending = count > 0;
+          final accent = hasRejected
+              ? Colors.red
+              : (hasPending ? Colors.orange : Colors.green);
+          final bg = hasRejected
+              ? Colors.red.withValues(alpha: 0.08)
+              : (hasPending
+                  ? Colors.orange.withValues(alpha: 0.08)
+                  : Colors.green.withValues(alpha: 0.08));
+          final stateLabel = hasRejected
+              ? 'مرفوض ($rejectedCount)'
+              : (hasPending ? 'معلّق' : 'سليم');
+          return ListTile(
+            onTap: () {
+              Navigator.pop(sheetContext);
+              onTap();
+            },
+            leading: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: accent.shade700, size: 20),
+            ),
+            title: Text(
+              title,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: Text(
+              stateLabel,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: accent.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            trailing: Container(
+              constraints: const BoxConstraints(minWidth: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: hasRejected
+                    ? Colors.red.withValues(alpha: 0.12)
+                    : (hasPending
+                        ? Colors.orange.withValues(alpha: 0.12)
+                        : Colors.green.withValues(alpha: 0.12)),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$count',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w800,
+                  color: hasRejected
+                      ? Colors.red.shade800
+                      : (hasPending ? Colors.orange.shade800 : Colors.green.shade800),
+                ),
+              ),
+            ),
+          );
+        }
+
+        final totalAccent = totalRejected > 0
+            ? Colors.red
+            : (total > 0 ? Colors.orange : Colors.green);
+        return SafeArea(
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'تفصيل الخدمات المدفوعة',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.deepPurple,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: totalRejected > 0
+                              ? Colors.red.withValues(alpha: 0.12)
+                              : (total > 0
+                                  ? Colors.orange.withValues(alpha: 0.12)
+                                  : Colors.green.withValues(alpha: 0.12)),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          totalRejected > 0
+                              ? 'مرفوض: $totalRejected | معلّق: $total'
+                              : (total > 0 ? 'المعلّق: $total' : 'لا يوجد معلّق'),
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            color: totalAccent.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'اضغط على أي قسم للانتقال المباشر إليه.',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  item(
+                    icon: Icons.verified_outlined,
+                    title: 'التوثيق',
+                    count: _pendingVerificationCount,
+                    rejectedCount: _rejectedVerificationCount,
+                    onTap: _openVerificationSection,
+                  ),
+                  item(
+                    icon: Icons.arrow_circle_up_outlined,
+                    title: 'الترقية / الاشتراكات',
+                    count: _pendingSubscriptionsCount,
+                    rejectedCount: _rejectedSubscriptionsCount,
+                    onTap: _openPlansSection,
+                  ),
+                  item(
+                    icon: Icons.add_box_outlined,
+                    title: 'الخدمات الإضافية',
+                    count: _pendingExtrasCount,
+                    rejectedCount: _rejectedExtrasCount,
+                    onTap: _openExtrasSection,
+                  ),
+                  item(
+                    icon: Icons.campaign_outlined,
+                    title: 'الترويج',
+                    count: _pendingPromoCount,
+                    rejectedCount: _rejectedPromoCount,
+                    onTap: _openPromoSection,
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _openPaidServicesHub();
+                      },
+                      icon: const Icon(Icons.dashboard_customize_outlined),
+                      label: const Text(
+                        'فتح مركز الخدمات المدفوعة',
+                        style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.deepPurple,
+                        side: BorderSide(color: AppColors.deepPurple.withValues(alpha: 0.25)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openPaidServicesHub() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PaidServicesHubScreen()),
+    );
+    if (!mounted) return;
+    await _loadPaidServicesBadge();
+  }
+
+  Future<void> _openVerificationSection() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const VerificationScreen()),
+    );
+    if (!mounted) return;
+    await _loadPaidServicesBadge();
+  }
+
+  Future<void> _openPlansSection() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PlansScreen()),
+    );
+    if (!mounted) return;
+    await _loadPaidServicesBadge();
+  }
+
+  Future<void> _openExtrasSection() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AdditionalServicesScreen(initialTabIndex: 0)),
+    );
+    if (!mounted) return;
+    await _loadPaidServicesBadge();
+  }
+
+  Future<void> _openPromoSection() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AdditionalServicesScreen(initialTabIndex: 2)),
+    );
+    if (!mounted) return;
+    await _loadPaidServicesBadge();
   }
 
   Future<void> _loadMySpotlights() async {
@@ -1546,21 +1953,35 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   }
 
   Widget _buildQuickLinks() {
+    final totalRejected = _rejectedVerificationCount +
+        _rejectedSubscriptionsCount +
+        _rejectedExtrasCount +
+        _rejectedPromoCount;
+    final badgeCount = _paidServicesPendingCount + totalRejected;
+    final hasRejected = totalRejected > 0;
+
     return ProfileQuickLinksPanel(
       title: 'إعدادات سريعة',
       items: [
         ProfileQuickLinkItem(
-          title: 'إدارة الباقات والاشتراك',
-          icon: Icons.card_membership,
+          title: 'الخدمات المدفوعة (توثيق / ترقية / ترويج / إضافات)',
+          icon: Icons.workspace_premium_outlined,
+          badgeText: _loadingPaidServicesBadge
+              ? '...'
+              : (badgeCount > 0 ? badgeCount.toString() : null),
+          badgeBackgroundColor: hasRejected
+              ? Colors.red.withValues(alpha: 0.12)
+              : (_paidServicesPendingCount > 0
+                  ? Colors.orange.withValues(alpha: 0.12)
+                  : AppColors.deepPurple.withValues(alpha: 0.10)),
+          badgeTextColor: hasRejected
+              ? Colors.red.shade800
+              : (_paidServicesPendingCount > 0
+                  ? Colors.orange.shade800
+                  : AppColors.deepPurple),
+          onLongPress: _showPaidServicesBadgeBreakdown,
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen()));
-          },
-        ),
-        ProfileQuickLinkItem(
-          title: 'خدمات إضافية',
-          icon: Icons.add_box_outlined,
-          onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const AdditionalServicesScreen()));
+            _openPaidServicesHub();
           },
         ),
       ],
