@@ -31,9 +31,9 @@ class _HomeMediaViewerScreenState extends State<HomeMediaViewerScreen> {
   VideoPlayerController? _video;
   bool _videoReady = false;
   final Set<int> _favoritePortfolioIds = <int>{};
-  final Set<int> _followingProviderIds = <int>{};
+  final Set<int> _likedProviderIds = <int>{};
   final Set<int> _favoriteBusy = <int>{};
-  final Set<int> _followBusy = <int>{};
+  final Set<int> _providerLikeBusy = <int>{};
   bool _showSwipeHint = true;
   Timer? _hintTimer;
 
@@ -66,14 +66,14 @@ class _HomeMediaViewerScreenState extends State<HomeMediaViewerScreen> {
       // Unauthenticated / network failure: ignore.
     }
 
-    // Following providers (backend: /providers/me/following/).
+    // Provider likes (thumb-up on the right menu).
     try {
-      final following = await _providersApi.getMyFollowingProviders();
+      final likedProviders = await _providersApi.getMyLikedProviders();
       if (!mounted) return;
       setState(() {
-        _followingProviderIds
+        _likedProviderIds
           ..clear()
-          ..addAll(following.map((e) => e.id));
+          ..addAll(likedProviders.map((e) => e.id));
       });
     } catch (_) {
       // Unauthenticated / network failure: ignore.
@@ -166,38 +166,50 @@ class _HomeMediaViewerScreenState extends State<HomeMediaViewerScreen> {
         }
       }
     });
+
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ العنصر في المفضلة حالياً')),
+      );
+    }
   }
 
-  Future<void> _toggleFollowProvider(ProviderPortfolioItem item) async {
+  Future<void> _toggleProviderLike(ProviderPortfolioItem item) async {
     final providerId = item.providerId;
-    if (_followBusy.contains(providerId)) return;
+    if (_providerLikeBusy.contains(providerId)) return;
 
-    final wasFollowing = _followingProviderIds.contains(providerId);
+    final wasLiked = _likedProviderIds.contains(providerId);
     setState(() {
-      _followBusy.add(providerId);
-      if (wasFollowing) {
-        _followingProviderIds.remove(providerId);
+      _providerLikeBusy.add(providerId);
+      if (wasLiked) {
+        _likedProviderIds.remove(providerId);
       } else {
-        _followingProviderIds.add(providerId);
+        _likedProviderIds.add(providerId);
       }
     });
 
-    final ok = wasFollowing
-        ? await _providersApi.unfollowProvider(providerId)
-        : await _providersApi.followProvider(providerId);
+    final ok = wasLiked
+        ? await _providersApi.unlikeProvider(providerId)
+        : await _providersApi.likeProvider(providerId);
 
     if (!mounted) return;
     setState(() {
-      _followBusy.remove(providerId);
+      _providerLikeBusy.remove(providerId);
       if (!ok) {
         // Revert on failure.
-        if (wasFollowing) {
-          _followingProviderIds.add(providerId);
+        if (wasLiked) {
+          _likedProviderIds.add(providerId);
         } else {
-          _followingProviderIds.remove(providerId);
+          _likedProviderIds.remove(providerId);
         }
       }
     });
+
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر حفظ الإعجاب بالمزوّد حالياً')),
+      );
+    }
   }
 
   @override
@@ -274,8 +286,10 @@ class _HomeMediaViewerScreenState extends State<HomeMediaViewerScreen> {
             child: Builder(
               builder: (context) {
                 final current = widget.items[_index];
-                final liked = _favoritePortfolioIds.contains(current.id);
-                final saved = _followingProviderIds.contains(current.providerId);
+                final liked = _likedProviderIds.contains(current.providerId);
+                final saved = _favoritePortfolioIds.contains(current.id);
+                final likeBusy = _providerLikeBusy.contains(current.providerId);
+                final saveBusy = _favoriteBusy.contains(current.id);
                 return Column(
                   children: [
                     GestureDetector(
@@ -295,12 +309,14 @@ class _HomeMediaViewerScreenState extends State<HomeMediaViewerScreen> {
                     const SizedBox(height: 16),
                     _CircleAction(
                       icon: liked ? Icons.thumb_up : Icons.thumb_up_outlined,
-                      onTap: () => _toggleFavorite(current),
+                      onTap: likeBusy ? null : () => _toggleProviderLike(current),
+                      loading: likeBusy,
                     ),
                     const SizedBox(height: 14),
                     _CircleAction(
                       icon: saved ? Icons.bookmark : Icons.bookmark_border,
-                      onTap: () => _toggleFollowProvider(current),
+                      onTap: saveBusy ? null : () => _toggleFavorite(current),
+                      loading: saveBusy,
                     ),
                     const SizedBox(height: 14),
                     _CircleAction(
@@ -375,11 +391,13 @@ class _HomeMediaViewerScreenState extends State<HomeMediaViewerScreen> {
 
 class _CircleAction extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool loading;
 
   const _CircleAction({
     required this.icon,
     required this.onTap,
+    this.loading = false,
   });
 
   @override
@@ -401,7 +419,15 @@ class _CircleAction extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(icon, color: AppColors.deepPurple),
+        child: loading
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: AppColors.deepPurple,
+                ),
+              )
+            : Icon(icon, color: AppColors.deepPurple),
       ),
     );
   }

@@ -455,18 +455,6 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage>
       right: 8,
       child: Row(
         children: [
-          if (hasMenu)
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.softBlue.withOpacity(0.55),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                onPressed: openMenu,
-                icon: const Icon(Icons.more_horiz, color: Colors.white),
-                tooltip: 'خيارات',
-              ),
-            ),
           const Spacer(),
           if (canDelete)
             Container(
