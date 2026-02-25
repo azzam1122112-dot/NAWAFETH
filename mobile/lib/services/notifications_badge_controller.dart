@@ -20,8 +20,12 @@ class NotificationsBadgeController with WidgetsBindingObserver {
   bool _refreshing = false;
   Timer? _timer;
 
+  /// Minimum gap between successive refreshes to avoid hammering the server.
+  static const Duration _minRefreshGap = Duration(seconds: 15);
+  DateTime? _lastRefreshTime;
+
   /// Polling interval while app is in foreground.
-  static const Duration _interval = Duration(seconds: 30);
+  static const Duration _interval = Duration(seconds: 120);
 
   void initialize() {
     if (_initialized) return;
@@ -53,9 +57,17 @@ class NotificationsBadgeController with WidgetsBindingObserver {
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool force = false}) async {
     if (!_active || _refreshing) return;
+
+    // Throttle: skip if called too soon after last refresh (unless forced).
+    if (!force && _lastRefreshTime != null) {
+      final elapsed = DateTime.now().difference(_lastRefreshTime!);
+      if (elapsed < _minRefreshGap) return;
+    }
+
     _refreshing = true;
+    _lastRefreshTime = DateTime.now();
 
     try {
       final count = await _api.getUnreadCount();

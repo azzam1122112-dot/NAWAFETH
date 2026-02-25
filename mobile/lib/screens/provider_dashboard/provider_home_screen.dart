@@ -39,6 +39,7 @@ import '../plans_screen.dart';
 import '../extra_services_screen.dart';
 import '../promo_requests_screen.dart';
 import '../../screens/network_video_player_screen.dart';
+import '../../widgets/safe_network_image.dart';
 
 class ProviderHomeScreen extends StatefulWidget {
   const ProviderHomeScreen({super.key});
@@ -1015,10 +1016,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                       if (_coverImage != null)
                         Image.file(_coverImage!, fit: BoxFit.cover)
                       else if ((_coverImageUrl ?? '').trim().isNotEmpty)
-                        Image.network(
-                          _coverImageUrl!,
+                        SafeNetworkImage(
+                          imageUrl: _coverImageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                          errorWidget: const SizedBox.shrink(),
                         ),
                       Container(
                         decoration: BoxDecoration(
@@ -1917,10 +1918,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.network(
-                                item.fileUrl,
+                              SafeNetworkImage(
+                                imageUrl: item.fileUrl,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
+                                errorWidget: Container(
                                   color: AppColors.primaryLight,
                                   alignment: Alignment.center,
                                   child: const Icon(
@@ -2024,10 +2025,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
           children: [
             Positioned.fill(
               child: InteractiveViewer(
-                child: Image.network(
-                  item.fileUrl,
+                child: SafeNetworkImage(
+                  imageUrl: item.fileUrl,
                   fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) => const Center(
+                  errorWidget: const Center(
                     child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 52),
                   ),
                 ),

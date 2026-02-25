@@ -84,7 +84,7 @@ class ApiDio {
     );
 
     dio.interceptors.add(
-      InterceptorsWrapper(
+      QueuedInterceptorsWrapper(
         onRequest: (options, handler) async {
           await _ensureLoaded();
 

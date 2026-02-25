@@ -82,7 +82,7 @@ class _ContactScreenState extends State<ContactScreen> {
 
   void _startLiveRefresh() {
     _liveRefreshTimer?.cancel();
-    _liveRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    _liveRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       _loadTickets(silent: true);
     });

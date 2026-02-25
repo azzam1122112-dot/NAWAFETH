@@ -6,6 +6,7 @@ import '../constants/colors.dart';
 import '../models/provider_portfolio_item.dart';
 import '../screens/home_media_viewer_screen.dart';
 import '../services/home_feed_service.dart';
+import 'safe_network_image.dart';
 
 enum BannerPlacement { home, search }
 
@@ -196,10 +197,10 @@ class _BannerWidgetState extends State<BannerWidget> {
                 fit: StackFit.expand,
                 children: [
                   if (!isVideo)
-                    Image.network(
-                      item.fileUrl,
+                    SafeNetworkImage(
+                      imageUrl: item.fileUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, error, stackTrace) => Container(color: Colors.grey.shade300),
+                      errorWidget: Container(color: Colors.grey.shade300),
                     )
                   else
                     Container(

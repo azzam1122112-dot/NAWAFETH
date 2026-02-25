@@ -14,6 +14,21 @@ class ProvidersApi {
   bool lastProvidersListFailed = false;
   bool lastProviderPortfolioRequestFailed = false;
 
+  // ── Short-lived in-memory caches ──
+  static Map<String, dynamic>? _myProfileCache;
+  static DateTime? _myProfileCacheTime;
+  static List<int>? _mySubcatsCache;
+  static DateTime? _mySubcatsCacheTime;
+  static const Duration _cacheTtl = Duration(seconds: 30);
+
+  /// Invalidate cached provider profile / subcategories.
+  static void invalidateMyProfileCache() {
+    _myProfileCache = null;
+    _myProfileCacheTime = null;
+    _mySubcatsCache = null;
+    _mySubcatsCacheTime = null;
+  }
+
   ProvidersApi({Dio? dio}) : _dio = dio ?? ApiDio.dio {
     configureDioForLocalhost(_dio, ApiConfig.baseUrl);
   }
@@ -685,15 +700,26 @@ class ProvidersApi {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
-  Future<Map<String, dynamic>?> getMyProviderProfile() async {
+  Future<Map<String, dynamic>?> getMyProviderProfile({bool forceRefresh = false}) async {
+    if (!forceRefresh &&
+        _myProfileCache != null &&
+        _myProfileCacheTime != null &&
+        DateTime.now().difference(_myProfileCacheTime!) < _cacheTtl) {
+      return _myProfileCache;
+    }
     try {
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/me/profile/',
       );
+      Map<String, dynamic> data;
       if (res.data is Map<String, dynamic>) {
-        return res.data as Map<String, dynamic>;
+        data = res.data as Map<String, dynamic>;
+      } else {
+        data = Map<String, dynamic>.from(res.data as Map);
       }
-      return Map<String, dynamic>.from(res.data as Map);
+      _myProfileCache = data;
+      _myProfileCacheTime = DateTime.now();
+      return data;
     } catch (_) {
       return null;
     }
@@ -981,7 +1007,13 @@ class ProvidersApi {
     }
   }
 
-  Future<List<int>> getMyProviderSubcategories() async {
+  Future<List<int>> getMyProviderSubcategories({bool forceRefresh = false}) async {
+    if (!forceRefresh &&
+        _mySubcatsCache != null &&
+        _mySubcatsCacheTime != null &&
+        DateTime.now().difference(_mySubcatsCacheTime!) < _cacheTtl) {
+      return _mySubcatsCache!;
+    }
     try {
       final res = await _dio.get(
         '${ApiConfig.apiPrefix}/providers/me/subcategories/',
@@ -990,10 +1022,13 @@ class ProvidersApi {
         final map = Map<String, dynamic>.from(res.data as Map);
         final list = map['subcategory_ids'];
         if (list is List) {
-          return list
+          final result = list
               .map((e) => int.tryParse(e.toString()) ?? 0)
               .where((v) => v > 0)
               .toList();
+          _mySubcatsCache = result;
+          _mySubcatsCacheTime = DateTime.now();
+          return result;
         }
       }
       return [];
