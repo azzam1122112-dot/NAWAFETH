@@ -130,6 +130,26 @@ class ServiceRequestCreateView(generics.CreateAPIView):
 			status=status_value,
 			expires_at=expires_at,
 		)
+
+		# Targeted normal requests (client -> specific provider) need an explicit
+		# provider notification on creation because no RequestStatusLog is emitted here.
+		if (
+			request_type == RequestType.NORMAL
+			and getattr(service_request, "provider_id", None)
+			and getattr(getattr(service_request, "provider", None), "user_id", None)
+		):
+			create_notification(
+				user=service_request.provider.user,
+				title="طلب جديد",
+				body=f"لديك طلب خدمة جديد: {service_request.title}",
+				kind="request_created",
+				url=f"/requests/{service_request.id}",
+				actor=self.request.user,
+				event_type=EventType.REQUEST_CREATED,
+				pref_key="new_request",
+				request_id=service_request.id,
+				audience_mode="provider",
+			)
 		if is_urgent and dispatch_mode in {"all", "nearest"}:
 			_notify_urgent_request_to_matching_providers(service_request)
 

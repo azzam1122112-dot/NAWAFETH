@@ -88,7 +88,7 @@ class _EntryScreenState extends State<EntryScreen> {
           return const HomeScreen();
         }
 
-        return const _GuestEntryLanding();
+        return const LoginScreen();
       },
     );
   }

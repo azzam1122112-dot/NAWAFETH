@@ -144,6 +144,11 @@ def test_create_normal_request_can_target_provider():
     sr = ServiceRequest.objects.get(id=res.json()["id"])
     assert sr.provider_id == provider.id
     assert sr.request_type == "normal"
+    n = Notification.objects.filter(user=p_user, kind="request_created").order_by("-id").first()
+    assert n is not None
+    assert n.kind == "request_created"
+    assert n.audience_mode == "provider"
+    assert f"/requests/{sr.id}" in (n.url or "")
 
 
 @pytest.mark.django_db

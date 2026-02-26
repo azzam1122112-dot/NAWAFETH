@@ -175,42 +175,40 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
       }
     }
 
-    // Direct threads are currently client-context conversations (client -> provider).
-    // Hide them in provider mode to avoid mixing the same account's client/provider inboxes.
-    if (!_isProviderAccount) {
-      try {
-        final directThreads = await _messagingApi.getMyDirectThreads();
-        for (final dt in directThreads) {
-          final threadId = _asInt(dt['thread_id']);
-          if (threadId == null) continue;
+    // Direct threads are mode-scoped on the backend (`client` / `provider`),
+    // so it is safe to load them for both account modes without mixing inboxes.
+    try {
+      final directThreads = await _messagingApi.getMyDirectThreads();
+      for (final dt in directThreads) {
+        final threadId = _asInt(dt['thread_id']);
+        if (threadId == null) continue;
 
-          final peerId = _asInt(dt['peer_provider_id']) ?? _asInt(dt['peer_id']);
-          final peerName = (dt['peer_name'] ?? '').toString();
-          final lastMessage = (dt['last_message'] ?? '').toString();
-          final lastMessageAt =
-              DateTime.tryParse((dt['last_message_at'] ?? '').toString()) ??
-              DateTime.now();
-          final unread = _asInt(dt['unread_count']) ?? 0;
+        final peerId = _asInt(dt['peer_provider_id']) ?? _asInt(dt['peer_id']);
+        final peerName = (dt['peer_name'] ?? '').toString();
+        final lastMessage = (dt['last_message'] ?? '').toString();
+        final lastMessageAt =
+            DateTime.tryParse((dt['last_message_at'] ?? '').toString()) ??
+            DateTime.now();
+        final unread = _asInt(dt['unread_count']) ?? 0;
 
-          chats.add({
-            'requestId': null,
-            'threadId': threadId,
-            'requestCode': null,
-            'requestTitle': null,
-            'name': peerName.isEmpty ? 'محادثة مباشرة' : peerName,
-            'lastMessage': lastMessage.isEmpty ? 'ابدأ المحادثة الآن' : lastMessage,
-            'time': DateFormat('hh:mm a', 'ar').format(lastMessageAt),
-            'timestamp': lastMessageAt,
-            'unread': unread,
-            'isOnline': false,
-            'favorite': false,
-            'isDirect': true,
-            'peerId': peerId,
-            'peerName': peerName,
-          });
-        }
-      } catch (_) {}
-    }
+        chats.add({
+          'requestId': null,
+          'threadId': threadId,
+          'requestCode': null,
+          'requestTitle': null,
+          'name': peerName.isEmpty ? 'محادثة مباشرة' : peerName,
+          'lastMessage': lastMessage.isEmpty ? 'ابدأ المحادثة الآن' : lastMessage,
+          'time': DateFormat('hh:mm a', 'ar').format(lastMessageAt),
+          'timestamp': lastMessageAt,
+          'unread': unread,
+          'isOnline': false,
+          'favorite': false,
+          'isDirect': true,
+          'peerId': peerId,
+          'peerName': peerName,
+        });
+      }
+    } catch (_) {}
 
     chats.sort((a, b) {
       final da =
