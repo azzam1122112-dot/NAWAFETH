@@ -1489,49 +1489,171 @@ class _ProviderOrderDetailsScreenState
 
   @override
   Widget build(BuildContext context) {
-    if (!_accountChecked) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (!_isProviderAccount) {
-      return const Directionality(
+    try {
+      if (!_accountChecked) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      if (!_isProviderAccount) {
+        return const Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'تعذر التحقق من صلاحية حساب المزود لعرض تفاصيل الطلب.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      final specialActionTitle = _isUrgentRequest
+          ? 'قبول الطلب العاجل'
+          : (_isCompetitiveRequest ? 'تقديم عرض' : '');
+
+      return Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'تعذر التحقق من صلاحية حساب المزود لعرض تفاصيل الطلب.',
-                textAlign: TextAlign.center,
+          backgroundColor: const Color(0xFFF7F4F8),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: _mainColor,
+            elevation: 0,
+            title: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                color: _mainColor.withValues(alpha: 0.14),
+              ),
+              child: const Text(
+                'تفاصيل الطلب',
                 style: TextStyle(
                   fontFamily: 'Cairo',
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.bold,
+                  color: _mainColor,
+                ),
+              ),
+            ),
+            centerTitle: true,
+            actions: [
+              IconButton(
+                onPressed: _openChat,
+                tooltip: 'فتح محادثة مع العميل',
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+              ),
+            ],
+          ),
+          body: Stack(
+            children: [
+              _responsiveOrderBody(),
+              if (_isLoadingDetail)
+                const Positioned(
+                  top: 8,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          bottomNavigationBar: SafeArea(
+            minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 780),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isSaving
+                            ? null
+                            : (_isUrgentRequest || _isCompetitiveRequest
+                                  ? _primaryActionForSpecialRequest
+                                  : _save),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _mainColor,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        child: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                (_isUrgentRequest || _isCompetitiveRequest)
+                                    ? specialActionTitle
+                                    : 'حفظ',
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          side: BorderSide(
+                            color: _mainColor.withValues(alpha: 0.55),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        child: const Text(
+                          'إلغاء',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: _mainColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
       );
-    }
-
-    final specialActionTitle = _isUrgentRequest
-        ? 'قبول الطلب العاجل'
-        : (_isCompetitiveRequest ? 'تقديم عرض' : '');
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF7F4F8),
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: _mainColor,
-          elevation: 0,
-          title: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              color: _mainColor.withValues(alpha: 0.14),
-            ),
-            child: const Text(
+    } catch (e, st) {
+      debugPrint('ProviderOrderDetails build error: $e');
+      debugPrint('$st');
+      return Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF7F4F8),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: _mainColor,
+            elevation: 0,
+            title: const Text(
               'تفاصيل الطلب',
               style: TextStyle(
                 fontFamily: 'Cairo',
@@ -1540,106 +1662,59 @@ class _ProviderOrderDetailsScreenState
               ),
             ),
           ),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              onPressed: _openChat,
-              tooltip: 'فتح محادثة مع العميل',
-              icon: const Icon(Icons.chat_bubble_outline_rounded),
-            ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            _responsiveOrderBody(),
-            if (_isLoadingDetail)
-              const Positioned(
-                top: 8,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 110),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _mainColor.withValues(alpha: 0.18)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'تم عرض نسخة مبسطة بسبب خطأ مؤقت في شاشة التفاصيل.',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w700,
+                        color: _mainColor,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'رقم الطلب: R${widget.requestId.toString().padLeft(6, '0')}',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'العنوان: ${_titleController.text.trim().isEmpty ? widget.order.title : _titleController.text.trim()}',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'التفاصيل: ${_detailsController.text.trim().isEmpty ? widget.order.details : _detailsController.text.trim()}',
+                      style: const TextStyle(fontFamily: 'Cairo', height: 1.5),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'الحالة: ${_status.trim().isEmpty ? widget.order.status : _status}',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'العميل: ${widget.order.clientName}',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ],
                 ),
               ),
-          ],
-        ),
-        bottomNavigationBar: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 780),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isSaving
-                          ? null
-                          : (_isUrgentRequest || _isCompetitiveRequest
-                                ? _primaryActionForSpecialRequest
-                                : _save),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _mainColor,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              (_isUrgentRequest || _isCompetitiveRequest)
-                                  ? specialActionTitle
-                                  : 'حفظ',
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        side: BorderSide(
-                          color: _mainColor.withValues(alpha: 0.55),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                      child: const Text(
-                        'إلغاء',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: _mainColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
         ),
-      ),
-    );
+      );
+    }
   }
 }
