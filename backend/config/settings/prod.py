@@ -51,10 +51,17 @@ CORS_ALLOWED_ORIGINS = [
 	"https://nawafeth.app",
 	"https://admin.nawafeth.app",
 ]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+	r"^https://[a-z0-9-]+\.onrender\.com$",
+]
 
 _cors_env = os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "").strip()
 if _cors_env:
 	CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
+_cors_regex_env = os.getenv("DJANGO_CORS_ALLOWED_ORIGIN_REGEXES", "").strip()
+if _cors_regex_env:
+	CORS_ALLOWED_ORIGIN_REGEXES = [o.strip() for o in _cors_regex_env.split(",") if o.strip()]
 
 # CSRF trusted origins (Render/custom domains)
 _csrf_env = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").strip()
