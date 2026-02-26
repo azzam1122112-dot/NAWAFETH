@@ -766,56 +766,6 @@ class _ProviderOrderDetailsScreenState
     }
   }
 
-  Widget _headerCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _mainColor.withValues(alpha: 0.22)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'R${widget.requestId.toString().padLeft(6, '0')}',
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: _mainColor,
-                  ),
-                ),
-              ),
-              _statusPill(_status),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '${widget.order.serviceCode}  @${widget.order.clientName}',
-            style: const TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 13,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _formatDate(_createdAt ?? widget.order.createdAt),
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 12.5,
-              color: Colors.black.withValues(alpha: 0.65),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _statusPill(String statusAr) {
     final color = switch (statusAr) {
       'مكتمل' => Colors.green,
@@ -1390,8 +1340,6 @@ class _ProviderOrderDetailsScreenState
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
       children: [
-        _headerCard(),
-        const SizedBox(height: 12),
         _readonlyField(title: 'عنوان الطلب', value: _titleController.text),
         const SizedBox(height: 12),
         _readonlyField(
@@ -1422,10 +1370,9 @@ class _ProviderOrderDetailsScreenState
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1440),
-            child: Column(
-              children: [
-                _headerCard(),
-                const SizedBox(height: 14),
+              child: Column(
+                children: [
+                const SizedBox(height: 4),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1481,9 +1428,108 @@ class _ProviderOrderDetailsScreenState
         return RefreshIndicator(
           color: _mainColor,
           onRefresh: _loadRequestDetail,
-          child: isDesktop ? _desktopOrderContent() : _mobileOrderContent(),
+          child: isDesktop
+              ? _safeDetailedBody(_desktopOrderContent)
+              : _safeDetailedBody(_mobileOrderContent),
         );
       },
+    );
+  }
+
+  Widget _safeDetailedBody(Widget Function() builder) {
+    try {
+      return builder();
+    } catch (e, st) {
+      debugPrint('ProviderOrderDetails body error: $e');
+      debugPrint('$st');
+      return _fallbackSimpleBody();
+    }
+  }
+
+  Widget _fallbackSimpleBody() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
+      children: [
+        _summaryCard(),
+        const SizedBox(height: 12),
+        _readonlyField(
+          title: 'تفاصيل الطلب',
+          value: _detailsController.text.trim().isEmpty
+              ? widget.order.details
+              : _detailsController.text,
+          minLines: 3,
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryCard() {
+    final title = _titleController.text.trim().isEmpty
+        ? widget.order.title
+        : _titleController.text.trim();
+    final client = widget.order.clientName.trim().isEmpty
+        ? 'عميل'
+        : widget.order.clientName.trim();
+    final serviceCode = widget.order.serviceCode.trim().isEmpty
+        ? '-'
+        : widget.order.serviceCode.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _mainColor.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'R${widget.requestId.toString().padLeft(6, '0')}',
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _mainColor,
+                  ),
+                ),
+              ),
+              _statusPill(_status.trim().isEmpty ? widget.order.status : _status),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$serviceCode  @$client',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatDate(_createdAt ?? widget.order.createdAt),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12.5,
+              color: Colors.black.withValues(alpha: 0.65),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1563,6 +1609,10 @@ class _ProviderOrderDetailsScreenState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                  child: _summaryCard(),
+                ),
                 Expanded(child: _responsiveOrderBody()),
               ],
             ),
