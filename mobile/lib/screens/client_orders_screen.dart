@@ -10,6 +10,7 @@ import '../models/client_order.dart';
 import '../services/marketplace_api.dart';
 import '../services/session_storage.dart';
 import '../utils/auth_guard.dart';
+import 'client_dashboard/client_order_details_web_entry_screen.dart';
 import 'client_order_details_screen.dart';
 
 /// صفحة طلباتي الخاصة بالعميل
@@ -589,11 +590,36 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   }
 
   Future<void> _openDetails(ClientOrder order) async {
-    final requestId = int.tryParse(order.id.replaceAll('#', '').trim());
+    int? extractRequestId(String raw) {
+      final direct = int.tryParse(raw.replaceAll('#', '').trim());
+      if (direct != null && direct > 0) return direct;
+      final match = RegExp(r'(\d+)').firstMatch(raw);
+      if (match == null) return null;
+      return int.tryParse(match.group(1) ?? '');
+    }
+
+    final requestId = extractRequestId(order.id);
     if (kIsWeb && widget.embedded && requestId != null && requestId > 0) {
-      final changed = await Navigator.pushNamed<bool>(
+      var usedNamedRoute = false;
+      try {
+        final changed = await Navigator.pushNamed<bool>(
+          context,
+          '/client_dashboard/orders/$requestId',
+        );
+        usedNamedRoute = true;
+        if (!mounted || changed != true) return;
+        await _fetchOrders();
+      } catch (e) {
+        debugPrint('ClientOrders web detail route fallback: $e');
+      }
+      if (usedNamedRoute) return;
+      if (!mounted) return;
+
+      final changed = await Navigator.push<bool>(
         context,
-        '/client_dashboard/orders/$requestId',
+        MaterialPageRoute(
+          builder: (_) => ClientOrderDetailsWebEntryScreen(requestId: requestId),
+        ),
       );
       if (!mounted || changed != true) return;
       await _fetchOrders();

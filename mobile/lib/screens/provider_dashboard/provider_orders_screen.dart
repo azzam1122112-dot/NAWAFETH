@@ -11,6 +11,7 @@ import '../../services/role_controller.dart';
 import '../../services/web_inline_banner.dart';
 import '../../services/web_loading_overlay.dart';
 import '../client_orders_screen.dart';
+import 'provider_order_details_web_entry_screen.dart';
 import 'provider_order_details_screen.dart';
 
 /// صفحة تتبع الطلبات الخاصة بمزود الخدمة
@@ -340,8 +341,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
 
   int? _extractRequestId(Map<String, dynamic> req) {
     final raw = req['id'] ?? req['request_id'];
-    if (raw is int) return raw;
-    return int.tryParse((raw ?? '').toString());
+    if (raw is int) return raw > 0 ? raw : null;
+    final text = (raw ?? '').toString().trim();
+    final direct = int.tryParse(text);
+    if (direct != null && direct > 0) return direct;
+    final match = RegExp(r'(\d+)').firstMatch(text);
+    if (match == null) return null;
+    final extracted = int.tryParse(match.group(1) ?? '');
+    if (extracted == null || extracted <= 0) return null;
+    return extracted;
   }
 
   String _statusGroup(Map<String, dynamic> req) {
@@ -798,9 +806,27 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen>
   }) async {
     final requestId = _extractRequestId(req);
     if (kIsWeb && widget.embedded && requestId != null && requestId > 0) {
-      final changed = await Navigator.pushNamed<bool>(
+      var usedNamedRoute = false;
+      try {
+        final changed = await Navigator.pushNamed<bool>(
+          context,
+          '/provider_dashboard/orders/$requestId',
+        );
+        usedNamedRoute = true;
+        if (changed == true && mounted) {
+          await _refreshAll();
+        }
+      } catch (e) {
+        debugPrint('ProviderOrders web detail route fallback: $e');
+      }
+      if (usedNamedRoute) return;
+      if (!mounted) return;
+
+      final changed = await Navigator.push<bool>(
         context,
-        '/provider_dashboard/orders/$requestId',
+        MaterialPageRoute(
+          builder: (_) => ProviderOrderDetailsWebEntryScreen(requestId: requestId),
+        ),
       );
       if (changed == true && mounted) {
         await _refreshAll();

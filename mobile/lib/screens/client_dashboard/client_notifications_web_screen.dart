@@ -32,6 +32,11 @@ class _ClientNotificationsWebScreenState extends State<ClientNotificationsWebScr
 
   static const int _limit = 20;
 
+  bool _isChatNotification(AppNotification n) {
+    final kind = n.kind.trim().toLowerCase();
+    return kind.contains('chat') || kind.contains('message');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +88,7 @@ class _ClientNotificationsWebScreenState extends State<ClientNotificationsWebScr
       final items = rows
           .whereType<Map>()
           .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e)))
+          .where((n) => !_isChatNotification(n))
           .toList();
       if (!mounted) return;
       setState(() {
@@ -115,6 +121,7 @@ class _ClientNotificationsWebScreenState extends State<ClientNotificationsWebScr
       final items = rows
           .whereType<Map>()
           .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e)))
+          .where((n) => !_isChatNotification(n))
           .toList();
       if (!mounted) return;
       setState(() {

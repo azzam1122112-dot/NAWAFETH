@@ -46,17 +46,24 @@ class NotificationsApi {
   }
 
   Future<void> markRead(int notificationId) async {
-    await _dio.post('${ApiConfig.apiPrefix}/notifications/mark-read/$notificationId/');
+    await _dio.post(
+      '${ApiConfig.apiPrefix}/notifications/mark-read/$notificationId/',
+      queryParameters: {'mode': _activeModeParam()},
+    );
   }
 
   Future<void> markAllRead() async {
-    await _dio.post('${ApiConfig.apiPrefix}/notifications/mark-all-read/');
+    await _dio.post(
+      '${ApiConfig.apiPrefix}/notifications/mark-all-read/',
+      queryParameters: {'mode': _activeModeParam()},
+    );
   }
 
   Future<void> togglePin(int notificationId) async {
     await _dio.post(
       '${ApiConfig.apiPrefix}/notifications/actions/$notificationId/',
       data: {'action': 'pin'},
+      queryParameters: {'mode': _activeModeParam()},
     );
   }
 
@@ -64,15 +71,22 @@ class NotificationsApi {
     await _dio.post(
       '${ApiConfig.apiPrefix}/notifications/actions/$notificationId/',
       data: {'action': 'follow_up'},
+      queryParameters: {'mode': _activeModeParam()},
     );
   }
 
   Future<void> deleteNotification(int notificationId) async {
-    await _dio.delete('${ApiConfig.apiPrefix}/notifications/actions/$notificationId/');
+    await _dio.delete(
+      '${ApiConfig.apiPrefix}/notifications/actions/$notificationId/',
+      queryParameters: {'mode': _activeModeParam()},
+    );
   }
 
   Future<Map<String, dynamic>> getPreferences() async {
-    final res = await _dio.get('${ApiConfig.apiPrefix}/notifications/preferences/');
+    final res = await _dio.get(
+      '${ApiConfig.apiPrefix}/notifications/preferences/',
+      queryParameters: {'mode': _activeModeParam()},
+    );
     if (res.data is Map<String, dynamic>) {
       return res.data as Map<String, dynamic>;
     }
@@ -84,7 +98,10 @@ class NotificationsApi {
   }) async {
     final res = await _dio.patch(
       '${ApiConfig.apiPrefix}/notifications/preferences/',
-      data: {'updates': updates},
+      data: {
+        'updates': updates,
+        'mode': _activeModeParam(),
+      },
     );
     if (res.data is Map<String, dynamic>) {
       return res.data as Map<String, dynamic>;
@@ -101,6 +118,7 @@ class NotificationsApi {
       data: {
         'token': token,
         'platform': platform,
+        'mode': _activeModeParam(),
       },
     );
   }
