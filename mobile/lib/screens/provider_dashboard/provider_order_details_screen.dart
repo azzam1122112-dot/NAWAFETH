@@ -1553,7 +1553,7 @@ class _ProviderOrderDetailsScreenState
           body: Stack(
             fit: StackFit.expand,
             children: [
-              _responsiveOrderBody(),
+              Positioned.fill(child: _responsiveOrderBody()),
               if (_isLoadingDetail)
                 const Positioned(
                   top: 8,
