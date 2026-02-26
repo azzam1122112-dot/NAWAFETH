@@ -403,6 +403,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 360;
     if (!_isLoading && isProvider) {
       return const ProviderHomeScreen();
     }
@@ -428,7 +429,7 @@ class _MyProfileScreenState extends State<MyProfileScreen>
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               SliverAppBar(
-                expandedHeight: 280.0,
+                expandedHeight: isCompact ? 262.0 : 280.0,
                 floating: false,
                 pinned: true,
                 backgroundColor: AppColors.deepPurple,
@@ -441,12 +442,12 @@ class _MyProfileScreenState extends State<MyProfileScreen>
                   ),
                 ),
                 actions: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.qr_code_2_rounded,
-                      color: Colors.white,
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 10),
+                    child: _headerActionButton(
+                      icon: Icons.qr_code_2_rounded,
+                      onTap: _showClientQrDialog,
                     ),
-                    onPressed: _showClientQrDialog,
                   ),
                 ],
                 flexibleSpace: FlexibleSpaceBar(
@@ -561,34 +562,11 @@ class _MyProfileScreenState extends State<MyProfileScreen>
 
                       // Edit Cover Button
                       Positioned(
-                        top: 40,
+                        top: isCompact ? 96 : 84,
                         left: 16,
-                        child: GestureDetector(
+                        child: _headerActionButton(
+                          icon: Icons.edit,
                           onTap: () => _pickImage(isCover: true),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.edit, size: 14, color: Colors.white),
-                                SizedBox(width: 4),
-                                Text(
-                                  'غطاء',
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
                       ),
                     ],
@@ -722,6 +700,8 @@ class _MyProfileScreenState extends State<MyProfileScreen>
 
   Widget _buildQuickStats() {
     final isProviderAccount = RoleController.instance.notifier.value.isProvider;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     final items = <Widget>[
       _statItem(
@@ -761,18 +741,55 @@ class _MyProfileScreenState extends State<MyProfileScreen>
           );
         },
       ),
-      Container(width: 1, height: 40, color: Colors.grey[300]),
-      _statItem(
-        value: '0',
-        label: 'نقاطي',
-        icon: Icons.star_rounded,
-        onTap: () {},
-      ),
     ];
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: items,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.deepPurple.withValues(alpha: isDark ? 0.2 : 0.08),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(
+              ((isDark ? 0.15 : 0.05) * 255).toInt(),
+            ),
+            blurRadius: 14,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: items,
+      ),
+    );
+  }
+
+  Widget _headerActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Icon(icon, size: 18, color: Colors.white),
+        ),
+      ),
     );
   }
 

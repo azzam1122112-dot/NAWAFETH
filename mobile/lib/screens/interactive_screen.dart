@@ -417,6 +417,11 @@ class _InteractiveScreenState extends State<InteractiveScreen>
     final isTablet = screenWidth >= 700;
     final bodyBg = const Color(0xFFF6F4FB);
     final tabSurface = const Color(0xFFF2EEFF);
+    final displayName = (_myDisplayName ?? 'تفاعلي').trim();
+    final handle = (_myHandle ?? '').trim();
+    final identityLine = handle.isNotEmpty
+        ? '$displayName - $handle'
+        : displayName;
 
     // Elegant tab style
     final tabLabelStyle = TextStyle(
@@ -431,6 +436,21 @@ class _InteractiveScreenState extends State<InteractiveScreen>
     );
 
     final isClient = _effectiveMode == InteractiveMode.client;
+    Widget headerIconShell({
+      required Widget child,
+      EdgeInsetsGeometry? margin,
+    }) {
+      return Container(
+        margin: margin,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: child,
+      );
+    }
+
     Tab tabItem(IconData icon, String label) {
       return Tab(
         child: Row(
@@ -485,7 +505,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               SliverAppBar(
-                expandedHeight: isTablet ? 260 : (isCompact ? 212 : 236),
+                expandedHeight: isTablet ? 260 : (isCompact ? 218 : 238),
                 floating: false,
                 pinned: true,
                 elevation: 0,
@@ -493,16 +513,37 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                 backgroundColor: AppColors.deepPurple,
                 leading: Builder(
                   builder: (context) => IconButton(
-                    icon: const Icon(Icons.menu, color: Colors.white),
+                    icon: headerIconShell(
+                      margin: const EdgeInsetsDirectional.only(start: 6),
+                      child: const SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: Icon(Icons.menu, color: Colors.white, size: 20),
+                      ),
+                    ),
                     onPressed: () => Scaffold.of(context).openDrawer(),
                   ),
                 ),
                 actions: [
-                  const NotificationsIconButton(iconColor: Colors.white),
+                  headerIconShell(
+                    margin: const EdgeInsetsDirectional.only(top: 8, bottom: 8),
+                    child: const NotificationsIconButton(
+                      iconColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
                   IconButton(
-                    icon: const Icon(
-                      Icons.chat_bubble_outline_rounded,
-                      color: Colors.white,
+                    icon: headerIconShell(
+                      margin: const EdgeInsetsDirectional.only(end: 6),
+                      child: const SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          color: Colors.white,
+                          size: 19,
+                        ),
+                      ),
                     ),
                     onPressed: () => ChatNav.openInbox(context),
                   ),
@@ -557,11 +598,18 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                               vertical: isCompact ? 10 : 12,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.11),
-                              borderRadius: BorderRadius.circular(18),
+                              color: Colors.white.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.14),
+                                color: Colors.white.withValues(alpha: 0.15),
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
                             child: Row(
                               children: [
@@ -596,7 +644,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                                       ),
                                       Text(
                                         'إدارة المتابعة والمفضلة من شاشة واحدة بشكل أسرع',
-                                        maxLines: 2,
+                                        maxLines: isCompact ? 1 : 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontFamily: 'Cairo',
@@ -623,52 +671,79 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                               SizedBox(
                                 height: isTablet ? 76 : (isCompact ? 70 : 78),
                               ),
-                              Text(
-                                _myDisplayName ?? 'تفاعلي',
-                                style: TextStyle(
-                                  fontSize: isTablet
-                                      ? 30
-                                      : (isCompact ? 22 : 26),
-                                  fontWeight: FontWeight.w900,
-                                  fontFamily: 'Cairo',
-                                  color: Colors.white,
-                                  letterSpacing: 0.2,
+                              Container(
+                                margin: EdgeInsets.symmetric(
+                                  horizontal: isCompact ? 18 : 12,
                                 ),
-                              ),
-                              const SizedBox(height: 2),
-                              if (_myHandle != null)
-                                Text(
-                                  _myHandle!,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isCompact ? 12 : 14,
+                                  vertical: isCompact ? 7 : 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.14),
+                                  ),
+                                ),
+                                child: Text(
+                                  identityLine,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    fontSize: isCompact ? 12.5 : 14,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: isTablet
+                                        ? 24
+                                        : (isCompact ? 17 : 21),
+                                    fontWeight: FontWeight.w900,
                                     fontFamily: 'Cairo',
-                                    color: Colors.white.withValues(alpha: 0.9),
+                                    color: Colors.white,
+                                    letterSpacing: 0.1,
+                                    height: 1.05,
                                   ),
                                 ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                alignment: WrapAlignment.center,
-                                children: [
-                                  _headerPill(
-                                    'من أتابع',
-                                    Icons.bookmark_outline_rounded,
-                                    isCompact,
-                                  ),
-                                  _headerPill(
-                                    'مفضلتي',
-                                    Icons.favorite_border_rounded,
-                                    isCompact,
-                                  ),
-                                  _headerPill(
-                                    'تفاعل سريع',
-                                    Icons.bolt_rounded,
-                                    isCompact,
-                                  ),
-                                ],
                               ),
+                              const SizedBox(height: 6),
+                              if (!isCompact)
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.center,
+                                  children: [
+                                    _headerPill(
+                                      'من أتابع',
+                                      Icons.bookmark_outline_rounded,
+                                      isCompact,
+                                    ),
+                                    _headerPill(
+                                      'مفضلتي',
+                                      Icons.favorite_border_rounded,
+                                      isCompact,
+                                    ),
+                                    _headerPill(
+                                      'تفاعل سريع',
+                                      Icons.bolt_rounded,
+                                      isCompact,
+                                    ),
+                                  ],
+                                )
+                              else
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _headerPill(
+                                      'من أتابع',
+                                      Icons.bookmark_outline_rounded,
+                                      true,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _headerPill(
+                                      'مفضلتي',
+                                      Icons.favorite_border_rounded,
+                                      true,
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
                         ),
@@ -706,9 +781,9 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 12,
-                              offset: const Offset(0, 5),
+                              color: Colors.black.withValues(alpha: 0.055),
+                              blurRadius: 14,
+                              offset: const Offset(0, 6),
                             ),
                           ],
                         ),
@@ -903,7 +978,7 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                         ),
                       ),
                       child: CircleAvatar(
-                        radius: 24,
+                        radius: 22,
                         backgroundColor: AppColors.primaryLight,
                         backgroundImage: (p.imageUrl ?? '').trim().isNotEmpty
                             ? CachedNetworkImageProvider(p.imageUrl!.trim())
@@ -961,23 +1036,15 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                                       : Icons.verified_user_rounded,
                                   p.isVerifiedBlue ? Colors.blue : Colors.green,
                                 ),
-                              _miniInfoChip(
-                                p.ratingAvg > 0
-                                    ? '${p.ratingAvg.toStringAsFixed(1)} تقييم'
-                                    : 'بدون تقييم',
-                                Icons.star_rounded,
-                                const Color(0xFFF59E0B),
-                              ),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    // Actions
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.end,
+                    // Actions + fixed rating badge
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         InkWell(
                           onTap: _unfollowingProviderIds.contains(p.id)
@@ -1008,6 +1075,14 @@ class _InteractiveScreenState extends State<InteractiveScreen>
                                     color: Colors.red,
                                   ),
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        _miniInfoChip(
+                          p.ratingAvg > 0
+                              ? '${p.ratingAvg.toStringAsFixed(1)} تقييم'
+                              : 'بدون تقييم',
+                          Icons.star_rounded,
+                          const Color(0xFFF59E0B),
                         ),
                       ],
                     ),

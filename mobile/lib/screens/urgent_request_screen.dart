@@ -919,10 +919,11 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
 
   Widget _buildCityDropdown(bool isDark) {
     return DropdownButtonFormField<String>(
+      isExpanded: true,
       value: _selectedCity,
       decoration: InputDecoration(
         hintText: _dispatchMode == 'all'
-            ? 'اختياري: اختر المدينة (يمكن تركها فارغة)'
+            ? 'اختياري: اختر المدينة (فارغة مقبولة)'
             : 'اختر المدينة',
         hintStyle: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
         prefixIcon: const Icon(Icons.location_city),
