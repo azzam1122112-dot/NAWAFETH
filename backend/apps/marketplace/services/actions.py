@@ -42,12 +42,10 @@ def allowed_actions(user, sr: ServiceRequest, *, has_provider_profile: bool | No
     if is_client:
         if sr.status == RequestStatus.NEW:
             acts.extend(["send", "cancel"])
-        elif sr.status == RequestStatus.SENT:
-            acts.append("cancel")
         return acts
 
-    # Provider (even if not assigned yet) may accept when SENT
-    if sr.status == RequestStatus.SENT:
+    # Provider (even if not assigned yet) may accept when NEW.
+    if sr.status in (RequestStatus.NEW, "sent"):
         user_id = getattr(user, "id", None)
         if user_id:
             if has_provider_profile is None:
@@ -57,10 +55,11 @@ def allowed_actions(user, sr: ServiceRequest, *, has_provider_profile: bool | No
 
     # Assigned provider actions
     if is_provider:
-        if sr.status == RequestStatus.ACCEPTED:
+        if sr.status == RequestStatus.NEW:
             acts.append("start")
         elif sr.status == RequestStatus.IN_PROGRESS:
             acts.append("complete")
+            acts.append("cancel")
         return acts
 
     return acts
@@ -82,23 +81,23 @@ def execute_action(
 
     is_staff, is_client, is_provider = _role_flags(user, sr)
 
-    # send
+    # send (compatibility no-op on unified lifecycle)
     if action == "send":
         if not (is_staff or is_client):
             raise PermissionDenied("غير مصرح")
         sr.mark_sent()
-        return ActionResult(True, "تم إرسال الطلب", sr.status)
+        return ActionResult(True, "تم تحديث الطلب", sr.status)
 
     # cancel
     if action == "cancel":
-        if not (is_staff or is_client):
+        if not (is_staff or is_provider or is_client):
             raise PermissionDenied("غير مصرح")
         sr.cancel()
         return ActionResult(True, "تم إلغاء الطلب", sr.status)
 
     # accept
     if action == "accept":
-        if sr.status != RequestStatus.SENT:
+        if sr.status not in (RequestStatus.NEW, "sent"):
             raise ValidationError("لا يمكن قبول الطلب الآن")
 
         # staff must choose provider (avoid ACCEPTED with no provider)
@@ -106,14 +105,14 @@ def execute_action(
             if not provider_profile:
                 raise ValidationError("اختر مزودًا لقبول الطلب")
             sr.accept(provider_profile)
-            return ActionResult(True, "تم قبول الطلب وإسناده", sr.status)
+            return ActionResult(True, "تم بدء التنفيذ وإسناده", sr.status)
 
         # provider must accept with their provider_profile
         if not provider_profile:
             raise ValidationError("لا يوجد ملف مزود مرتبط بهذا الحساب")
 
         sr.accept(provider_profile)
-        return ActionResult(True, "تم قبول الطلب", sr.status)
+        return ActionResult(True, "تم بدء التنفيذ", sr.status)
 
     # start
     if action == "start":

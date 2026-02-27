@@ -46,7 +46,7 @@ def test_execute_action_send_by_client_marks_sent():
     res = execute_action(user=client_user, request_id=sr.id, action="send")
     sr.refresh_from_db()
     assert res.ok is True
-    assert sr.status == RequestStatus.SENT
+    assert sr.status == RequestStatus.NEW
 
 
 @pytest.mark.django_db
@@ -94,9 +94,10 @@ def test_allowed_actions_provider_unassigned_can_accept_when_sent():
         title="طلب",
         description="وصف",
         request_type="competitive",
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="الرياض",
     )
 
     acts = allowed_actions(provider_user, sr)
     assert "accept" in acts
+

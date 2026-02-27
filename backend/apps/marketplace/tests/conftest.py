@@ -32,3 +32,4 @@ def provider_profile(provider_user):
 def subcategory():
     cat = Category.objects.create(name="تصميم", is_active=True)
     return SubCategory.objects.create(category=cat, name="شعارات", is_active=True)
+

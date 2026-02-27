@@ -15,8 +15,9 @@ from apps.dashboard.auth import SESSION_OTP_VERIFIED_KEY
 from apps.marketplace.models import RequestStatus, ServiceRequest
 from apps.providers.models import Category, ProviderProfile, SubCategory
 from apps.subscriptions.models import Subscription, SubscriptionPlan, SubscriptionStatus
+from apps.extras.models import ExtraPurchase, ExtraPurchaseStatus
 from apps.support.models import SupportTicket, SupportTicketType, SupportTicketStatus, SupportPriority, SupportTeam
-from apps.unified_requests.models import UnifiedRequest, UnifiedRequestMetadata
+from apps.unified_requests.models import UnifiedRequest, UnifiedRequestMetadata, UnifiedRequestStatus
 
 
 @pytest.mark.django_db
@@ -1448,6 +1449,98 @@ def test_power_user_has_global_write_access_and_can_post_content_links():
     assert res.status_code == 302
     assert SiteLinks.objects.count() == 1
     assert SiteLinks.objects.first().x_url == "https://example.com"
+
+
+@pytest.mark.django_db
+def test_subscription_request_status_rejects_invalid_transition_new_to_completed():
+    admin_user = User.objects.create_user(phone="0500000971", password="Pass12345!", is_staff=True)
+    subs_dashboard = Dashboard.objects.create(code="subs", name_ar="الاشتراكات", sort_order=31)
+    UserAccessProfile.objects.create(user=admin_user, level=AccessLevel.ADMIN).allowed_dashboards.set([subs_dashboard])
+
+    requester = User.objects.create_user(phone="0500000972", password="Pass12345!")
+    plan = SubscriptionPlan.objects.create(code="SD_GUARD", title="خطة", period="year", price="99.00", is_active=True)
+    sub = Subscription.objects.create(user=requester, plan=plan, status=SubscriptionStatus.PENDING_PAYMENT)
+    ur = UnifiedRequest.objects.create(
+        request_type="subscription",
+        requester=requester,
+        status=UnifiedRequestStatus.NEW,
+        priority="normal",
+        source_app="subscriptions",
+        source_model="Subscription",
+        source_object_id=str(sub.id),
+        summary="طلب اشتراك",
+    )
+
+    c = Client()
+    assert c.login(phone=admin_user.phone, password="Pass12345!")
+    s = c.session
+    s[SESSION_OTP_VERIFIED_KEY] = True
+    s.save()
+
+    res = c.post(
+        reverse("dashboard:subscription_request_set_status_action", args=[sub.id]),
+        data={"status": UnifiedRequestStatus.COMPLETED, "note": "قفزة غير مسموحة"},
+    )
+    assert res.status_code == 302
+    ur.refresh_from_db()
+    assert ur.status == UnifiedRequestStatus.NEW
+
+
+@pytest.mark.django_db
+def test_extras_request_status_allows_only_three_stage_and_guarded_transitions():
+    admin_user = User.objects.create_user(phone="0500000973", password="Pass12345!", is_staff=True)
+    extras_dashboard = Dashboard.objects.create(code="extras", name_ar="الخدمات الإضافية", sort_order=32)
+    UserAccessProfile.objects.create(user=admin_user, level=AccessLevel.ADMIN).allowed_dashboards.set([extras_dashboard])
+
+    requester = User.objects.create_user(phone="0500000974", password="Pass12345!")
+    purchase = ExtraPurchase.objects.create(
+        user=requester,
+        sku="uploads_10gb_month",
+        title="Upload Boost",
+        extra_type="time_based",
+        subtotal="50.00",
+        status=ExtraPurchaseStatus.PENDING_PAYMENT,
+    )
+    ur = UnifiedRequest.objects.create(
+        request_type="extras",
+        requester=requester,
+        status=UnifiedRequestStatus.NEW,
+        priority="normal",
+        source_app="extras",
+        source_model="ExtraPurchase",
+        source_object_id=str(purchase.id),
+        summary="طلب خدمة إضافية",
+    )
+
+    c = Client()
+    assert c.login(phone=admin_user.phone, password="Pass12345!")
+    s = c.session
+    s[SESSION_OTP_VERIFIED_KEY] = True
+    s.save()
+
+    invalid_status_res = c.post(
+        reverse("dashboard:extras_request_status_action", args=[ur.id]),
+        data={"status": UnifiedRequestStatus.CLOSED},
+    )
+    assert invalid_status_res.status_code == 302
+    ur.refresh_from_db()
+    assert ur.status == UnifiedRequestStatus.NEW
+
+    invalid_transition_res = c.post(
+        reverse("dashboard:extras_request_status_action", args=[ur.id]),
+        data={"status": UnifiedRequestStatus.COMPLETED},
+    )
+    assert invalid_transition_res.status_code == 302
+    ur.refresh_from_db()
+    assert ur.status == UnifiedRequestStatus.NEW
+
+    valid_transition_res = c.post(
+        reverse("dashboard:extras_request_status_action", args=[ur.id]),
+        data={"status": UnifiedRequestStatus.IN_PROGRESS},
+    )
+    assert valid_transition_res.status_code == 302
+    ur.refresh_from_db()
+    assert ur.status == UnifiedRequestStatus.IN_PROGRESS
 
 
 @pytest.mark.django_db

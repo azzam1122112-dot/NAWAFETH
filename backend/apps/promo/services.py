@@ -13,6 +13,18 @@ from .models import (
 )
 
 
+def _promo_status_to_unified(status: str) -> str:
+    if status == PromoRequestStatus.ACTIVE:
+        return "in_progress"
+    if status in {
+        PromoRequestStatus.EXPIRED,
+        PromoRequestStatus.CANCELLED,
+        PromoRequestStatus.REJECTED,
+    }:
+        return "completed"
+    return "new"
+
+
 def _sync_promo_to_unified(*, pr: PromoRequest, changed_by=None):
     """
     مزامنة طلب الترويج مع محرك الطلبات الموحد (تكامل تدريجي غير معطّل).
@@ -29,7 +41,7 @@ def _sync_promo_to_unified(*, pr: PromoRequest, changed_by=None):
         source_app="promo",
         source_model="PromoRequest",
         source_object_id=pr.id,
-        status=pr.status,
+        status=_promo_status_to_unified(pr.status),
         priority="normal",
         summary=(pr.title or "")[:300],
         metadata={

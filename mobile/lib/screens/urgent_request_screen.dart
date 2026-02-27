@@ -548,6 +548,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                 "مثال: إصلاح تسرب مياه عاجل",
                 Icons.title_rounded,
                 isDark: isDark,
+                maxLength: 50,
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -556,6 +557,7 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
                 Icons.edit_note_rounded,
                 isDark: isDark,
                 maxLines: 4,
+                maxLength: 500,
               ),
               const SizedBox(height: 24),
 
@@ -900,10 +902,12 @@ class _UrgentRequestScreenState extends State<UrgentRequestScreen> {
     IconData icon, {
     bool isDark = false,
     int maxLines = 1,
+    int? maxLength,
   }) {
     return TextField(
       controller: controller,
       maxLines: maxLines,
+      maxLength: maxLength,
       style: const TextStyle(fontSize: 15, fontFamily: 'Cairo'),
       decoration: InputDecoration(
         hintText: hint,

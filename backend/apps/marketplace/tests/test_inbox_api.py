@@ -74,7 +74,7 @@ def test_available_urgent_excludes_expired_requests():
         title="عاجل منتهي",
         description="desc",
         request_type=RequestType.URGENT,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="Riyadh",
         is_urgent=True,
         expires_at=timezone.now() - timedelta(minutes=1),
@@ -87,7 +87,7 @@ def test_available_urgent_excludes_expired_requests():
         title="عاجل فعال",
         description="desc",
         request_type=RequestType.URGENT,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="Riyadh",
         is_urgent=True,
         expires_at=timezone.now() + timedelta(minutes=10),
@@ -237,7 +237,7 @@ def test_provider_competitive_available_lists_matching_sent_requests():
         title="طلب تنافسي",
         description="desc",
         request_type=RequestType.COMPETITIVE,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="Riyadh",
         is_urgent=False,
     )
@@ -303,7 +303,7 @@ def test_provider_can_accept_assigned_normal_request():
         title="طلب عادي",
         description="desc",
         request_type=RequestType.NORMAL,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="Riyadh",
         is_urgent=False,
     )
@@ -311,7 +311,7 @@ def test_provider_can_accept_assigned_normal_request():
     accept = client.post(f"/api/marketplace/provider/requests/{sr.id}/accept/", {}, format="json")
     assert accept.status_code == 200
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.ACCEPTED
+    assert sr.status == RequestStatus.IN_PROGRESS
 
 
 @pytest.mark.django_db
@@ -351,7 +351,7 @@ def test_available_urgent_blank_city_matches_any_provider_city_with_same_subcate
         title="عاجل بدون مدينة",
         description="desc",
         request_type=RequestType.URGENT,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="",
         is_urgent=True,
         expires_at=timezone.now() + timedelta(minutes=10),
@@ -425,7 +425,7 @@ def test_available_urgent_with_city_only_matches_same_city_and_subcategory():
         title="عاجل في الرياض",
         description="desc",
         request_type=RequestType.URGENT,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="Riyadh",
         is_urgent=True,
         expires_at=timezone.now() + timedelta(minutes=10),
@@ -460,3 +460,4 @@ def test_available_urgent_with_city_only_matches_same_city_and_subcategory():
     assert res_jeddah.status_code == 200
     ids_jeddah = {item["id"] for item in res_jeddah.json()}
     assert urgent_riyadh.id not in ids_jeddah
+

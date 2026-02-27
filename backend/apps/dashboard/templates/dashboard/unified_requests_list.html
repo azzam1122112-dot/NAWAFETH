@@ -5,7 +5,7 @@
 <div class="flex items-center justify-between mb-6">
   <div>
     <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">الطلبات الموحدة</h1>
-    <p class="text-gray-500 mt-1">عرض موحد لطلبات الدعم، التوثيق، الترويج، الاشتراكات، والخدمات الإضافية.</p>
+    <p class="text-gray-500 mt-1">عرض موحد لطلبات الدعم، التوثيق، الترويج، الاشتراكات، الخدمات الإضافية، والمراجعات.</p>
   </div>
   <div class="flex items-center gap-2">
     <a href="?q={{ q }}&type={{ type_val }}&status={{ status_val }}&team={{ team_val }}&assignee={{ assignee_val }}&has_invoice={{ has_invoice_val }}&has_assignee={{ has_assignee_val }}&open_only={{ open_only_val }}&preset={{ preset_val }}&from={{ date_from_val }}&to={{ date_to_val }}&export=csv" class="px-4 py-2 rounded-lg bg-white border border-gray-200 font-semibold">تصدير CSV</a>
@@ -75,7 +75,7 @@
   </div>
 </form>
 
-<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
   <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
     <div class="text-xs text-gray-500">إجمالي النتائج</div>
     <div class="text-2xl font-bold text-gray-800 mt-1">{{ filtered_summary.total }}</div>
@@ -118,6 +118,10 @@
   <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
     <div class="text-xs text-gray-500">P الخدمات الإضافية</div>
     <div class="text-xl font-bold text-emerald-700 mt-1">{{ filtered_type_counts.extras }}</div>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+    <div class="text-xs text-gray-500">RV المراجعات</div>
+    <div class="text-xl font-bold text-fuchsia-700 mt-1">{{ filtered_type_counts.reviews }}</div>
   </div>
 </div>
 

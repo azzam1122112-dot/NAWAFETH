@@ -93,7 +93,7 @@ def test_create_promo_request(api, user):
     ur = UnifiedRequest.objects.get(source_app="promo", source_model="PromoRequest", source_object_id=str(pr.id))
     assert ur.request_type == "promo"
     assert ur.code.startswith("MD")
-    assert ur.status == pr.status
+    assert ur.status == "new"
 
 
 def test_create_promo_request_rejects_duration_less_than_24h(api, user):
@@ -328,7 +328,7 @@ def test_management_command_expires_due_active_promos(user):
     assert still_active.status == PromoRequestStatus.ACTIVE
     assert "Expired promo requests: 1" in out.getvalue()
     due_ur = UnifiedRequest.objects.get(source_app="promo", source_model="PromoRequest", source_object_id=str(due.id))
-    assert due_ur.status == "expired"
+    assert due_ur.status == "completed"
 
 
 def test_quote_updates_unified_request_pending_payment(user):
@@ -361,7 +361,7 @@ def test_quote_updates_unified_request_pending_payment(user):
     pr = quote_and_create_invoice(pr=pr, by_user=user, quote_note="ok")
     ur = UnifiedRequest.objects.get(source_app="promo", source_model="PromoRequest", source_object_id=str(pr.id))
     assert pr.status == PromoRequestStatus.PENDING_PAYMENT
-    assert ur.status == "pending_payment"
+    assert ur.status == "new"
     assert ur.metadata_record.payload.get("invoice_id") == pr.invoice_id
 
 

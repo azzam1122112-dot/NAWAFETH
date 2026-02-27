@@ -15,12 +15,9 @@ class RequestType(models.TextChoices):
 
 class RequestStatus(models.TextChoices):
 	NEW = "new", "جديد"
-	SENT = "sent", "أُرسل"
-	ACCEPTED = "accepted", "مقبول"
 	IN_PROGRESS = "in_progress", "تحت التنفيذ"
 	COMPLETED = "completed", "مكتمل"
 	CANCELLED = "cancelled", "ملغي"
-	EXPIRED = "expired", "منتهي"
 
 
 class ServiceRequest(models.Model):
@@ -40,8 +37,8 @@ class ServiceRequest(models.Model):
 
 	subcategory = models.ForeignKey(SubCategory, on_delete=models.PROTECT)
 
-	title = models.CharField(max_length=200)
-	description = models.TextField(max_length=1000)
+	title = models.CharField(max_length=50)
+	description = models.TextField(max_length=500)
 
 	request_type = models.CharField(
 		max_length=20,
@@ -59,6 +56,7 @@ class ServiceRequest(models.Model):
 
 	created_at = models.DateTimeField(auto_now_add=True)
 	expires_at = models.DateTimeField(null=True, blank=True)
+	quote_deadline = models.DateField(null=True, blank=True)
 	expected_delivery_at = models.DateTimeField(null=True, blank=True)
 	estimated_service_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 	received_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -73,19 +71,19 @@ class ServiceRequest(models.Model):
 
 	def mark_sent(self) -> None:
 		if self.status != RequestStatus.NEW:
-			raise ValidationError("لا يمكن إرسال الطلب في هذه الحالة")
-		self.status = RequestStatus.SENT
-		self.save(update_fields=["status"])
+			raise ValidationError("لا يمكن تنفيذ الإجراء في هذه الحالة")
+		# حالة "جديد" هي الحالة الرسمية الأولى ولا توجد خطوة "إرسال" مستقلة.
+		return
 
 	def accept(self, provider: ProviderProfile) -> None:
-		if self.status != RequestStatus.SENT:
+		if self.status not in (RequestStatus.NEW, "sent"):
 			raise ValidationError("لا يمكن قبول الطلب الآن")
 		self.provider = provider
-		self.status = RequestStatus.ACCEPTED
+		self.status = RequestStatus.IN_PROGRESS
 		self.save(update_fields=["provider", "status"])
 
 	def start(self) -> None:
-		if self.status != RequestStatus.ACCEPTED:
+		if self.status not in (RequestStatus.NEW, RequestStatus.IN_PROGRESS, "sent", "accepted"):
 			raise ValidationError("لا يمكن بدء التنفيذ في هذه الحالة")
 		self.status = RequestStatus.IN_PROGRESS
 		self.save(update_fields=["status"])
@@ -97,7 +95,7 @@ class ServiceRequest(models.Model):
 		self.save(update_fields=["status"])
 
 	def cancel(self) -> None:
-		if self.status not in [RequestStatus.NEW, RequestStatus.SENT]:
+		if self.status in [RequestStatus.COMPLETED, RequestStatus.CANCELLED]:
 			raise ValidationError("لا يمكن إلغاء الطلب في هذه الحالة")
 		self.status = RequestStatus.CANCELLED
 		self.save(update_fields=["status"])

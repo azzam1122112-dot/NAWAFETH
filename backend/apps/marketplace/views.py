@@ -57,10 +57,10 @@ def _normalize_status_group(value: str) -> Optional[str]:
 def _status_group_to_statuses(group: str) -> list[str]:
 	# Map unified user-facing groups to internal statuses.
 	return {
-		"new": [RequestStatus.NEW, RequestStatus.SENT],
-		"in_progress": [RequestStatus.ACCEPTED, RequestStatus.IN_PROGRESS],
+		"new": [RequestStatus.NEW, "sent"],
+		"in_progress": [RequestStatus.IN_PROGRESS, "accepted"],
 		"completed": [RequestStatus.COMPLETED],
-		"cancelled": [RequestStatus.CANCELLED, RequestStatus.EXPIRED],
+		"cancelled": [RequestStatus.CANCELLED, "expired"],
 	}[group]
 
 
@@ -68,10 +68,10 @@ def _expire_urgent_requests() -> None:
 	now = timezone.now()
 	ServiceRequest.objects.filter(
 		request_type=RequestType.URGENT,
-		status__in=[RequestStatus.NEW, RequestStatus.SENT],
+		status__in=[RequestStatus.NEW, "sent"],
 		expires_at__isnull=False,
 		expires_at__lt=now,
-	).update(status=RequestStatus.EXPIRED)
+	).update(status=RequestStatus.CANCELLED)
 
 
 
@@ -182,7 +182,7 @@ def provider_requests(request):
 				qs = qs.filter(provider__isnull=False)
 		else:
 			# available
-			qs = qs.filter(status=RequestStatus.SENT, provider__isnull=True)
+			qs = qs.filter(status__in=[RequestStatus.NEW, "sent"], provider__isnull=True)
 
 			# فلترة حسب subcategories المزود عبر ProviderCategory
 			if provider:

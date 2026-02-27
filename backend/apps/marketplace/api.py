@@ -35,12 +35,10 @@ from .serializers import (
 	ClientRequestUpdateSerializer,
 	OfferCreateSerializer,
 	OfferListSerializer,
-	ProviderInputsDecisionSerializer,
 	ProviderProgressUpdateSerializer,
 	ProviderRejectSerializer,
 	RequestCompleteSerializer,
 	ProviderRequestDetailSerializer,
-	RequestActionSerializer,
 	RequestStartSerializer,
 	ServiceRequestCreateSerializer,
 	ServiceRequestListSerializer,
@@ -117,7 +115,7 @@ class ServiceRequestCreateView(generics.CreateAPIView):
 		dispatch_mode = (serializer.validated_data.get("dispatch_mode") or "all").strip().lower()
 
 		is_urgent = request_type == RequestType.URGENT
-		status_value = RequestStatus.SENT
+		status_value = RequestStatus.NEW
 
 		expires_at = None
 		if is_urgent:
@@ -221,11 +219,11 @@ class MyClientRequestDetailView(generics.RetrieveUpdateAPIView):
 		s.is_valid(raise_exception=True)
 
 		if obj.status in (
-			RequestStatus.ACCEPTED,
 			RequestStatus.IN_PROGRESS,
 			RequestStatus.COMPLETED,
 			RequestStatus.CANCELLED,
-			RequestStatus.EXPIRED,
+			"accepted",
+			"expired",
 		):
 			return Response(
 				{"detail": "لا يمكن تعديل الطلب في هذه الحالة"},
@@ -301,14 +299,14 @@ class UrgentRequestAcceptView(APIView):
 
 			now = timezone.now()
 			if service_request.expires_at and service_request.expires_at < now:
-				service_request.status = RequestStatus.EXPIRED
+				service_request.status = RequestStatus.CANCELLED
 				service_request.save(update_fields=["status"])
 				return Response(
 					{"detail": "انتهت صلاحية الطلب"},
 					status=status.HTTP_400_BAD_REQUEST,
 				)
 
-			if service_request.status not in (RequestStatus.SENT, RequestStatus.NEW):
+			if service_request.status not in (RequestStatus.NEW, "sent"):
 				return Response(
 					{"detail": "لا يمكن قبول الطلب في هذه الحالة"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -338,7 +336,7 @@ class UrgentRequestAcceptView(APIView):
 
 			old = service_request.status
 			service_request.provider = provider
-			service_request.status = RequestStatus.ACCEPTED
+			service_request.status = RequestStatus.IN_PROGRESS
 			service_request.save(update_fields=["provider", "status"])
 			RequestStatusLog.objects.create(
 				request=service_request,
@@ -379,7 +377,7 @@ class AvailableUrgentRequestsView(generics.ListAPIView):
 			.filter(
 				request_type=RequestType.URGENT,
 				provider__isnull=True,
-				status__in=[RequestStatus.NEW, RequestStatus.SENT],
+				status__in=[RequestStatus.NEW, "sent"],
 				subcategory_id__in=provider_subcats,
 			)
 			.filter(Q(city=provider.city) | Q(city=""))
@@ -410,7 +408,7 @@ class AvailableCompetitiveRequestsView(generics.ListAPIView):
 			.filter(
 				request_type=RequestType.COMPETITIVE,
 				provider__isnull=True,
-				status=RequestStatus.SENT,
+				status__in=[RequestStatus.NEW, "sent"],
 				city=provider.city,
 				subcategory_id__in=provider_subcats,
 			)
@@ -471,7 +469,7 @@ class ProviderRequestDetailView(generics.RetrieveAPIView):
 		if obj.provider_id is not None:
 			raise PermissionDenied("غير مصرح")
 
-		if obj.status not in (RequestStatus.NEW, RequestStatus.SENT):
+		if obj.status not in (RequestStatus.NEW, "sent"):
 			raise PermissionDenied("غير مصرح")
 
 		if obj.request_type == RequestType.NORMAL:
@@ -517,11 +515,11 @@ class ProviderAssignedRequestAcceptView(APIView):
 				if sr.request_type == RequestType.COMPETITIVE:
 					return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
 
-				if sr.status not in (RequestStatus.NEW, RequestStatus.SENT):
+				if sr.status not in (RequestStatus.NEW, "sent"):
 					return Response({"detail": "لا يمكن قبول الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
 
 				old = sr.status
-				sr.status = RequestStatus.ACCEPTED
+				sr.status = RequestStatus.IN_PROGRESS
 				sr.save(update_fields=["status"])
 				RequestStatusLog.objects.create(
 					request=sr,
@@ -569,7 +567,7 @@ class ProviderAssignedRequestRejectView(APIView):
 			if sr.request_type == RequestType.COMPETITIVE:
 				return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
 
-			if sr.status not in (RequestStatus.NEW, RequestStatus.SENT):
+			if sr.status not in (RequestStatus.NEW, "sent"):
 				return Response({"detail": "لا يمكن رفض الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
 
 			old = sr.status
@@ -612,7 +610,7 @@ class ProviderProgressUpdateView(APIView):
 			if sr.provider_id != provider.id:
 				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
-			if sr.status not in (RequestStatus.ACCEPTED, RequestStatus.IN_PROGRESS):
+			if sr.status not in ("accepted", RequestStatus.IN_PROGRESS):
 				return Response(
 					{"detail": "لا يمكن تحديث التنفيذ في هذه الحالة"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -656,63 +654,9 @@ class ProviderInputsDecisionView(APIView):
 	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
-		s = ProviderInputsDecisionSerializer(data=request.data)
-		s.is_valid(raise_exception=True)
-		approved = s.validated_data["approved"]
-		note = s.validated_data.get("note", "").strip()
-
-		with transaction.atomic():
-			sr = (
-				ServiceRequest.objects.select_for_update()
-				.select_related("client")
-				.filter(id=request_id)
-				.first()
-			)
-
-			if not sr:
-				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
-			if sr.client_id != request.user.id:
-				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
-			if sr.status != RequestStatus.ACCEPTED:
-				return Response({"detail": "لا يمكن اعتماد/رفض المدخلات في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
-			if (
-				sr.expected_delivery_at is None
-				or sr.estimated_service_amount is None
-				or sr.received_amount is None
-				or sr.remaining_amount is None
-			):
-				return Response({"detail": "لا توجد مدخلات تنفيذ من المزود لاعتمادها"}, status=status.HTTP_400_BAD_REQUEST)
-
-			old = sr.status
-			sr.provider_inputs_approved = approved
-			sr.provider_inputs_decided_at = timezone.now()
-			sr.provider_inputs_decision_note = note
-			if approved:
-				sr.status = RequestStatus.IN_PROGRESS
-			sr.save(
-				update_fields=[
-					"status",
-					"provider_inputs_approved",
-					"provider_inputs_decided_at",
-					"provider_inputs_decision_note",
-				]
-			)
-
-			RequestStatusLog.objects.create(
-				request=sr,
-				actor=request.user,
-				from_status=old,
-				to_status=sr.status,
-				note=note or ("اعتماد مدخلات التنفيذ من العميل" if approved else "رفض مدخلات التنفيذ من العميل"),
-			)
-
 		return Response(
-			{
-				"ok": True,
-				"request_id": sr.id,
-				"approved": approved,
-			},
-			status=status.HTTP_200_OK,
+			{"detail": "هذا الإجراء غير متاح. التحكم بالحالة لدى المزود فقط"},
+			status=status.HTTP_403_FORBIDDEN,
 		)
 
 
@@ -733,7 +677,7 @@ class CreateOfferView(APIView):
 				status=status.HTTP_400_BAD_REQUEST,
 			)
 
-		if service_request.status != RequestStatus.SENT:
+		if service_request.status not in (RequestStatus.NEW, "sent"):
 			return Response(
 				{"detail": "لا يمكن إرسال عرض في هذه الحالة"},
 				status=status.HTTP_400_BAD_REQUEST,
@@ -803,7 +747,7 @@ class AcceptOfferView(APIView):
 					status=status.HTTP_403_FORBIDDEN,
 				)
 
-			if service_request.status != RequestStatus.SENT:
+			if service_request.status not in (RequestStatus.NEW, "sent"):
 				return Response(
 					{"detail": "لا يمكن اختيار عرض الآن"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -811,7 +755,7 @@ class AcceptOfferView(APIView):
 
 			old = service_request.status
 			service_request.provider = offer.provider
-			service_request.status = RequestStatus.SENT
+			service_request.status = RequestStatus.NEW
 			service_request.save(update_fields=["provider", "status"])
 			RequestStatusLog.objects.create(
 				request=service_request,
@@ -861,13 +805,14 @@ class RequestStartView(APIView):
 			if sr.provider_id != provider.id:
 				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
-			if sr.status != RequestStatus.ACCEPTED:
+			if sr.status not in (RequestStatus.NEW, "sent", "accepted"):
 				return Response(
 					{"detail": "لا يمكن بدء التنفيذ في هذه الحالة"},
 					status=status.HTTP_400_BAD_REQUEST,
 				)
 
 			old = sr.status
+			sr.status = RequestStatus.IN_PROGRESS
 			sr.expected_delivery_at = s.validated_data["expected_delivery_at"]
 			sr.estimated_service_amount = s.validated_data["estimated_service_amount"]
 			sr.received_amount = s.validated_data["received_amount"]
@@ -877,6 +822,7 @@ class RequestStartView(APIView):
 			sr.provider_inputs_decision_note = ""
 			sr.save(
 				update_fields=[
+					"status",
 					"expected_delivery_at",
 					"estimated_service_amount",
 					"received_amount",
@@ -955,45 +901,9 @@ class RequestCancelView(APIView):
 	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
-		s = RequestActionSerializer(data=request.data)
-		s.is_valid(raise_exception=True)
-		note = s.validated_data.get("note", "")
-
-		with transaction.atomic():
-			sr = (
-				ServiceRequest.objects.select_for_update()
-				.select_related("client")
-				.filter(id=request_id)
-				.first()
-			)
-
-			if not sr:
-				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
-
-			if sr.client_id != request.user.id:
-				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
-
-			if sr.status not in (RequestStatus.NEW, RequestStatus.SENT, RequestStatus.ACCEPTED):
-				return Response(
-					{"detail": "لا يمكن الإلغاء في هذه الحالة"},
-					status=status.HTTP_400_BAD_REQUEST,
-				)
-
-			old = sr.status
-			sr.status = RequestStatus.CANCELLED
-			sr.save(update_fields=["status"])
-
-			RequestStatusLog.objects.create(
-				request=sr,
-				actor=request.user,
-				from_status=old,
-				to_status=sr.status,
-				note=note or "إلغاء من العميل",
-			)
-
 		return Response(
-			{"ok": True, "request_id": sr.id, "status": sr.status},
-			status=status.HTTP_200_OK,
+			{"detail": "إلغاء الطلب متاح للمزوّد فقط"},
+			status=status.HTTP_403_FORBIDDEN,
 		)
 
 
@@ -1001,69 +911,7 @@ class RequestReopenView(APIView):
 	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
-		s = RequestActionSerializer(data=request.data)
-		s.is_valid(raise_exception=True)
-		note = s.validated_data.get("note", "").strip()
-
-		with transaction.atomic():
-			sr = (
-				ServiceRequest.objects.select_for_update()
-				.select_related("client")
-				.filter(id=request_id)
-				.first()
-			)
-
-			if not sr:
-				return Response({"detail": "الطلب غير موجود"}, status=status.HTTP_404_NOT_FOUND)
-
-			if sr.client_id != request.user.id:
-				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
-
-			if sr.status not in (RequestStatus.CANCELLED, RequestStatus.EXPIRED):
-				return Response(
-					{"detail": "يمكن إعادة فتح الطلبات الملغية أو المنتهية فقط"},
-					status=status.HTTP_400_BAD_REQUEST,
-				)
-
-			old = sr.status
-			sr.status = RequestStatus.SENT
-			sr.created_at = timezone.now()
-			if sr.request_type == RequestType.URGENT:
-				minutes = getattr(settings, "URGENT_REQUEST_EXPIRY_MINUTES", 15)
-				sr.expires_at = timezone.now() + timedelta(minutes=minutes)
-			else:
-				sr.expires_at = None
-			sr.canceled_at = None
-			sr.cancel_reason = ""
-			sr.delivered_at = None
-			sr.actual_service_amount = None
-			sr.provider_inputs_approved = None
-			sr.provider_inputs_decided_at = None
-			sr.provider_inputs_decision_note = ""
-			sr.save(
-				update_fields=[
-					"status",
-					"created_at",
-					"expires_at",
-					"canceled_at",
-					"cancel_reason",
-					"delivered_at",
-					"actual_service_amount",
-					"provider_inputs_approved",
-					"provider_inputs_decided_at",
-					"provider_inputs_decision_note",
-				]
-			)
-
-			RequestStatusLog.objects.create(
-				request=sr,
-				actor=request.user,
-				from_status=old,
-				to_status=sr.status,
-				note=note or "إعادة فتح الطلب من العميل",
-			)
-
 		return Response(
-			{"ok": True, "request_id": sr.id, "status": sr.status},
-			status=status.HTTP_200_OK,
+			{"detail": "إعادة فتح الطلب غير مدعومة ضمن الدورة الرسمية الحالية"},
+			status=status.HTTP_403_FORBIDDEN,
 		)

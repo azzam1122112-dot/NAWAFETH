@@ -13,9 +13,15 @@ from .models import ExtraPurchase, ExtraPurchaseStatus, ExtraType
 
 
 def _extra_status_to_unified(status: str) -> str:
-    if status == ExtraPurchaseStatus.CONSUMED:
+    if status == ExtraPurchaseStatus.ACTIVE:
+        return "in_progress"
+    if status in {
+        ExtraPurchaseStatus.CONSUMED,
+        ExtraPurchaseStatus.EXPIRED,
+        ExtraPurchaseStatus.CANCELLED,
+    }:
         return "completed"
-    return status
+    return "new"
 
 
 def _sync_extra_to_unified(*, purchase: ExtraPurchase, changed_by=None):

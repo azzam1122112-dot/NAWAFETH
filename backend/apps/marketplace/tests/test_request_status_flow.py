@@ -34,7 +34,7 @@ def test_provider_start_and_complete_flow():
         title="طلب",
         description="وصف",
         request_type=RequestType.COMPETITIVE,
-        status=RequestStatus.ACCEPTED,
+        status=RequestStatus.NEW,
         city="الرياض",
     )
 
@@ -53,7 +53,7 @@ def test_provider_start_and_complete_flow():
     )
     assert r1.status_code == 200
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.ACCEPTED
+    assert sr.status == RequestStatus.IN_PROGRESS
     assert sr.expected_delivery_at is not None
     assert str(sr.estimated_service_amount) == "1000.00"
     assert str(sr.received_amount) == "400.00"
@@ -66,7 +66,7 @@ def test_provider_start_and_complete_flow():
         {"approved": True, "note": "تم الاعتماد"},
         format="json",
     )
-    assert r2.status_code == 200
+    assert r2.status_code == 403
     sr.refresh_from_db()
     assert sr.status == RequestStatus.IN_PROGRESS
 
@@ -101,7 +101,7 @@ def test_client_cancel_allowed_only_before_in_progress():
         title="طلب",
         description="وصف",
         request_type=RequestType.COMPETITIVE,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="الرياض",
     )
 
@@ -123,9 +123,9 @@ def test_client_cancel_allowed_only_before_in_progress():
         {"note": "إلغاء"},
         format="json",
     )
-    assert r1.status_code == 200
+    assert r1.status_code == 403
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.CANCELLED
+    assert sr.status == RequestStatus.NEW
 
 
 @pytest.mark.django_db
@@ -153,7 +153,7 @@ def test_provider_reject_requires_cancel_fields_and_saves_them():
         title="طلب",
         description="وصف",
         request_type=RequestType.NORMAL,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="الرياض",
     )
 
@@ -180,7 +180,7 @@ def test_provider_reject_requires_cancel_fields_and_saves_them():
 
 
 @pytest.mark.django_db
-def test_client_can_decide_provider_inputs_when_accepted():
+def test_client_cannot_decide_provider_inputs_when_provider_controls_status():
     client_user = User.objects.create_user(phone="0500000101", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000102")
     provider = ProviderProfile.objects.create(
@@ -204,7 +204,7 @@ def test_client_can_decide_provider_inputs_when_accepted():
         title="طلب",
         description="وصف",
         request_type=RequestType.NORMAL,
-        status=RequestStatus.ACCEPTED,
+        status=RequestStatus.NEW,
         city="الرياض",
         expected_delivery_at=timezone.now(),
         estimated_service_amount="1200.00",
@@ -219,12 +219,11 @@ def test_client_can_decide_provider_inputs_when_accepted():
         {"approved": True, "note": "تم الاعتماد"},
         format="json",
     )
-    assert res.status_code == 200
+    assert res.status_code == 403
 
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.IN_PROGRESS
-    assert sr.provider_inputs_approved is True
-    assert sr.provider_inputs_decision_note == "تم الاعتماد"
+    assert sr.status == RequestStatus.NEW
+    assert sr.provider_inputs_approved is None
 
 
 @pytest.mark.django_db
@@ -252,7 +251,7 @@ def test_provider_progress_update_creates_log_and_client_notification():
         title="طلب",
         description="وصف",
         request_type=RequestType.NORMAL,
-        status=RequestStatus.IN_PROGRESS,
+            status=RequestStatus.IN_PROGRESS,
         city="الرياض",
         expected_delivery_at=timezone.now(),
         estimated_service_amount="500.00",
@@ -318,7 +317,7 @@ def test_client_can_patch_request_details_and_notify_provider():
         title="طلب قديم",
         description="وصف قديم",
         request_type=RequestType.NORMAL,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
         city="الرياض",
     )
 
@@ -416,7 +415,7 @@ def test_client_cannot_patch_request_details_when_accepted():
         title="طلب بانتظار الاعتماد",
         description="وصف",
         request_type=RequestType.NORMAL,
-        status=RequestStatus.ACCEPTED,
+        status="accepted",
         city="الرياض",
     )
 
@@ -433,7 +432,7 @@ def test_client_cannot_patch_request_details_when_accepted():
 
 
 @pytest.mark.django_db
-def test_client_can_reopen_cancelled_request_as_new_with_new_created_at():
+def test_client_cannot_reopen_cancelled_request():
     client_user = User.objects.create_user(phone="0500000501", role_state=UserRole.CLIENT)
     provider_user = User.objects.create_user(phone="0500000502")
     provider = ProviderProfile.objects.create(
@@ -471,17 +470,15 @@ def test_client_can_reopen_cancelled_request_as_new_with_new_created_at():
         {"note": "إعادة فتح"},
         format="json",
     )
-    assert res.status_code == 200
+    assert res.status_code == 403
 
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.SENT
-    assert sr.created_at >= old_created
-    assert sr.canceled_at is None
-    assert sr.cancel_reason == ""
+    assert sr.status == RequestStatus.CANCELLED
+    assert sr.created_at == old_created
 
 
 @pytest.mark.django_db
-def test_client_can_reopen_expired_request():
+def test_client_cannot_reopen_cancelled_urgent_request():
     client_user = User.objects.create_user(phone="0500000503", role_state=UserRole.CLIENT)
 
     cat = Category.objects.create(name="نقل سريع")
@@ -493,7 +490,7 @@ def test_client_can_reopen_expired_request():
         title="طلب منتهي",
         description="وصف",
         request_type=RequestType.URGENT,
-        status=RequestStatus.EXPIRED,
+        status=RequestStatus.CANCELLED,
         city="الرياض",
         expires_at=timezone.now() - timedelta(minutes=5),
     )
@@ -505,7 +502,9 @@ def test_client_can_reopen_expired_request():
         {},
         format="json",
     )
-    assert res.status_code == 200
+    assert res.status_code == 403
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.SENT
-    assert sr.expires_at is not None
+    assert sr.status == RequestStatus.CANCELLED
+
+
+

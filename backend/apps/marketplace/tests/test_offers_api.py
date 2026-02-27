@@ -86,7 +86,7 @@ def test_provider_can_create_offer_once_for_competitive_sent_request():
     )
     assert create.status_code == 201
     service_request = ServiceRequest.objects.get(id=create.json()["id"])
-    service_request.status = RequestStatus.SENT
+    service_request.status = RequestStatus.NEW
     service_request.save(update_fields=["status"])
 
     # Provider posts an offer
@@ -138,7 +138,7 @@ def test_client_can_list_offers_and_accept_one_updates_statuses():
     )
     assert create.status_code == 201
     service_request = ServiceRequest.objects.get(id=create.json()["id"])
-    service_request.status = RequestStatus.SENT
+    service_request.status = RequestStatus.NEW
     service_request.save(update_fields=["status"])
 
     # Two providers create offers
@@ -180,7 +180,7 @@ def test_client_can_list_offers_and_accept_one_updates_statuses():
     assert accept.status_code == 200
 
     service_request.refresh_from_db()
-    assert service_request.status == RequestStatus.SENT
+    assert service_request.status == RequestStatus.NEW
     assert service_request.provider_id == p2.id
 
     offer1 = Offer.objects.get(id=offer1_id)
@@ -213,7 +213,7 @@ def test_accept_offer_forbidden_for_non_owner():
     )
     assert create.status_code == 201
     service_request = ServiceRequest.objects.get(id=create.json()["id"])
-    service_request.status = RequestStatus.SENT
+    service_request.status = RequestStatus.NEW
     service_request.save(update_fields=["status"])
 
     # Provider offer
@@ -268,7 +268,7 @@ def test_accept_offer_assigns_request_and_removes_from_competitive_available():
     assert created.status_code == 201
     request_id = created.json()["id"]
     sr = ServiceRequest.objects.get(id=request_id)
-    sr.status = RequestStatus.SENT
+    sr.status = RequestStatus.NEW
     sr.save(update_fields=["status"])
 
     # Provider #1
@@ -311,7 +311,7 @@ def test_accept_offer_assigns_request_and_removes_from_competitive_available():
 
     sr.refresh_from_db()
     assert sr.provider_id == p2.id
-    assert sr.status == RequestStatus.SENT
+    assert sr.status == RequestStatus.NEW
 
     # Must disappear from competitive available list for all providers
     p1_available = p1_api.get("/api/marketplace/provider/competitive/available/")
@@ -330,3 +330,4 @@ def test_accept_offer_assigns_request_and_removes_from_competitive_available():
     p1_assigned = p1_api.get("/api/marketplace/provider/requests/?status_group=new")
     assert p1_assigned.status_code == 200
     assert request_id not in {item["id"] for item in p1_assigned.json()}
+

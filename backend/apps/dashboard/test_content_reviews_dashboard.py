@@ -12,6 +12,7 @@ from apps.marketplace.models import ServiceRequest
 from apps.providers.models import Category, ProviderProfile, SubCategory
 from apps.reviews.models import Review, ReviewModerationStatus
 from apps.content.models import SiteContentBlock, SiteLegalDocument
+from apps.unified_requests.models import UnifiedRequest
 
 
 pytestmark = pytest.mark.django_db
@@ -129,6 +130,13 @@ def test_reviews_dashboard_smoke_permissions_and_transition():
     review.refresh_from_db()
     assert review.moderation_status == ReviewModerationStatus.HIDDEN
     assert review.moderated_by_id == admin_user.id
+    ur = UnifiedRequest.objects.get(
+        source_app="reviews",
+        source_model="Review",
+        source_object_id=str(review.id),
+    )
+    assert ur.request_type == "reviews"
+    assert ur.status == "closed"
 
     log = AuditLog.objects.filter(
         action=AuditAction.REVIEW_MODERATED,

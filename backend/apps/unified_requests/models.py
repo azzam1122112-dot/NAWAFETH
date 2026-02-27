@@ -10,6 +10,7 @@ class UnifiedRequestType(models.TextChoices):
     VERIFICATION = "verification", "توثيق (AD)"
     SUBSCRIPTION = "subscription", "ترقية واشتراكات (SD)"
     EXTRAS = "extras", "خدمات إضافية (P)"
+    REVIEWS = "reviews", "مراجعات وتقييمات (RV)"
 
 
 UNIFIED_REQUEST_PREFIX_MAP: dict[str, str] = {
@@ -18,6 +19,7 @@ UNIFIED_REQUEST_PREFIX_MAP: dict[str, str] = {
     UnifiedRequestType.VERIFICATION: "AD",
     UnifiedRequestType.SUBSCRIPTION: "SD",
     UnifiedRequestType.EXTRAS: "P",
+    UnifiedRequestType.REVIEWS: "RV",
 }
 
 

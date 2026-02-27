@@ -9,6 +9,7 @@ from apps.marketplace.models import ServiceRequest
 from apps.providers.models import ProviderProfile
 from apps.notifications.services import create_notification
 from .models import Review, ReviewModerationStatus
+from .services import sync_review_to_unified
 from .serializers import (
 	ReviewCreateSerializer, ReviewListSerializer, ProviderRatingSummarySerializer,
 	ProviderReviewReplySerializer,
@@ -41,6 +42,7 @@ class CreateReviewView(APIView):
 			on_time=s.validated_data.get("on_time"),
 			comment=s.validated_data.get("comment", ""),
 		)
+		sync_review_to_unified(review=review, changed_by=request.user, force_status="new")
 
 		return Response(
 			{"ok": True, "review_id": review.id},

@@ -73,6 +73,11 @@ from apps.unified_requests.models import (
     UnifiedRequestStatusLog,
     UnifiedRequestType,
 )
+from apps.unified_requests.workflows import (
+    THREE_STAGE_ALLOWED_STATUSES,
+    allowed_statuses_for_request_type,
+    is_valid_transition,
+)
 from .forms import AcceptAssignProviderForm, CategoryForm, SubCategoryForm
 
 # إن كانت عندك Enums استوردها (عدّل حسب مشروعك)
@@ -289,6 +294,8 @@ def _unified_request_dashboard_link(obj: UnifiedRequest) -> str:
         return reverse("dashboard:verification_request_detail", args=[sid])
     if source_app == "promo" and source_model == "promorequest" and sid is not None:
         return reverse("dashboard:promo_request_detail", args=[sid])
+    if source_app == "reviews" and source_model == "review" and sid is not None:
+        return reverse("dashboard:reviews_dashboard_detail", args=[sid])
     if source_app == "subscriptions":
         q = getattr(getattr(obj, "requester", None), "phone", "") or ""
         return f"{reverse('dashboard:subscriptions_list')}?q={q}" if q else reverse("dashboard:subscriptions_list")
@@ -305,6 +312,7 @@ def _unified_request_source_dashboard_code(obj: UnifiedRequest) -> str:
         "promo": "promo",
         "subscriptions": "subs",
         "extras": "extras",
+        "reviews": "content",
     }.get((obj.source_app or "").strip().lower(), "")
 
 
@@ -536,6 +544,7 @@ def unified_requests_list(request: HttpRequest) -> HttpResponse:
         "promo": qs.filter(request_type=UnifiedRequestType.PROMO).count(),
         "subscription": qs.filter(request_type=UnifiedRequestType.SUBSCRIPTION).count(),
         "extras": qs.filter(request_type=UnifiedRequestType.EXTRAS).count(),
+        "reviews": qs.filter(request_type=UnifiedRequestType.REVIEWS).count(),
     }
 
     if _want_xlsx(request) or _want_pdf(request) or _want_csv(request):
@@ -2937,13 +2946,7 @@ def subscription_request_set_status_action(request: HttpRequest, subscription_id
     sub = get_object_or_404(Subscription, id=subscription_id)
     new_status = (request.POST.get("status") or "").strip()
     note = (request.POST.get("note") or "").strip()
-    allowed_statuses = {
-        UnifiedRequestStatus.NEW,
-        UnifiedRequestStatus.IN_PROGRESS,
-        UnifiedRequestStatus.COMPLETED,
-        UnifiedRequestStatus.RETURNED,
-        UnifiedRequestStatus.CLOSED,
-    }
+    allowed_statuses = set(allowed_statuses_for_request_type(UnifiedRequestType.SUBSCRIPTION))
     if new_status not in allowed_statuses:
         messages.warning(request, "حالة طلب الاشتراك غير صالحة")
         return redirect("dashboard:subscription_request_detail", subscription_id=sub.id)
@@ -2961,9 +2964,16 @@ def subscription_request_set_status_action(request: HttpRequest, subscription_id
     if prev_status == new_status:
         messages.info(request, "الحالة الحالية مطابقة للحالة المطلوبة")
         return redirect("dashboard:subscription_request_detail", subscription_id=sub.id)
+    if not is_valid_transition(
+        request_type=UnifiedRequestType.SUBSCRIPTION,
+        from_status=prev_status,
+        to_status=new_status,
+    ):
+        messages.warning(request, "انتقال الحالة غير مسموح في مسار الاشتراكات")
+        return redirect("dashboard:subscription_request_detail", subscription_id=sub.id)
 
     ur.status = new_status
-    if new_status in {UnifiedRequestStatus.CLOSED, UnifiedRequestStatus.COMPLETED}:
+    if new_status == UnifiedRequestStatus.COMPLETED:
         ur.closed_at = ur.closed_at or timezone.now()
     else:
         ur.closed_at = None
@@ -3132,7 +3142,7 @@ def extras_ops(request: HttpRequest) -> HttpResponse:
             "inq_page_obj": inq_page_obj,
             "req_page_obj": req_page_obj,
             "inq_status_choices": SupportTicketStatus.choices,
-            "req_status_choices": UnifiedRequestStatus.choices,
+            "req_status_choices": [(v, l) for v, l in UnifiedRequestStatus.choices if v in set(THREE_STAGE_ALLOWED_STATUSES)],
         },
     )
 
@@ -3278,7 +3288,7 @@ def extras_request_detail(request: HttpRequest, unified_request_id: int) -> Http
             "quick_links": quick_links,
             "status_logs": ur.status_logs.all(),
             "assignment_logs": ur.assignment_logs.all(),
-            "status_choices": UnifiedRequestStatus.choices,
+            "status_choices": [(v, l) for v, l in UnifiedRequestStatus.choices if v in set(THREE_STAGE_ALLOWED_STATUSES)],
             "staff_users": staff_users,
             "can_write": _dashboard_allowed(request.user, "extras", write=True),
             "back_url": reverse("dashboard:extras_ops"),
@@ -3349,7 +3359,7 @@ def extras_request_status_action(request: HttpRequest, unified_request_id: int) 
 
     status_new = (request.POST.get("status") or "").strip()
     note = (request.POST.get("note") or "").strip()
-    allowed_statuses = {v for v, _ in UnifiedRequestStatus.choices}
+    allowed_statuses = set(allowed_statuses_for_request_type(UnifiedRequestType.EXTRAS))
     if not status_new or status_new not in allowed_statuses:
         messages.warning(request, "اختر حالة صحيحة")
         return redirect("dashboard:extras_request_detail", unified_request_id=ur.id)
@@ -3359,8 +3369,15 @@ def extras_request_status_action(request: HttpRequest, unified_request_id: int) 
             ur = UnifiedRequest.objects.select_for_update().get(id=ur.id)
             old = ur.status
             if old != status_new:
+                if not is_valid_transition(
+                    request_type=UnifiedRequestType.EXTRAS,
+                    from_status=old,
+                    to_status=status_new,
+                ):
+                    messages.warning(request, "انتقال الحالة غير مسموح في مسار الخدمات الإضافية")
+                    return redirect("dashboard:extras_request_detail", unified_request_id=ur.id)
                 ur.status = status_new
-                if status_new in {"closed", "completed", "cancelled", "expired"} and ur.closed_at is None:
+                if status_new == UnifiedRequestStatus.COMPLETED and ur.closed_at is None:
                     ur.closed_at = timezone.now()
                     ur.save(update_fields=["status", "closed_at", "updated_at"])
                 else:

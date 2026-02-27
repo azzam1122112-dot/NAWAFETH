@@ -422,6 +422,7 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
         videos: _videos,
         files: _files,
         audioPath: _audioPath,
+        quoteDeadline: requestType == 'competitive' ? _deadline : null,
       );
 
       if (!result.ok) {

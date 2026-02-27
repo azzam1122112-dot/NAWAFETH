@@ -91,10 +91,10 @@ def test_urgent_accept_locks_and_accepts_once_happy_path():
     assert res.status_code == 200
     assert res.json()["ok"] is True
     assert res.json()["request_id"] == sr.id
-    assert res.json()["status"] == "accepted"
+    assert res.json()["status"] == "in_progress"
     assert res.json()["provider"] == "محمد التصميم"
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.ACCEPTED
+    assert sr.status == RequestStatus.IN_PROGRESS
     assert sr.provider_id == provider.id
 
 
@@ -393,7 +393,7 @@ def test_urgent_request_disappears_from_available_for_other_providers_after_acce
         request_type=RequestType.URGENT,
         city="الرياض",
         is_urgent=True,
-        status=RequestStatus.SENT,
+        status=RequestStatus.NEW,
     )
 
     before_1 = client.get("/api/marketplace/provider/urgent/available/")
@@ -413,8 +413,9 @@ def test_urgent_request_disappears_from_available_for_other_providers_after_acce
 
     sr.refresh_from_db()
     assert sr.provider_id == p1.id
-    assert sr.status == RequestStatus.ACCEPTED
+    assert sr.status == RequestStatus.IN_PROGRESS
 
     after_2 = client2.get("/api/marketplace/provider/urgent/available/")
     assert after_2.status_code == 200
     assert sr.id not in {item["id"] for item in after_2.json()}
+

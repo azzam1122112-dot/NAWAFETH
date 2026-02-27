@@ -40,6 +40,7 @@ class MarketplaceApi {
     List<dynamic>? videos,
     List<dynamic>? files,
     String? audioPath,
+    DateTime? quoteDeadline,
   }) async {
     final result = await createRequestDetailed(
       subcategoryId: subcategoryId,
@@ -53,6 +54,7 @@ class MarketplaceApi {
       videos: videos,
       files: files,
       audioPath: audioPath,
+      quoteDeadline: quoteDeadline,
     );
     return result.ok;
   }
@@ -69,6 +71,7 @@ class MarketplaceApi {
     List<dynamic>? videos,
     List<dynamic>? files,
     String? audioPath,
+    DateTime? quoteDeadline,
   }) async {
     final token = await _session.readAccessToken();
     if (token == null) {
@@ -88,6 +91,8 @@ class MarketplaceApi {
         'city': city,
         if ((dispatchMode ?? '').trim().isNotEmpty)
           'dispatch_mode': dispatchMode!.trim(),
+        if (quoteDeadline != null)
+          'quote_deadline': quoteDeadline.toIso8601String().split('T').first,
       });
 
       // Add Images

@@ -8,6 +8,7 @@ from apps.providers.models import Category, SubCategory, ProviderProfile, Provid
 from apps.marketplace.models import ServiceRequest, RequestType, RequestStatus
 from apps.reviews.models import Review
 from apps.notifications.models import Notification
+from apps.unified_requests.models import UnifiedRequest
 
 
 @pytest.mark.django_db
@@ -93,6 +94,15 @@ def test_review_only_after_completed_and_only_owner_and_no_duplicate():
     )
     assert r2.status_code == 201
     assert Review.objects.filter(request=sr).count() == 1
+    review = Review.objects.get(request=sr)
+    ur = UnifiedRequest.objects.get(
+        source_app="reviews",
+        source_model="Review",
+        source_object_id=str(review.id),
+    )
+    assert ur.request_type == "reviews"
+    assert ur.status == "new"
+    assert ur.code.startswith("RV")
 
     provider.refresh_from_db()
     assert provider.rating_count == 1

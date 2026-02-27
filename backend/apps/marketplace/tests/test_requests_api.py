@@ -65,7 +65,7 @@ def test_create_urgent_service_request_auto_sends_and_sets_expiry():
     assert res.status_code == 201
 
     sr = ServiceRequest.objects.get(id=res.json()["id"])
-    assert sr.status == RequestStatus.SENT
+    assert sr.status == RequestStatus.NEW
     assert sr.is_urgent is True
     assert sr.expires_at is not None
 
@@ -417,10 +417,11 @@ def test_create_urgent_creates_urgent_notifications_for_matching_providers_only(
     )
     assert res.status_code == 201
 
-    n_match = Notification.objects.filter(user=provider_user_match, kind="urgent").first()
+    n_match = Notification.objects.filter(user=provider_user_match, kind="urgent_request").first()
     assert n_match is not None
     assert n_match.is_urgent is True
     assert "عاجل" in n_match.title
 
-    n_other = Notification.objects.filter(user=provider_user_other, kind="urgent").first()
+    n_other = Notification.objects.filter(user=provider_user_other, kind="urgent_request").first()
     assert n_other is None
+

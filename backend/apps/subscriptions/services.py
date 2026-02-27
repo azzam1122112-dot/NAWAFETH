@@ -13,10 +13,11 @@ from .models import Subscription, SubscriptionPlan, SubscriptionStatus
 
 
 def _subscription_status_to_unified(status: str) -> str:
-    # Unified engine keeps a generalized status set; map GRACE to active lifecycle.
-    if status == SubscriptionStatus.GRACE:
-        return "active"
-    return status
+    if status in {SubscriptionStatus.ACTIVE, SubscriptionStatus.GRACE}:
+        return "in_progress"
+    if status in {SubscriptionStatus.EXPIRED, SubscriptionStatus.CANCELLED}:
+        return "completed"
+    return "new"
 
 
 def _sync_subscription_to_unified(*, sub: Subscription, changed_by=None):

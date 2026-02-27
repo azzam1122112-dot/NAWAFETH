@@ -67,7 +67,7 @@ def test_upsert_unified_request_creates_logs_and_metadata_then_updates():
         source_app="promo",
         source_model="PromoRequest",
         source_object_id=15,
-        status=UnifiedRequestStatus.PENDING_PAYMENT,
+        status=UnifiedRequestStatus.IN_PROGRESS,
         priority="professional",
         summary="تم التسعير",
         metadata={"ad_type": "banner_home", "quoted": True},
@@ -78,7 +78,7 @@ def test_upsert_unified_request_creates_logs_and_metadata_then_updates():
     )
 
     assert ur2.id == ur.id
-    assert ur2.status == UnifiedRequestStatus.PENDING_PAYMENT
+    assert ur2.status == UnifiedRequestStatus.IN_PROGRESS
     assert ur2.status_logs.count() == 2
     assert ur2.assignment_logs.count() == 1  # no assignment change
     assert ur2.metadata_record.payload["quoted"] is True

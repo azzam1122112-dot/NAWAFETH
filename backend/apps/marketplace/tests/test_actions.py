@@ -25,7 +25,7 @@ def test_client_can_send_and_cancel(client_user, subcategory):
 
     execute_action(user=client_user, request_id=sr.id, action="send", provider_profile=None)
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.SENT
+    assert sr.status == RequestStatus.NEW
 
     execute_action(user=client_user, request_id=sr.id, action="cancel", provider_profile=None)
     sr.refresh_from_db()
@@ -39,10 +39,11 @@ def test_provider_can_accept_when_sent(provider_user, provider_profile, subcateg
     # client sends
     execute_action(user=client, request_id=sr.id, action="send", provider_profile=None)
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.SENT
+    assert sr.status == RequestStatus.NEW
 
     # provider accepts
     execute_action(user=provider_user, request_id=sr.id, action="accept", provider_profile=provider_profile)
     sr.refresh_from_db()
-    assert sr.status == RequestStatus.ACCEPTED
+    assert sr.status == RequestStatus.IN_PROGRESS
     assert sr.provider_id == provider_profile.id
+

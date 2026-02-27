@@ -39,7 +39,7 @@ def test_subscribe(api, user):
     sub = Subscription.objects.get(pk=r.data["id"])
     ur = UnifiedRequest.objects.get(source_app="subscriptions", source_model="Subscription", source_object_id=str(sub.id))
     assert ur.code.startswith("SD")
-    assert ur.status == "pending_payment"
+    assert ur.status == "new"
     assert ur.metadata_record.payload.get("invoice_id") == sub.invoice_id
 
 
@@ -69,7 +69,7 @@ def test_subscription_activation_and_refresh_syncs_unified(user):
 
     sub = activate_subscription_after_payment(sub=sub)
     ur = UnifiedRequest.objects.get(source_app="subscriptions", source_model="Subscription", source_object_id=str(sub.id))
-    assert ur.status == "active"
+    assert ur.status == "in_progress"
     assert ur.metadata_record.payload.get("subscription_status") == "active"
 
     sub.end_at = sub.start_at - timedelta(seconds=1)
@@ -77,7 +77,7 @@ def test_subscription_activation_and_refresh_syncs_unified(user):
     sub.save(update_fields=["end_at", "grace_end_at", "updated_at"])
     sub = refresh_subscription_status(sub=sub)
     ur.refresh_from_db()
-    # GRACE maps to active in unified generalized lifecycle.
+    # GRACE maps to in_progress in the unified operational lifecycle.
     assert sub.status == "grace"
-    assert ur.status == "active"
+    assert ur.status == "in_progress"
     assert ur.metadata_record.payload.get("subscription_status") == "grace"

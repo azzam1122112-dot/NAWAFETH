@@ -13,6 +13,7 @@ from apps.audit.models import AuditAction
 from apps.audit.services import log_action
 from apps.content.services import sanitize_text
 from apps.reviews.models import Review, ReviewModerationStatus
+from apps.reviews.services import sync_review_to_unified
 
 from .auth import dashboard_login_required
 from .views import _dashboard_allowed, dashboard_access_required
@@ -114,6 +115,7 @@ def reviews_dashboard_moderate_action(request, review_id: int):
     review.moderated_at = timezone.now()
     review.moderated_by = request.user
     review.save(update_fields=["moderation_status", "moderation_note", "moderated_at", "moderated_by"])
+    sync_review_to_unified(review=review, changed_by=request.user, force_status="closed")
 
     log_action(
         actor=request.user,
@@ -145,6 +147,7 @@ def reviews_dashboard_respond_action(request, review_id: int):
     review.management_reply_at = timezone.now()
     review.management_reply_by = request.user
     review.save(update_fields=["management_reply", "management_reply_at", "management_reply_by"])
+    sync_review_to_unified(review=review, changed_by=request.user)
 
     log_action(
         actor=request.user,

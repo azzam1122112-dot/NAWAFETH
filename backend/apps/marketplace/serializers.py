@@ -26,6 +26,7 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         child=serializers.FileField(), required=False, write_only=True
     )
     audio = serializers.FileField(required=False, write_only=True)
+    quote_deadline = serializers.DateField(required=False, allow_null=True)
 
     class Meta:
         model = ServiceRequest
@@ -42,6 +43,7 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
             "videos",
             "files",
             "audio",
+            "quote_deadline",
         )
 
     def validate_request_type(self, value):
@@ -173,9 +175,6 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
         return self._status_group_value(getattr(obj, "status", ""))
 
     def get_status_label(self, obj):
-        raw = (getattr(obj, "status", "") or "").strip().lower()
-        if raw == "accepted":
-            return "بانتظار اعتماد العميل"
         group = self.get_status_group(obj)
         return {
             "new": "جديد",
@@ -239,6 +238,7 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
             "provider",
             "provider_name",
             "provider_phone",
+            "quote_deadline",
             "expected_delivery_at",
             "estimated_service_amount",
             "received_amount",
@@ -294,8 +294,8 @@ class RequestActionSerializer(serializers.Serializer):
 
 
 class ClientRequestUpdateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=255, required=False, allow_blank=False)
-    description = serializers.CharField(required=False, allow_blank=False)
+    title = serializers.CharField(max_length=50, required=False, allow_blank=False)
+    description = serializers.CharField(max_length=500, required=False, allow_blank=False)
 
     def validate(self, attrs):
         if "title" not in attrs and "description" not in attrs:

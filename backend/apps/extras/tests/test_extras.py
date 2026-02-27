@@ -38,7 +38,7 @@ def test_buy_extra(api, user, settings):
     p = ExtraPurchase.objects.get(pk=r.data["id"])
     ur = UnifiedRequest.objects.get(source_app="extras", source_model="ExtraPurchase", source_object_id=str(p.id))
     assert ur.code.startswith("P")
-    assert ur.status == "pending_payment"
+    assert ur.status == "new"
     assert ur.metadata_record.payload.get("invoice_id") == p.invoice_id
 
 
@@ -61,13 +61,13 @@ def test_extra_activation_and_credit_consumption_syncs_unified(user, settings):
 
     ur = UnifiedRequest.objects.get(source_app="extras", source_model="ExtraPurchase", source_object_id=str(p.id))
     assert p.status == "active"
-    assert ur.status == "active"
+    assert ur.status == "in_progress"
     assert ur.metadata_record.payload.get("credits_total") == 2
 
     assert consume_credit(user=user, sku="tickets_2", amount=1) is True
     ur.refresh_from_db()
     assert ur.metadata_record.payload.get("credits_used") == 1
-    assert ur.status == "active"
+    assert ur.status == "in_progress"
 
     assert consume_credit(user=user, sku="tickets_2", amount=1) is True
     p.refresh_from_db()

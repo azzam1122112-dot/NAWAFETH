@@ -90,17 +90,14 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
       return;
     }
 
-    final description = selectedDate == null
-        ? details
-        : '$details\n\nآخر موعد لاستلام العروض: ${DateFormat.yMMMMd('ar_SA').format(selectedDate!)}';
-
     setState(() => _submitting = true);
     final success = await MarketplaceApi().createRequest(
       subcategoryId: _selectedSubCategory!.id,
       title: title,
-      description: description,
+      description: details,
       requestType: 'competitive',
       city: city,
+      quoteDeadline: selectedDate,
     );
     if (!mounted) return;
     setState(() => _submitting = false);
@@ -420,7 +417,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _titleController,
-                      maxLength: 60,
+                      maxLength: 50,
                       decoration: _fieldDecoration(
                         isDark: isDark,
                         hint: 'عنوان الطلب (مثال: إصلاح تسريب مياه)',
@@ -431,7 +428,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _detailsController,
-                      maxLength: 700,
+                      maxLength: 500,
                       maxLines: 4,
                       decoration: _fieldDecoration(
                         isDark: isDark,
