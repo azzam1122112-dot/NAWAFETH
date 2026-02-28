@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../models/provider_order.dart';
+import '../../models/service_request_model.dart';
+import '../../services/marketplace_service.dart';
 import '../client_orders_screen.dart';
 import 'provider_order_details_screen.dart';
 
@@ -21,7 +22,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedStatus;
 
-  late List<ProviderOrder> _orders;
+  List<ServiceRequest> _orders = [];
+  bool _loading = true;
+  String? _error;
 
   bool _accountChecked = false;
   bool _isProviderAccount = false;
@@ -30,7 +33,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
   void initState() {
     super.initState();
     _ensureProviderAccount();
-    _orders = _demoOrdersForProvider();
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -53,28 +55,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
           MaterialPageRoute(builder: (_) => const ClientOrdersScreen()),
         );
       });
+    } else {
+      _loadOrders();
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_accountChecked) {
-      if (widget.embedded) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (!_isProviderAccount) {
-      if (widget.embedded) {
-        return const SizedBox.shrink();
-      }
-      return const Scaffold(body: SizedBox.shrink());
-    }
-
-    return widget.embedded
-        ? _buildProviderOrdersBody(context)
-        : _buildProviderOrders(context);
   }
 
   @override
@@ -83,138 +66,104 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
     super.dispose();
   }
 
-  List<ProviderOrder> _demoOrdersForProvider() {
-    return [
-      ProviderOrder(
-        id: 'R012345',
-        serviceCode: '@111222',
-        createdAt: DateTime(2024, 1, 1, 16, 35),
-        status: 'جديد',
-        clientName: 'أحمد العتيبي',
-        clientHandle: '@ahmed_at',
-        clientPhone: '0501234567',
-        clientCity: 'الرياض',
-        title: 'عنوان الطلب',
-        details: 'تفاصيل الطلب هنا (وهمية): وصف مختصر لمتطلبات العميل ونطاق الخدمة المطلوبة.',
-        attachments: const [
-          ProviderOrderAttachment(name: 'صور_العطل.jpg', type: 'IMG'),
-          ProviderOrderAttachment(name: 'فواتير.pdf', type: 'PDF'),
-        ],
-      ),
-      ProviderOrder(
-        id: 'R012346',
-        serviceCode: '@111223',
-        createdAt: DateTime(2024, 1, 2, 11, 10),
-        status: 'تحت التنفيذ',
-        clientName: 'ريم الشهري',
-        clientHandle: '@reem22',
-        clientPhone: '0559876543',
-        clientCity: 'جدة',
-        title: 'تصميم مقترح للديكور',
-        details: 'تفاصيل الطلب هنا (وهمية): تحديثات أسبوعية مع تسليم مقترح أولي ثم نسخة نهائية.',
-        expectedDeliveryAt: DateTime(2024, 1, 10, 18, 0),
-        estimatedServiceAmountSR: 1500,
-        receivedAmountSR: 500,
-        remainingAmountSR: 1000,
-      ),
-      ProviderOrder(
-        id: 'R012347',
-        serviceCode: '@111224',
-        createdAt: DateTime(2024, 1, 3, 9, 5),
-        status: 'مكتمل',
-        clientName: 'صالح القحطاني',
-        clientHandle: '@saleh9',
-        clientPhone: '0531112233',
-        clientCity: 'الدمام',
-        title: 'استشارة مكتوبة',
-        details: 'تفاصيل الطلب هنا (وهمية): تم التسليم وإغلاق الطلب.',
-        attachments: const [
-          ProviderOrderAttachment(name: 'إيصال_الدفع.jpg', type: 'IMG'),
-          ProviderOrderAttachment(name: 'تقرير_نهائي.pdf', type: 'PDF'),
-          ProviderOrderAttachment(name: 'مقطع_فيديو.mp4', type: 'VID'),
-        ],
-        deliveredAt: DateTime(2024, 1, 7, 13, 0),
-        actualServiceAmountSR: 950,
-      ),
-      ProviderOrder(
-        id: 'R012348',
-        serviceCode: '@111225',
-        createdAt: DateTime(2024, 1, 4, 14, 5),
-        status: 'ملغي',
-        clientName: 'نور الحربي',
-        clientHandle: '@noor12',
-        clientPhone: '0547788990',
-        clientCity: 'مكة',
-        title: 'شعار وهوية',
-        details: 'تفاصيل الطلب هنا (وهمية): تم الإلغاء قبل بدء التنفيذ.',
-        canceledAt: DateTime(2024, 1, 5, 9, 30),
-        cancelReason: 'تغيير المتطلبات قبل بدء التنفيذ.',
-      ),
-    ];
+  /// ─── تحميل الطلبات من API ───
+  Future<void> _loadOrders() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      String? statusGroup;
+      switch (_selectedStatus) {
+        case 'جديد':
+          statusGroup = 'new';
+          break;
+        case 'تحت التنفيذ':
+          statusGroup = 'in_progress';
+          break;
+        case 'مكتمل':
+          statusGroup = 'completed';
+          break;
+        case 'ملغي':
+          statusGroup = 'cancelled';
+          break;
+      }
+
+      final orders = await MarketplaceService.getProviderRequests(
+        statusGroup: statusGroup,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _orders = orders;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'تعذّر تحميل الطلبات';
+        _loading = false;
+      });
+    }
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'مكتمل':
+  Color _statusColor(String statusGroup) {
+    switch (statusGroup) {
+      case 'completed':
         return Colors.green;
-      case 'ملغي':
+      case 'cancelled':
         return Colors.red;
-      case 'تحت التنفيذ':
+      case 'in_progress':
         return Colors.orange;
-      case 'جديد':
+      case 'new':
         return Colors.amber.shade800;
       default:
         return Colors.grey;
     }
   }
 
-  String _formatDate(DateTime date) {
-    return DateFormat('HH:mm  dd/MM/yyyy', 'ar').format(date);
+  String _formatDate(DateTime date) =>
+      DateFormat('HH:mm  dd/MM/yyyy', 'ar').format(date);
+
+  /// فلترة محلية بالبحث النصي (API لا تدعم search للمزوّد)
+  List<ServiceRequest> _filteredOrders() {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _orders;
+
+    return _orders.where((o) {
+      return o.displayId.toLowerCase().contains(query) ||
+          o.title.toLowerCase().contains(query) ||
+          (o.clientName ?? '').toLowerCase().contains(query);
+    }).toList();
   }
 
-  List<ProviderOrder> _filteredOrders() {
-    final query = _searchController.text.trim();
-    Iterable<ProviderOrder> result = _orders;
-
-    if (_selectedStatus != null) {
-      result = result.where((o) => o.status == _selectedStatus);
-    }
-
-    if (query.isNotEmpty) {
-      final q = query.toLowerCase();
-      bool match(String s) => s.toLowerCase().contains(q);
-      result = result.where((o) {
-        return match(o.id) ||
-            match(o.serviceCode) ||
-            match(o.clientName) ||
-            match(o.clientHandle) ||
-            match(o.title);
-      });
-    }
-
-    return result.toList();
+  void _onStatusChanged(String? status) {
+    setState(() => _selectedStatus = status);
+    _loadOrders();
   }
 
-  Future<void> _openDetails(ProviderOrder order) async {
-    final updated = await Navigator.push<ProviderOrder>(
+  Future<void> _openDetails(ServiceRequest order) async {
+    final refreshed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => ProviderOrderDetailsScreen(order: order),
+        builder: (_) => ProviderOrderDetailsScreen(requestId: order.id),
       ),
     );
 
-    if (updated == null || !mounted) return;
-    setState(() {
-      final idx = _orders.indexWhere((o) => o.id == updated.id);
-      if (idx != -1) {
-        _orders[idx] = updated;
-      }
-    });
+    if (!mounted) return;
+    if (refreshed == true) _loadOrders();
   }
 
   Widget _filterChip(String label) {
     final isSelected = _selectedStatus == label;
-    final color = _statusColor(label);
+    final arabicToStatus = {
+      'جديد': 'new',
+      'تحت التنفيذ': 'in_progress',
+      'مكتمل': 'completed',
+      'ملغي': 'cancelled',
+    };
+    final color = _statusColor(arabicToStatus[label] ?? '');
 
     return Padding(
       padding: const EdgeInsetsDirectional.only(end: 8),
@@ -232,17 +181,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
         selectedColor: color,
         backgroundColor: color.withAlpha(26),
         side: BorderSide(color: color.withAlpha(90)),
-        onSelected: (_) {
-          setState(() {
-            _selectedStatus = isSelected ? null : label;
-          });
-        },
+        onSelected: (_) => _onStatusChanged(isSelected ? null : label),
       ),
     );
   }
 
-  Widget _orderCard(ProviderOrder order) {
-    final statusColor = _statusColor(order.status);
+  Widget _orderCard(ServiceRequest order) {
+    final statusColor = _statusColor(order.statusGroup);
     return InkWell(
       onTap: () => _openDetails(order),
       borderRadius: BorderRadius.circular(16),
@@ -253,7 +198,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
+            BoxShadow(
+                color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
           ],
         ),
         child: Column(
@@ -262,24 +208,54 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    '${order.id}  ${order.clientName}',
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${order.displayId}  ${order.clientName ?? ''}',
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      if (order.requestType != 'normal')
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: order.requestType == 'urgent'
+                                ? Colors.red.withAlpha(25)
+                                : Colors.blue.withAlpha(25),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            order.requestTypeLabel,
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: order.requestType == 'urgent'
+                                  ? Colors.red
+                                  : Colors.blue,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: statusColor.withAlpha(28),
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: statusColor.withAlpha(80)),
                   ),
                   child: Text(
-                    order.status,
+                    order.statusLabel.isNotEmpty
+                        ? order.statusLabel
+                        : order.statusGroup,
                     style: TextStyle(
                       color: statusColor,
                       fontFamily: 'Cairo',
@@ -292,7 +268,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '${order.title}  ${order.serviceCode}',
+              order.title,
               style: const TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 12,
@@ -301,7 +277,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              '${order.clientHandle} • ${_formatDate(order.createdAt)}',
+              _formatDate(order.createdAt),
               style: const TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 12,
@@ -314,32 +290,48 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
     );
   }
 
-  Widget _buildProviderOrders(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: Colors.grey[100],
-        appBar: AppBar(
-          backgroundColor: _mainColor,
-          title: const Text(
-            'إدارة الطلبات',
-            style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: _buildProviderOrdersBody(context),
-        ),
-      ),
-    );
+  @override
+  Widget build(BuildContext context) {
+    if (!_accountChecked) {
+      if (widget.embedded) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (!_isProviderAccount) {
+      return widget.embedded
+          ? const SizedBox.shrink()
+          : const Scaffold(body: SizedBox.shrink());
+    }
+
+    return widget.embedded
+        ? _buildBody()
+        : Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(
+              backgroundColor: Colors.grey[100],
+              appBar: AppBar(
+                backgroundColor: _mainColor,
+                title: const Text('إدارة الطلبات',
+                    style:
+                        TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                iconTheme: const IconThemeData(color: Colors.white),
+              ),
+              body: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _buildBody(),
+              ),
+            ),
+          );
   }
 
-  Widget _buildProviderOrdersBody(BuildContext context) {
+  Widget _buildBody() {
     final filtered = _filteredOrders();
 
     return Column(
       children: [
+        // بحث
         TextField(
           controller: _searchController,
           style: const TextStyle(fontFamily: 'Cairo'),
@@ -362,33 +354,49 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        // فلاتر
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _filterChip('جديد'),
-              _filterChip('تحت التنفيذ'),
-              _filterChip('مكتمل'),
-              _filterChip('ملغي'),
-            ],
-          ),
+          child: Row(children: [
+            _filterChip('جديد'),
+            _filterChip('تحت التنفيذ'),
+            _filterChip('مكتمل'),
+            _filterChip('ملغي'),
+          ]),
         ),
         const SizedBox(height: 12),
+        // القائمة
         Expanded(
-          child: filtered.isEmpty
-              ? const Center(
-                  child: Text(
-                    'لا توجد طلبات',
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      color: Colors.black54,
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) => _orderCard(filtered[index]),
-                ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error!,
+                              style: const TextStyle(fontFamily: 'Cairo')),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                              onPressed: _loadOrders,
+                              child: const Text('إعادة المحاولة',
+                                  style: TextStyle(fontFamily: 'Cairo'))),
+                        ],
+                      ),
+                    )
+                  : filtered.isEmpty
+                      ? const Center(
+                          child: Text('لا توجد طلبات',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  color: Colors.black54)))
+                      : RefreshIndicator(
+                          onRefresh: _loadOrders,
+                          child: ListView.builder(
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) => _orderCard(filtered[i]),
+                          ),
+                        ),
         ),
       ],
     );

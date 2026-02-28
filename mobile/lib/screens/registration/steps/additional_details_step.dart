@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nawafeth/services/profile_service.dart';
+import 'package:nawafeth/utils/debounced_save_runner.dart';
 
 class AdditionalDetailsStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -16,25 +18,108 @@ class AdditionalDetailsStep extends StatefulWidget {
 
 class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   // نبذة عامة عن المزود وخدماته
-  final TextEditingController aboutController = TextEditingController(
-    text:
-        "مزود خدمات متخصص في تقديم حلول رقمية مخصصة، مع التركيز على الجودة والالتزام بمواعيد التسليم.",
-  );
+  final TextEditingController aboutController = TextEditingController();
 
   // قوائم ديناميكية للمؤهلات والخبرات
-  final List<String> qualifications = ["بكالوريوس في علوم الحاسب"];
-
-  final List<String> experiences = [
-    "أكثر من 3 سنوات في تطوير الأنظمة والمنصات الخدمية.",
-  ];
+  final List<String> qualifications = [];
+  final List<String> experiences = [];
 
   final TextEditingController _dialogController = TextEditingController();
+  final DebouncedSaveRunner _autoSaveRunner = DebouncedSaveRunner();
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isInitialized = false;
+  String? _saveError;
+
+  @override
+  void initState() {
+    super.initState();
+    aboutController.addListener(_onAboutChanged);
+    _loadInitialData();
+  }
 
   @override
   void dispose() {
+    aboutController.removeListener(_onAboutChanged);
     aboutController.dispose();
     _dialogController.dispose();
+    _autoSaveRunner.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadInitialData() async {
+    final result = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      final profile = result.data!;
+      final loadedQualifications = _toStringList(profile.qualifications);
+      final loadedExperiences = _toStringList(profile.experiences);
+
+      setState(() {
+        _isInitialized = false;
+        aboutController.text = profile.aboutDetails ?? '';
+        qualifications
+          ..clear()
+          ..addAll(loadedQualifications);
+        experiences
+          ..clear()
+          ..addAll(loadedExperiences);
+        _isLoading = false;
+        _saveError = null;
+        _isInitialized = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = false;
+      _saveError = result.error ?? 'تعذر تحميل بيانات الملف';
+      _isInitialized = true;
+    });
+  }
+
+  List<String> _toStringList(List<dynamic> values) {
+    return values
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  void _onAboutChanged() {
+    if (!_isInitialized) return;
+    _queueAutoSave();
+  }
+
+  void _queueAutoSave() {
+    if (!_isInitialized) return;
+    _autoSaveRunner.schedule(_saveToApi);
+  }
+
+  Future<void> _saveToApi() async {
+    final payload = <String, dynamic>{
+      'about_details': aboutController.text.trim(),
+      'qualifications': List<String>.from(qualifications),
+      'experiences': List<String>.from(experiences),
+    };
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = true;
+    });
+
+    final result = await ProfileService.updateProviderProfile(payload);
+    if (!mounted) return;
+
+    setState(() {
+      _isSaving = false;
+      _saveError = result.isSuccess ? null : (result.error ?? 'فشل الحفظ');
+    });
+  }
+
+  Future<void> _flushAutoSave() async {
+    await _autoSaveRunner.flush();
   }
 
   void _showAddDialog({
@@ -103,6 +188,7 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
       hint: "مثال: شهادة مهنية، دورة معتمدة، أو درجة علمية",
       onConfirm: (value) {
         setState(() => qualifications.add(value));
+        _queueAutoSave();
       },
     );
   }
@@ -113,20 +199,23 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
       hint: "مثال: تنفيذ نظام متكامل لقطاع معين، أو مشاريع معينة",
       onConfirm: (value) {
         setState(() => experiences.add(value));
+        _queueAutoSave();
       },
     );
   }
 
   void _removeQualification(int index) {
     setState(() => qualifications.removeAt(index));
+    _queueAutoSave();
   }
 
   void _removeExperience(int index) {
     setState(() => experiences.removeAt(index));
+    _queueAutoSave();
   }
 
-  void _handleNext() {
-    // كلها اختيارية، لكن لو حاب تضيف تحقق بسيط ممكن هنا
+  Future<void> _handleNext() async {
+    await _flushAutoSave();
     widget.onNext();
   }
 
@@ -143,18 +232,28 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
               _buildHeader(),
               const SizedBox(height: 14),
               _buildInfoCard(),
+              const SizedBox(height: 10),
+              _buildSaveStatus(),
               const SizedBox(height: 18),
 
               // نبذة تفصيلية عامة عن المزود وخدماته
-              _buildAboutCard(),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: CircularProgressIndicator(color: Colors.deepPurple),
+                  ),
+                )
+              else
+                _buildAboutCard(),
               const SizedBox(height: 16),
 
               // كرت المؤهلات
-              _buildQualificationsCard(),
+              if (!_isLoading) _buildQualificationsCard(),
               const SizedBox(height: 16),
 
               // كرت الخبرات العملية
-              _buildExperiencesCard(),
+              if (!_isLoading) _buildExperiencesCard(),
               const SizedBox(height: 26),
 
               // أزرار الانتقال
@@ -162,7 +261,10 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: widget.onBack,
+                      onPressed: () async {
+                        await _flushAutoSave();
+                        widget.onBack();
+                      },
                       icon: const Icon(
                         Icons.arrow_back_ios_new,
                         size: 16,
@@ -190,7 +292,7 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _handleNext,
+                      onPressed: _isLoading ? null : _handleNext,
                       icon: const Icon(
                         Icons.arrow_forward_ios,
                         size: 16,
@@ -223,6 +325,38 @@ class _AdditionalDetailsStepState extends State<AdditionalDetailsStep> {
   }
 
   // ================= UI Helpers =================
+
+  Widget _buildSaveStatus() {
+    if (_isSaving) {
+      return const Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'جاري الحفظ التلقائي...',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      );
+    }
+
+    if (_saveError != null) {
+      return Text(
+        _saveError!,
+        style: const TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 12,
+          color: Colors.redAccent,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
 
   Widget _buildHeader() {
     return Column(

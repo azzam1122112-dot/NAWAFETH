@@ -370,13 +370,15 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
   Widget _profileCompletionCard() {
     final percent = (_profileCompletion * 100).round();
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => const ProviderProfileCompletionScreen(),
           ),
         );
+        if (!mounted) return;
+        await _loadProviderData();
       },
       child: Container(
         padding: const EdgeInsets.all(14),

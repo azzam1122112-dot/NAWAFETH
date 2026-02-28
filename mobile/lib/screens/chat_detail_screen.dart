@@ -3,16 +3,24 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'service_request_form_screen.dart'; // ✅ نموذج طلب الخدمة
+import '../models/chat_message_model.dart';
+import '../services/messaging_service.dart';
+import '../services/auth_service.dart';
+import '../services/api_client.dart';
+import 'service_request_form_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
-  final String name;
-  final bool isOnline;
+  final int? threadId;
+  final String peerName;
+  final int? peerId;
+  final int? peerProviderId;
 
   const ChatDetailScreen({
     super.key,
-    required this.name,
-    required this.isOnline,
+    this.threadId,
+    required this.peerName,
+    this.peerId,
+    this.peerProviderId,
   });
 
   @override
@@ -21,6 +29,7 @@ class ChatDetailScreen extends StatefulWidget {
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   bool _isRecording = false;
   int _recordSeconds = 0;
@@ -30,54 +39,196 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   dynamic _pendingFile;
   int? _pendingDuration;
 
-  // ✅ رسائل مبدئية وهمية (من العميل والمستخدم)
-  final List<Map<String, dynamic>> messages = [
-    {
-      "type": "text",
-      "text": "السلام عليكم، عندي استفسار بخصوص العقد.",
-      "isMe": false,
-      "time": "10:20 ص",
-    },
-    {
-      "type": "text",
-      "text": "وعليكم السلام ورحمة الله، تفضل 🌹",
-      "isMe": true,
-      "time": "10:21 ص",
-    },
-    {
-      "type": "text",
-      "text": "هل تقدر تراجع البند الثالث؟",
-      "isMe": false,
-      "time": "10:22 ص",
-    },
-  ];
+  // ✅ بيانات API
+  List<ChatMessage> _messages = [];
+  bool _isLoading = true;
+  bool _isSending = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _totalCount = 0;
+  int? _myUserId;
+  int? _resolvedThreadId;
+  String? _errorMessage;
 
-  // ✅ إرسال الرسالة النهائية
-  void _sendMessage() {
-    if ((_pendingType == null || _pendingType == "text") &&
-        _controller.text.trim().isEmpty) {
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _resolvedThreadId = widget.threadId;
+    _initChat();
+  }
+
+  Future<void> _initChat() async {
+    _myUserId = await AuthService.getUserId();
+
+    // إذا لم يكن لدينا threadId، نحاول إنشاء/جلب محادثة عبر peerProviderId
+    if (_resolvedThreadId == null && widget.peerProviderId != null) {
+      try {
+        _resolvedThreadId = await MessagingService.getOrCreateDirectThread(widget.peerProviderId!);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'فشل فتح المحادثة';
+        });
+        return;
+      }
+    }
+
+    if (_resolvedThreadId == null) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'لا يمكن فتح هذه المحادثة';
+      });
       return;
     }
 
+    await _loadMessages();
+  }
+
+  Future<void> _loadMessages() async {
+    if (_resolvedThreadId == null) return;
+
     setState(() {
-      messages.add({
-        "type": _pendingType ?? "text",
-        "text":
-            _controller.text.trim().isEmpty ? null : _controller.text.trim(),
-        "file": _pendingFile,
-        "isMe": true,
-        "time": TimeOfDay.now().format(context),
-        "duration": _pendingType == "audio" ? _pendingDuration : null,
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final page = await MessagingService.fetchMessages(_resolvedThreadId!);
+      if (!mounted) return;
+      setState(() {
+        // الرسائل تأتي مرتبة من الأحدث — نعكسها للعرض
+        _messages = page.messages.reversed.toList();
+        _hasMore = page.hasMore;
+        _totalCount = page.totalCount;
+        _isLoading = false;
       });
-      _pendingType = null;
-      _pendingFile = null;
-      _pendingDuration = null;
-      _controller.clear();
-      _recordSeconds = 0;
+
+      // تمييز كمقروءة
+      MessagingService.markRead(_resolvedThreadId!);
+
+      // التمرير لأسفل
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'فشل تحميل الرسائل';
+      });
+    }
+  }
+
+  /// تحميل رسائل أقدم عند التمرير لأعلى
+  void _onScroll() {
+    if (_scrollController.position.pixels <= 50 && _hasMore && !_isLoadingMore) {
+      _loadOlderMessages();
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_resolvedThreadId == null) return;
+    setState(() => _isLoadingMore = true);
+
+    final page = await MessagingService.fetchMessages(
+      _resolvedThreadId!,
+      offset: _messages.length,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _messages.insertAll(0, page.messages.reversed.toList());
+      _hasMore = page.hasMore;
+      _isLoadingMore = false;
     });
   }
 
-  // ✅ التسجيل
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  // ✅ إرسال الرسالة
+  Future<void> _sendMessage() async {
+    if (_isSending) return;
+
+    // التحقق من وجود محتوى
+    final text = _controller.text.trim();
+    final hasPendingFile = _pendingType != null && _pendingType != "text" && _pendingFile != null;
+    final hasPendingAudio = _pendingType == "audio" && _pendingDuration != null;
+
+    if (text.isEmpty && !hasPendingFile && !hasPendingAudio) return;
+    if (_resolvedThreadId == null) return;
+
+    setState(() => _isSending = true);
+
+    SendResult result;
+
+    if (hasPendingFile && _pendingFile is File) {
+      // إرسال مرفق
+      String attachmentType = 'file';
+      if (_pendingType == 'image') attachmentType = 'image';
+      if (_pendingType == 'audio') attachmentType = 'audio';
+      // الفيديو يُعامل كملف في الباكند
+
+      result = await MessagingService.sendAttachment(
+        _resolvedThreadId!,
+        body: text.isNotEmpty ? text : null,
+        file: _pendingFile as File,
+        attachmentType: attachmentType,
+      );
+    } else {
+      // إرسال نص
+      result = await MessagingService.sendTextMessage(_resolvedThreadId!, text);
+    }
+
+    if (!mounted) return;
+    setState(() => _isSending = false);
+
+    if (result.success) {
+      _controller.clear();
+      setState(() {
+        _pendingType = null;
+        _pendingFile = null;
+        _pendingDuration = null;
+        _recordSeconds = 0;
+      });
+      // إعادة تحميل الرسائل لجلب الرسالة الجديدة من السيرفر
+      await _refreshMessages();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.error ?? 'فشل إرسال الرسالة',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// تحديث الرسائل بدون إعادة التحميل الكامل
+  Future<void> _refreshMessages() async {
+    if (_resolvedThreadId == null) return;
+    final page = await MessagingService.fetchMessages(_resolvedThreadId!, limit: 30);
+    if (!mounted) return;
+    setState(() {
+      _messages = page.messages.reversed.toList();
+      _hasMore = page.hasMore;
+      _totalCount = page.totalCount;
+    });
+    _scrollToBottom();
+  }
+
+  // ✅ التسجيل الصوتي
   void _startRecording() {
     setState(() {
       _isRecording = true;
@@ -133,7 +284,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
-  // ✅ تسجيل فيديو (بحد أقصى 3 دقائق)
+  // ✅ تسجيل فيديو
   Future<void> _recordVideo() async {
     final picked = await ImagePicker().pickVideo(
       source: ImageSource.camera,
@@ -149,9 +300,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   // ✅ اختيار فيديو من المعرض
   Future<void> _pickVideoFromGallery() async {
-    final picked = await ImagePicker().pickVideo(
-      source: ImageSource.gallery,
-    );
+    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
     if (picked != null) {
       setState(() {
         _pendingType = "video";
@@ -167,75 +316,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder:
-          (_) => Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.image, color: Colors.deepPurple),
-                title: const Text(
-                  "اختيار صورة من المعرض",
-                  style: TextStyle(fontFamily: "Cairo"),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.deepPurple),
-                title: const Text(
-                  "تصوير صورة",
-                  style: TextStyle(fontFamily: "Cairo"),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _takePhoto();
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.videocam,
-                  color: Colors.deepPurple,
-                ),
-                title: const Text(
-                  "تسجيل فيديو (حد أقصى 3 دقائق)",
-                  style: TextStyle(fontFamily: "Cairo"),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _recordVideo();
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.video_library,
-                  color: Colors.deepPurple,
-                ),
-                title: const Text(
-                  "اختيار فيديو من المعرض",
-                  style: TextStyle(fontFamily: "Cairo"),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickVideoFromGallery();
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.insert_drive_file,
-                  color: Colors.deepPurple,
-                ),
-                title: const Text(
-                  "اختيار ملف",
-                  style: TextStyle(fontFamily: "Cairo"),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickFile();
-                },
-              ),
-            ],
+      builder: (_) => Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.image, color: Colors.deepPurple),
+            title: const Text("اختيار صورة من المعرض", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () { Navigator.pop(context); _pickImage(); },
           ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt, color: Colors.deepPurple),
+            title: const Text("تصوير صورة", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () { Navigator.pop(context); _takePhoto(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.videocam, color: Colors.deepPurple),
+            title: const Text("تسجيل فيديو (حد أقصى 3 دقائق)", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () { Navigator.pop(context); _recordVideo(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.video_library, color: Colors.deepPurple),
+            title: const Text("اختيار فيديو من المعرض", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () { Navigator.pop(context); _pickVideoFromGallery(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.insert_drive_file, color: Colors.deepPurple),
+            title: const Text("اختيار ملف", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () { Navigator.pop(context); _pickFile(); },
+          ),
+        ],
+      ),
     );
   }
 
@@ -250,64 +359,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         children: [
           ListTile(
             leading: const Icon(Icons.mark_chat_read, color: Colors.blue),
-            title: const Text(
-              "اجعلها مقروءة",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
-            onTap: () {
+            title: const Text("اجعلها مقروءة", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () async {
               Navigator.pop(context);
+              await MessagingService.markRead(_resolvedThreadId!);
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text(
-                    "تم تمييز المحادثة كمقروءة",
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
+                  content: Text("تم تمييز المحادثة كمقروءة", style: TextStyle(fontFamily: 'Cairo')),
                 ),
               );
             },
           ),
           ListTile(
             leading: const Icon(Icons.star, color: Colors.amber),
-            title: const Text(
-              "مفضلة",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
-            onTap: () {
+            title: const Text("مفضلة", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () async {
               Navigator.pop(context);
+              await MessagingService.toggleFavorite(_resolvedThreadId!);
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text(
-                    "تمت إضافة المحادثة للمفضلة",
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.label, color: Colors.green),
-            title: const Text(
-              "تمييز كعميل",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "تم تمييز المحادثة كعميل",
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
+                  content: Text("تم تحديث المفضلة", style: TextStyle(fontFamily: 'Cairo')),
                 ),
               );
             },
           ),
           ListTile(
             leading: const Icon(Icons.block, color: Colors.red),
-            title: const Text(
-              "حظر العضو",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
+            title: const Text("حظر العضو", style: TextStyle(fontFamily: "Cairo")),
             onTap: () {
               Navigator.pop(context);
               _showBlockConfirmation();
@@ -315,24 +395,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.report, color: Colors.orange),
-            title: const Text(
-              "الإبلاغ عن عضو",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
+            title: const Text("الإبلاغ عن عضو", style: TextStyle(fontFamily: "Cairo")),
             onTap: () {
               Navigator.pop(context);
               _showReportDialog();
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
-            title: const Text(
-              "حذف المحادثة",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
-            onTap: () {
+            leading: const Icon(Icons.archive_outlined, color: Colors.grey),
+            title: const Text("أرشفة المحادثة", style: TextStyle(fontFamily: "Cairo")),
+            onTap: () async {
               Navigator.pop(context);
-              _showDeleteConfirmation();
+              await MessagingService.toggleArchive(_resolvedThreadId!);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("تمت أرشفة المحادثة", style: TextStyle(fontFamily: 'Cairo')),
+                ),
+              );
+              Navigator.pop(context); // العودة لقائمة المحادثات
             },
           ),
         ],
@@ -340,365 +421,65 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  // ✅ تأكيد الحظر
+  // ✅ تأكيد الحظر — يستدعي API
   void _showBlockConfirmation() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          "حظر العضو",
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-        ),
+        title: const Text("حظر العضو", style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
         content: Text(
-          "هل أنت متأكد من حظر ${widget.name}؟ \n\nلن يتمكن من مراسلتك بعد ذلك.",
+          "هل أنت متأكد من حظر ${widget.peerName}؟ \n\nلن يتمكن من مراسلتك بعد ذلك.",
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "إلغاء",
-              style: TextStyle(fontFamily: 'Cairo'),
-            ),
+            child: const Text("إلغاء", style: TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
+              final success = await MessagingService.toggleBlock(_resolvedThreadId!);
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
+                SnackBar(
                   content: Text(
-                    "تم حظر العضو بنجاح",
-                    style: TextStyle(fontFamily: 'Cairo'),
+                    success ? "تم حظر العضو بنجاح" : "فشل الحظر",
+                    style: const TextStyle(fontFamily: 'Cairo'),
                   ),
-                  backgroundColor: Colors.red,
+                  backgroundColor: success ? Colors.red : Colors.grey,
                 ),
               );
+              if (success) Navigator.pop(context); // العودة لقائمة المحادثات
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text(
-              "حظر",
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("حظر", style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  // ✅ تأكيد حذف المحادثة
-  void _showDeleteConfirmation() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          "حذف المحادثة",
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-        ),
-        content: const Text(
-          "هل أنت متأكد من حذف هذه المحادثة؟ \n\nلن تتمكن من استرجاعها بعد ذلك.",
-          style: TextStyle(fontFamily: 'Cairo'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "إلغاء",
-              style: TextStyle(fontFamily: 'Cairo'),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() => messages.clear());
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "تم حذف المحادثة",
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text(
-              "حذف",
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ إرسال رابط طلب خدمة للعميل
-  void _sendServiceRequestLink() {
-    setState(() {
-      messages.add({
-        "type": "service_request",
-        "text": "يمكنك طلب خدمة من خلال الضلغط على الزر أدناه",
-        "isMe": true,
-        "time": TimeOfDay.now().format(context),
-      });
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "تم إرسال رابط طلب الخدمة للعميل",
-          style: TextStyle(fontFamily: 'Cairo'),
-        ),
-      ),
-    );
-  }
-
-  // ✅ الانتقال إلى صفحة طلب الخدمة
-  void _goToServiceRequest() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ServiceRequestFormScreen(
-          providerName: widget.name,
-          providerId: null, // يمكن تمرير ID مقدم الخدمة إذا كان متاحاً
-        ),
-      ),
-    );
-  }
-
-  // ✅ عرض طلبات العميل
-  void _showClientOrders() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // مقبض السحب
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              // عنوان
-              Row(
-                children: [
-                  const Icon(
-                    Icons.assignment,
-                    color: Colors.deepPurple,
-                    size: 28,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "طلبات ${widget.name}",
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text(
-                          "الطلبات الحالية والسابقة",
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              // قائمة الطلبات
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: [
-                    _orderCard(
-                      title: "مراجعة عقد عمل",
-                      status: "جاري",
-                      date: "2025-12-25",
-                      price: "500 ر.س",
-                      statusColor: Colors.orange,
-                    ),
-                    _orderCard(
-                      title: "استشارة قانونية",
-                      status: "مكتمل",
-                      date: "2025-12-20",
-                      price: "300 ر.س",
-                      statusColor: Colors.green,
-                    ),
-                    _orderCard(
-                      title: "صياغة عقد شراكة",
-                      status: "مكتمل",
-                      date: "2025-11-15",
-                      price: "800 ر.س",
-                      statusColor: Colors.green,
-                    ),
-                    _orderCard(
-                      title: "مراجعة وثيقة قانونية",
-                      status: "ملغي",
-                      date: "2025-10-10",
-                      price: "200 ر.س",
-                      statusColor: Colors.red,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ✅ كرت طلب
-  Widget _orderCard({
-    required String title,
-    required String status,
-    required String date,
-    required String price,
-    required Color statusColor,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: statusColor),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 12,
-                    color: statusColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-              const SizedBox(width: 4),
-              Text(
-                date,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Icon(Icons.attach_money, size: 14, color: Colors.grey[600]),
-              const SizedBox(width: 4),
-              Text(
-                price,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ نموذج الإبلاغ
+  // ✅ الإبلاغ — يرسل للباكند
   void _showReportDialog() {
     String? selectedReason;
     final TextEditingController detailsController = TextEditingController();
+    bool isSending = false;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text(
-            "إبلاغ عن المحادثة",
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-          ),
+          title: const Text("إبلاغ عن المحادثة", style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "المستخدم:",
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  widget.name,
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                ),
+                const Text("المستخدم:", style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                Text(widget.peerName, style: const TextStyle(fontFamily: 'Cairo')),
                 const SizedBox(height: 16),
-                const Text(
-                  "سبب الإبلاغ:",
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                ),
+                const Text("سبب الإبلاغ:", style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: selectedReason,
@@ -706,10 +487,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
-                  hint: const Text(
-                    "اختر السبب",
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
+                  hint: const Text("اختر السبب", style: TextStyle(fontFamily: 'Cairo')),
                   items: [
                     "محتوى غير لائق",
                     "تحرش أو إزعاج",
@@ -718,25 +496,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     "انتهاك الخصوصية",
                     "أخرى",
                   ]
-                      .map((reason) => DropdownMenuItem(
-                            value: reason,
-                            child: Text(
-                              reason,
-                              style: const TextStyle(fontFamily: 'Cairo'),
-                            ),
+                      .map((r) => DropdownMenuItem(
+                            value: r,
+                            child: Text(r, style: const TextStyle(fontFamily: 'Cairo')),
                           ))
                       .toList(),
-                  onChanged: (value) {
-                    setDialogState(() {
-                      selectedReason = value;
-                    });
-                  },
+                  onChanged: (v) => setDialogState(() => selectedReason = v),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  "تفاصيل إضافية (اختياري):",
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                ),
+                const Text("تفاصيل إضافية (اختياري):", style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: detailsController,
@@ -753,43 +521,45 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                "إلغاء",
-                style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
-              ),
+              child: const Text("إلغاء", style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
             ),
             ElevatedButton(
-              onPressed: () {
-                if (selectedReason != null) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "تم إرسال البلاغ بنجاح",
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "يرجى اختيار سبب الإبلاغ",
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-              ),
-              child: const Text(
-                "إرسال",
-                style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-              ),
+              onPressed: isSending
+                  ? null
+                  : () async {
+                      if (selectedReason == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("يرجى اختيار سبب الإبلاغ", style: TextStyle(fontFamily: 'Cairo')),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
+                      setDialogState(() => isSending = true);
+                      final result = await MessagingService.report(
+                        _resolvedThreadId!,
+                        reason: selectedReason!,
+                        details: detailsController.text.trim().isNotEmpty
+                            ? detailsController.text.trim()
+                            : null,
+                      );
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            result.success ? "تم إرسال البلاغ بنجاح" : result.error ?? "فشل الإرسال",
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          backgroundColor: result.success ? Colors.green : Colors.red,
+                        ),
+                      );
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+              child: isSending
+                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text("إرسال", style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
             ),
           ],
         ),
@@ -797,10 +567,30 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  // ✅ خيارات الرسالة
-  void _showMessageOptions(Map<String, dynamic> msg) {
-    final isMe = msg["isMe"] ?? false;
-    
+  // ✅ إرسال رابط طلب خدمة
+  void _sendServiceRequestLink() {
+    // إرسال رسالة نصية تحتوي على رابط طلب الخدمة
+    _controller.text = "يمكنك طلب خدمة عبر الرابط التالي 🔗";
+    _sendMessage();
+  }
+
+  // ✅ الانتقال إلى صفحة طلب الخدمة
+  void _goToServiceRequest() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ServiceRequestFormScreen(
+          providerName: widget.peerName,
+          providerId: widget.peerProviderId?.toString(),
+        ),
+      ),
+    );
+  }
+
+  // ✅ خيارات الرسالة (حذف/نسخ)
+  void _showMessageOptions(ChatMessage msg) {
+    final isMe = msg.senderId == _myUserId;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -808,470 +598,123 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ),
       builder: (_) => Wrap(
         children: [
-          if (!isMe) ...[
+          if (msg.body.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.copy, color: Colors.deepPurple),
+              title: const Text("نسخ النص", style: TextStyle(fontFamily: "Cairo")),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("تم نسخ النص", style: TextStyle(fontFamily: 'Cairo'))),
+                );
+              },
+            ),
+          if (isMe)
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text("حذف الرسالة", style: TextStyle(fontFamily: "Cairo")),
+              onTap: () async {
+                Navigator.pop(context);
+                final success = await MessagingService.deleteMessage(_resolvedThreadId!, msg.id);
+                if (success) {
+                  _refreshMessages();
+                } else {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("فشل حذف الرسالة", style: TextStyle(fontFamily: 'Cairo')),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+            ),
+          if (!isMe)
             ListTile(
               leading: const Icon(Icons.report, color: Colors.orange),
-              title: const Text(
-                "إبلاغ عن هذه الرسالة",
-                style: TextStyle(fontFamily: "Cairo"),
-              ),
+              title: const Text("إبلاغ عن هذه الرسالة", style: TextStyle(fontFamily: "Cairo")),
               onTap: () {
                 Navigator.pop(context);
-                _showReportMessageDialog(msg);
+                _showReportDialog();
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.block, color: Colors.red),
-              title: const Text(
-                "حظر المرسل",
-                style: TextStyle(fontFamily: "Cairo"),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "تم حظر المستخدم بنجاح",
-                      style: TextStyle(fontFamily: 'Cairo'),
-                    ),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              },
-            ),
-          ],
-          ListTile(
-            leading: const Icon(Icons.copy, color: Colors.deepPurple),
-            title: const Text(
-              "نسخ النص",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              if (msg["text"] != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "تم نسخ النص",
-                      style: TextStyle(fontFamily: 'Cairo'),
-                    ),
-                  ),
-                );
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
-            title: const Text(
-              "حذف الرسالة",
-              style: TextStyle(fontFamily: "Cairo"),
-            ),
-            onTap: () {
-              setState(() => messages.remove(msg));
-              Navigator.pop(context);
-            },
-          ),
         ],
       ),
     );
   }
 
-  // ✅ نموذج الإبلاغ عن رسالة
-  void _showReportMessageDialog(Map<String, dynamic> msg) {
-    final TextEditingController reasonController = TextEditingController();
-    String selectedReason = "محتوى غير لائق";
-    
-    final reasons = [
-      "محتوى غير لائق",
-      "احتيال أو نصب",
-      "إزعاج أو مضايقة",
-      "محتوى مخالف للشروط",
-      "أخرى",
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.report,
-                    color: Colors.orange,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  "إبلاغ عن رسالة",
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // محتوى الرسالة
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.person,
-                              size: 16,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.name,
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          "محتوى الرسالة:",
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          msg["text"] ?? msg["type"] ?? "",
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            color: Colors.black54,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "الوقت: ${msg["time"]}",
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 11,
-                            color: Colors.black45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  const Text(
-                    "سبب الإبلاغ:",
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: selectedReason,
-                        isExpanded: true,
-                        items: reasons.map((reason) {
-                          return DropdownMenuItem(
-                            value: reason,
-                            child: Text(
-                              reason,
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 14,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            selectedReason = value!;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  const Text(
-                    "تفاصيل إضافية (اختياري):",
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: reasonController,
-                    maxLines: 3,
-                    maxLength: 300,
-                    decoration: InputDecoration(
-                      hintText: "اكتب التفاصيل هنا...",
-                      hintStyle: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 13,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.all(12),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  "إلغاء",
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "تم إرسال البلاغ للإدارة. شكراً لك",
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  "إرسال البلاغ",
-                  style: TextStyle(fontFamily: 'Cairo'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // ✅ فقاعة الرسائل
-  Widget _buildMessageBubble(Map<String, dynamic> msg) {
-    final isMe = msg["isMe"] ?? false;
-    final type = msg["type"];
-    final file = msg["file"];
+  Widget _buildMessageBubble(ChatMessage msg) {
+    final isMe = msg.senderId == _myUserId;
 
     Color bubbleColor = isMe ? Colors.deepPurple : Colors.grey.shade200;
     Color textColor = isMe ? Colors.white : Colors.black87;
 
     Widget content;
 
-    if (type == "text") {
+    if (msg.hasAttachment) {
+      final fullUrl = ApiClient.buildMediaUrl(msg.attachmentUrl);
+
+      if (msg.attachmentType == 'image' && fullUrl != null) {
+        content = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(fullUrl, width: 200, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 48)),
+            ),
+            if (msg.body.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(msg.body, style: TextStyle(color: textColor, fontFamily: "Cairo", fontSize: 15)),
+            ],
+          ],
+        );
+      } else if (msg.attachmentType == 'audio') {
+        content = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_circle_fill, color: textColor, size: 32),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                msg.attachmentName.isNotEmpty ? msg.attachmentName : "رسالة صوتية",
+                style: TextStyle(color: textColor, fontFamily: "Cairo"),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        );
+      } else {
+        // ملف عادي
+        content = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.insert_drive_file, color: textColor),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                msg.attachmentName.isNotEmpty ? msg.attachmentName : "مرفق",
+                style: TextStyle(color: textColor, fontFamily: "Cairo"),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        );
+      }
+    } else {
+      // نص فقط
       content = Text(
-        msg["text"] ?? "",
+        msg.body,
         style: TextStyle(color: textColor, fontFamily: "Cairo", fontSize: 15),
       );
-    } else if (type == "image") {
-      content = ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.file(file, width: 200, fit: BoxFit.cover),
-      );
-    } else if (type == "file") {
-      final f = file as File;
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.insert_drive_file, color: textColor),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              f.path.split('/').last,
-              style: TextStyle(color: textColor, fontFamily: "Cairo"),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      );
-    } else if (type == "video") {
-      content = Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 200,
-            height: 150,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.play_circle_outline,
-              color: Colors.white,
-              size: 50,
-            ),
-          ),
-          Positioned(
-            bottom: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.videocam, color: Colors.white, size: 14),
-                  SizedBox(width: 4),
-                  Text(
-                    'فيديو',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontFamily: "Cairo",
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    } else if (type == "audio") {
-      final duration = msg["duration"] ?? 0;
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.play_circle_fill, color: textColor, size: 32),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              "رسالة صوتية (${_formatDuration(duration)})",
-              style: TextStyle(color: textColor, fontFamily: "Cairo"),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      );
-    } else if (type == "service_request") {
-      // ✅ رسالة خاصة لطلب الخدمة
-      content = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isMe ? Colors.deepPurple.shade100 : Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.local_offer,
-                      color: isMe ? Colors.deepPurple : Colors.blue,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        msg["text"] ?? "طلب خدمة",
-                        style: TextStyle(
-                          color: isMe ? Colors.deepPurple.shade900 : Colors.blue.shade900,
-                          fontFamily: "Cairo",
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _goToServiceRequest(),
-                    icon: const Icon(Icons.arrow_forward, size: 18),
-                    label: const Text(
-                      "طلب خدمة الآن",
-                      style: TextStyle(
-                        fontFamily: "Cairo",
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    } else {
-      content = const Text("❓");
     }
+
+    // تنسيق الوقت
+    final h = msg.createdAt.hour > 12 ? msg.createdAt.hour - 12 : msg.createdAt.hour;
+    final amPm = msg.createdAt.hour >= 12 ? 'م' : 'ص';
+    final m = msg.createdAt.minute.toString().padLeft(2, '0');
+    final timeStr = '$h:$m $amPm';
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1291,25 +734,37 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Column(
-            crossAxisAlignment:
-                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               content,
               const SizedBox(height: 5),
-              Text(
-                msg["time"],
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isMe ? Colors.white70 : Colors.black54,
-                  fontFamily: "Cairo",
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    timeStr,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isMe ? Colors.white70 : Colors.black54,
+                      fontFamily: "Cairo",
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      msg.readByIds.isNotEmpty ? Icons.done_all : Icons.done,
+                      size: 14,
+                      color: msg.readByIds.length > 1 ? Colors.blue.shade200 : Colors.white60,
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -1325,20 +780,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.file(
-              _pendingFile,
-              width: 50,
-              height: 50,
-              fit: BoxFit.cover,
-            ),
+            child: Image.file(_pendingFile, width: 50, height: 50, fit: BoxFit.cover),
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.red),
-            onPressed:
-                () => setState(() {
-                  _pendingType = null;
-                  _pendingFile = null;
-                }),
+            onPressed: () => setState(() { _pendingType = null; _pendingFile = null; }),
           ),
         ],
       );
@@ -1356,11 +802,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.red),
-            onPressed:
-                () => setState(() {
-                  _pendingType = null;
-                  _pendingFile = null;
-                }),
+            onPressed: () => setState(() { _pendingType = null; _pendingFile = null; }),
           ),
         ],
       );
@@ -1378,11 +820,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.red),
-            onPressed:
-                () => setState(() {
-                  _pendingType = null;
-                  _pendingDuration = null;
-                }),
+            onPressed: () => setState(() { _pendingType = null; _pendingDuration = null; }),
           ),
         ],
       );
@@ -1393,35 +831,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             alignment: Alignment.center,
             children: [
               Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                width: 50, height: 50,
+                decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
               ),
-              const Icon(
-                Icons.play_circle_outline,
-                color: Colors.white,
-                size: 24,
-              ),
+              const Icon(Icons.play_circle_outline, color: Colors.white, size: 24),
             ],
           ),
           const SizedBox(width: 8),
           const Expanded(
-            child: Text(
-              "فيديو جاهز للإرسال",
-              style: TextStyle(fontFamily: "Cairo"),
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text("فيديو جاهز للإرسال", style: TextStyle(fontFamily: "Cairo"), overflow: TextOverflow.ellipsis),
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.red),
-            onPressed:
-                () => setState(() {
-                  _pendingType = null;
-                  _pendingFile = null;
-                }),
+            onPressed: () => setState(() { _pendingType = null; _pendingFile = null; }),
           ),
         ],
       );
@@ -1429,14 +851,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       return TextField(
         controller: _controller,
         style: const TextStyle(fontFamily: "Cairo"),
-        decoration: const InputDecoration(
-          hintText: "اكتب رسالة...",
-          border: InputBorder.none,
-        ),
-        onChanged:
-            (_) => setState(() {
-              _pendingType = "text";
-            }),
+        decoration: const InputDecoration(hintText: "اكتب رسالة...", border: InputBorder.none),
+        onChanged: (_) => setState(() => _pendingType = "text"),
       );
     }
   }
@@ -1451,13 +867,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void dispose() {
     _timer?.cancel();
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
@@ -1467,54 +884,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             CircleAvatar(
               backgroundColor: Colors.deepPurple.shade200,
               child: Text(
-                widget.name[0],
+                widget.peerName.isNotEmpty ? widget.peerName[0] : '?',
                 style: const TextStyle(color: Colors.white),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.name,
-                    style: const TextStyle(
-                      fontFamily: "Cairo",
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    widget.isOnline ? "متصل الآن" : "غير متصل",
-                    style: const TextStyle(
-                      fontFamily: "Cairo",
-                      fontSize: 12,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ],
+              child: Text(
+                widget.peerName,
+                style: const TextStyle(fontFamily: "Cairo", fontSize: 15, fontWeight: FontWeight.bold),
               ),
-            ),
-            // ✅ أيقونة عرض طلبات العميل
-            IconButton(
-              icon: const Icon(
-                Icons.assignment_outlined,
-                color: Colors.white,
-                size: 22,
-              ),
-              onPressed: () => _showClientOrders(),
-              tooltip: "طلبات العميل",
             ),
             // ✅ أيقونة إرسال رابط طلب خدمة
-            IconButton(
-              icon: const Icon(
-                Icons.send_outlined,
-                color: Colors.white,
-                size: 22,
+            if (widget.peerProviderId != null)
+              IconButton(
+                icon: const Icon(Icons.send_outlined, color: Colors.white, size: 22),
+                onPressed: () => _sendServiceRequestLink(),
+                tooltip: "إرسال رابط طلب خدمة",
               ),
-              onPressed: () => _sendServiceRequestLink(),
-              tooltip: "إرسال رابط طلب خدمة",
-            ),
           ],
         ),
         actions: [
@@ -1528,73 +915,104 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         children: [
           // ✅ الرسائل
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              itemCount: messages.length,
-              itemBuilder:
-                  (context, index) => _buildMessageBubble(messages[index]),
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
+                : _errorMessage != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                            const SizedBox(height: 12),
+                            Text(_errorMessage!, style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
+                            const SizedBox(height: 12),
+                            ElevatedButton(
+                              onPressed: _loadMessages,
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+                              child: const Text("إعادة المحاولة",
+                                  style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _messages.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey.shade300),
+                                const SizedBox(height: 16),
+                                const Text("لا توجد رسائل بعد",
+                                    style: TextStyle(fontFamily: 'Cairo', fontSize: 16, color: Colors.grey)),
+                                const SizedBox(height: 8),
+                                const Text("ابدأ المحادثة بإرسال رسالة ✨",
+                                    style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey)),
+                              ],
+                            ),
+                          )
+                        : Column(
+                            children: [
+                              if (_isLoadingMore)
+                                const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: SizedBox(
+                                    height: 20, width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple),
+                                  ),
+                                ),
+                              Expanded(
+                                child: ListView.builder(
+                                  controller: _scrollController,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  itemCount: _messages.length,
+                                  itemBuilder: (context, index) => _buildMessageBubble(_messages[index]),
+                                ),
+                              ),
+                            ],
+                          ),
           ),
 
           // ✅ شريط الإدخال
           SafeArea(
             child: Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 4,
-                    offset: Offset(0, -2),
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
               ),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(
-                      Icons.attach_file,
-                      color: Colors.deepPurple,
-                    ),
+                    icon: const Icon(Icons.attach_file, color: Colors.deepPurple),
                     onPressed: _showAttachmentOptions,
                   ),
-
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(25),
                       ),
-                      child:
-                          _isRecording
-                              ? Row(
-                                children: [
-                                  const Icon(Icons.mic, color: Colors.red),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: LinearProgressIndicator(
-                                      value: (_recordSeconds % 10) / 10,
-                                      color: Colors.red,
-                                      backgroundColor: Colors.red.shade100,
-                                    ),
+                      child: _isRecording
+                          ? Row(
+                              children: [
+                                const Icon(Icons.mic, color: Colors.red),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: LinearProgressIndicator(
+                                    value: (_recordSeconds % 10) / 10,
+                                    color: Colors.red,
+                                    backgroundColor: Colors.red.shade100,
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    _formatDuration(_recordSeconds),
-                                    style: const TextStyle(color: Colors.red),
-                                  ),
-                                ],
-                              )
-                              : _buildPreview(),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(_formatDuration(_recordSeconds), style: const TextStyle(color: Colors.red)),
+                              ],
+                            )
+                          : _buildPreview(),
                     ),
                   ),
                   const SizedBox(width: 8),
-
                   if (_isRecording)
                     CircleAvatar(
                       backgroundColor: Colors.red,
@@ -1612,13 +1030,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ),
                     ),
                   const SizedBox(width: 8),
-
                   CircleAvatar(
                     backgroundColor: Colors.deepPurple,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      onPressed: _sendMessage,
-                    ),
+                    child: _isSending
+                        ? const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.send, color: Colors.white),
+                            onPressed: _sendMessage,
+                          ),
                   ),
                 ],
               ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../services/profile_service.dart';
+import '../models/user_profile.dart';
 
-/// أيقونة Face ID: أيقونة شخص داخل مربع
+/// أيقونة Face ID
 class FaceIDIcon extends StatelessWidget {
   final double size;
   final Color color;
@@ -28,27 +30,158 @@ class LoginSettingsScreen extends StatefulWidget {
 }
 
 class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
-  // بيانات وهمية
-  String username = "عبدالسلام";
-  String email = "user@email.com";
-  String phone = "0505111111";
-  String password = "********";
+  static const Color _mainColor = Colors.deepPurple;
+
+  // بيانات من API
+  UserProfile? _profile;
+  bool _loading = true;
+  String? _error;
+  bool _saving = false;
 
   // متحكمات
-  final TextEditingController securityCodeCtrl = TextEditingController();
-  final TextEditingController confirmSecurityCodeCtrl = TextEditingController();
-  final TextEditingController faceIdCodeCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
+
+  // الأمان (محلي)
+  final _securityCodeCtrl = TextEditingController();
+  final _confirmSecurityCodeCtrl = TextEditingController();
+  final _faceIdCodeCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _securityCodeCtrl.dispose();
+    _confirmSecurityCodeCtrl.dispose();
+    _faceIdCodeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final result = await ProfileService.fetchMyProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      final p = result.data!;
+      setState(() {
+        _profile = p;
+        _phoneCtrl.text = p.phone ?? '';
+        _emailCtrl.text = p.email ?? '';
+        _firstNameCtrl.text = p.firstName ?? '';
+        _lastNameCtrl.text = p.lastName ?? '';
+        _loading = false;
+      });
+    } else {
+      setState(() {
+        _error = result.error ?? 'خطأ غير متوقع';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    if (_profile == null) return;
+
+    final data = <String, dynamic>{};
+    final phone = _phoneCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final firstName = _firstNameCtrl.text.trim();
+    final lastName = _lastNameCtrl.text.trim();
+
+    if (phone != (_profile!.phone ?? '')) data['phone'] = phone;
+    if (email != (_profile!.email ?? '')) data['email'] = email;
+    if (firstName != (_profile!.firstName ?? '')) data['first_name'] = firstName;
+    if (lastName != (_profile!.lastName ?? '')) data['last_name'] = lastName;
+
+    if (data.isEmpty) {
+      _snack('لا يوجد تغييرات');
+      return;
+    }
+
+    setState(() => _saving = true);
+    final result = await ProfileService.updateMyProfile(data);
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (result.isSuccess && result.data != null) {
+      setState(() {
+        _profile = result.data!;
+        _phoneCtrl.text = result.data!.phone ?? '';
+        _emailCtrl.text = result.data!.email ?? '';
+        _firstNameCtrl.text = result.data!.firstName ?? '';
+        _lastNameCtrl.text = result.data!.lastName ?? '';
+      });
+      _snack('تم حفظ التغييرات بنجاح');
+    } else {
+      _snack(result.error ?? 'فشل الحفظ');
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
+      backgroundColor:
+          msg.contains('بنجاح') ? Colors.green : Colors.red.shade700,
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('إعدادات الدخول'),
+          backgroundColor: _mainColor,
+          foregroundColor: Colors.white,
+          centerTitle: true,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('إعدادات الدخول'),
+          backgroundColor: _mainColor,
+          foregroundColor: Colors.white,
+          centerTitle: true,
+        ),
+        body: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_error!, style: const TextStyle(fontFamily: 'Cairo')),
+          const SizedBox(height: 12),
+          ElevatedButton(
+              onPressed: _loadProfile,
+              child: const Text('إعادة المحاولة',
+                  style: TextStyle(fontFamily: 'Cairo'))),
+        ])),
+      );
+    }
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text("إعدادات الدخول"),
-        backgroundColor: Colors.deepPurple,
+        title: const Text('إعدادات الدخول'),
+        backgroundColor: _mainColor,
         foregroundColor: Colors.white,
         centerTitle: true,
         elevation: 2,
@@ -56,358 +189,288 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // ✅ الهيدر
-          Column(
-            children: [
-              CircleAvatar(
-                radius: 42,
-                backgroundColor: Colors.deepPurple,
-                child: const Icon(Icons.person, color: Colors.white, size: 42),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                username,
-                style: const TextStyle(
+          // ─── الهيدر ───
+          Column(children: [
+            CircleAvatar(
+              radius: 42,
+              backgroundColor: _mainColor,
+              child: const Icon(Icons.person, color: Colors.white, size: 42),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _profile?.username ?? '',
+              style: const TextStyle(
                   fontSize: 18,
-                  fontFamily: "Cairo",
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                email,
-                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold),
+            ),
+            Text(
+              _profile?.email ?? '',
+              style: TextStyle(
                   fontSize: 14,
-                  fontFamily: "Cairo",
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-
-          // 🟣 معلومات الحساب
-          _buildSection("معلومات الحساب", [
-            _buildEditableField(
-              icon: Icons.person_outline,
-              label: "اسم العضوية",
-              value: username,
-              onChanged: (val) => setState(() => username = val),
+                  fontFamily: 'Cairo',
+                  color: isDark ? Colors.grey[400] : Colors.grey[600]),
             ),
-            _buildEditableField(
-              icon: Icons.phone_android,
-              label: "رقم الجوال",
-              value: phone,
-              onChanged: (val) => setState(() => phone = val),
-            ),
+            const SizedBox(height: 20),
           ]),
 
+          // ─── معلومات الحساب ───
+          _buildSection('معلومات الحساب', [
+            _buildField(
+              icon: Icons.person_outline,
+              label: 'اسم العضوية',
+              controller:
+                  TextEditingController(text: _profile?.username ?? ''),
+              enabled: false, // username immutable
+            ),
+            _buildField(
+              icon: Icons.badge_outlined,
+              label: 'الاسم الأول',
+              controller: _firstNameCtrl,
+            ),
+            _buildField(
+              icon: Icons.badge_outlined,
+              label: 'اسم العائلة',
+              controller: _lastNameCtrl,
+            ),
+            _buildField(
+              icon: Icons.phone_android,
+              label: 'رقم الجوال',
+              controller: _phoneCtrl,
+            ),
+          ]),
           const SizedBox(height: 20),
 
-          // 🔵 الأمان
-          _buildSection("الأمان", [
-            _buildEditableField(
+          // ─── الأمان ───
+          _buildSection('الأمان', [
+            _buildField(
               icon: Icons.email_outlined,
-              label: "البريد الإلكتروني",
-              value: email,
-              onChanged: (val) => setState(() => email = val),
-            ),
-            _buildEditableField(
-              icon: Icons.lock_outline,
-              label: "كلمة المرور",
-              value: password,
-              isPassword: true,
-              onChanged: (val) => setState(() => password = val),
+              label: 'البريد الإلكتروني',
+              controller: _emailCtrl,
             ),
             const SizedBox(height: 12),
             _buildPurpleButton(
               icon: Icons.key,
-              label: "إضافة رمز دخول آمان",
-              onPressed: () {
-                _showSecurityDialog();
-              },
+              label: 'إضافة رمز دخول آمان',
+              onPressed: _showSecurityDialog,
             ),
           ]),
-
           const SizedBox(height: 20),
 
-          // 🟢 طرق الدخول الإضافية
-          _buildSection("طرق الدخول الإضافية", [
+          // ─── طرق الدخول الإضافية ───
+          _buildSection('طرق الدخول الإضافية', [
             _buildPurpleButton(
               iconWidget: const FaceIDIcon(size: 22, color: Colors.white),
-              label: "الدخول بمعرف الوجه",
-              onPressed: () {
-                _showFaceIdDialog();
-              },
+              label: 'الدخول بمعرف الوجه',
+              onPressed: _showFaceIdDialog,
             ),
           ]),
-
           const SizedBox(height: 30),
 
-          // ✅ زر الحفظ
+          // ─── زر الحفظ ───
           ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("✅ تم حفظ التغييرات (وهمياً)"),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
+            onPressed: _saving ? null : _saveChanges,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
+                  borderRadius: BorderRadius.circular(14)),
             ),
-            child: const Text(
-              "حفظ التغييرات",
-              style: TextStyle(
-                fontSize: 16,
-                fontFamily: "Cairo",
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: _saving
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Text('حفظ التغييرات',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-  /// ✅ نافذة كرت رمز آمان
+  // ─── نوافذ محلية ───
+
   void _showSecurityDialog() {
     showDialog(
       context: context,
-      builder:
-          (context) => Center(
-            child: Card(
-              color: Colors.white,
-              elevation: 12,
-              shadowColor: Colors.black45,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: IntrinsicHeight(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // زر إغلاق
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.deepPurple,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                      const Text(
-                        "إضافة رمز دخول آمان",
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "⚠️ احتفظ بالرمز في مكان آمن ولا تشاركه مع أحد.",
-                        style: TextStyle(fontFamily: 'Cairo'),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: securityCodeCtrl,
-                        decoration: const InputDecoration(
-                          labelText: "رمز الآمان",
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: confirmSecurityCodeCtrl,
-                        decoration: const InputDecoration(
-                          labelText: "تأكيد رمز الآمان",
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("✅ تم حفظ رمز الآمان (وهمياً)"),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text("حفظ"),
-                      ),
-                    ],
-                  ),
+      builder: (_) => Center(
+        child: Card(
+          color: Colors.white,
+          elevation: 12,
+          shadowColor: Colors.black45,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: IntrinsicHeight(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                        icon: const Icon(Icons.close, color: _mainColor),
+                        onPressed: () => Navigator.pop(context))),
+                const Text('إضافة رمز دخول آمان',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: _mainColor)),
+                const SizedBox(height: 10),
+                const Text(
+                    '⚠️ احتفظ بالرمز في مكان آمن ولا تشاركه مع أحد.',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                TextField(
+                    controller: _securityCodeCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'رمز الآمان')),
+                const SizedBox(height: 10),
+                TextField(
+                    controller: _confirmSecurityCodeCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'تأكيد رمز الآمان')),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _snack('تم حفظ رمز الآمان');
+                  },
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: _mainColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  child: const Text('حفظ'),
                 ),
-              ),
+              ]),
             ),
           ),
-    );
-  }
-
-  /// ✅ نافذة كرت Face ID
-  void _showFaceIdDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => Center(
-            child: Card(
-              color: Colors.white,
-              elevation: 12,
-              shadowColor: Colors.black45,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: IntrinsicHeight(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // زر إغلاق
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.deepPurple,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                      const Text(
-                        "إعداد الدخول بمعرف الوجه",
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "قم بتأكيد هويتك عبر إدخال رمز تحقق لتفعيل الدخول بمعرف الوجه.",
-                        style: TextStyle(fontFamily: 'Cairo'),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: faceIdCodeCtrl,
-                        decoration: const InputDecoration(
-                          labelText: "أدخل رمز التحقق",
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("✅ تم تفعيل معرف الوجه (وهمياً)"),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text("تأكيد"),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-    );
-  }
-
-  // 🟣 بناء قسم
-  Widget _buildSection(String title, List<Widget> children) {
-    return Card(
-      elevation: 0,
-      color: Colors.deepPurple.withOpacity(0.05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontFamily: "Cairo",
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: Colors.deepPurple,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
         ),
       ),
     );
   }
 
-  // 🟣 حقل إدخال
-  Widget _buildEditableField({
+  void _showFaceIdDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => Center(
+        child: Card(
+          color: Colors.white,
+          elevation: 12,
+          shadowColor: Colors.black45,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: IntrinsicHeight(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                        icon: const Icon(Icons.close, color: _mainColor),
+                        onPressed: () => Navigator.pop(context))),
+                const Text('إعداد الدخول بمعرف الوجه',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: _mainColor)),
+                const SizedBox(height: 10),
+                const Text(
+                    'قم بتأكيد هويتك عبر إدخال رمز تحقق لتفعيل الدخول بمعرف الوجه.',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                TextField(
+                    controller: _faceIdCodeCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'أدخل رمز التحقق')),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _snack('تم تفعيل معرف الوجه');
+                  },
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: _mainColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  child: const Text('تأكيد'),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── مكونات UI ───
+
+  Widget _buildSection(String title, List<Widget> children) {
+    return Card(
+      elevation: 0,
+      color: _mainColor.withAlpha(13),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(title,
+              style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: _mainColor)),
+          const SizedBox(height: 12),
+          ...children,
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildField({
     required IconData icon,
     required String label,
-    required String value,
-    required ValueChanged<String> onChanged,
-    bool isPassword = false,
+    required TextEditingController controller,
+    bool enabled = true,
   }) {
-    final controller = TextEditingController(text: value);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: TextField(
         controller: controller,
-        obscureText: isPassword,
-        onChanged: onChanged,
+        enabled: enabled,
         decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: Colors.deepPurple),
+          prefixIcon: Icon(icon, color: _mainColor),
           labelText: label,
           filled: true,
           fillColor: Colors.white,
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Colors.deepPurple),
+            borderSide: const BorderSide(color: _mainColor),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Colors.deepPurple, width: 2),
+            borderSide: const BorderSide(color: _mainColor, width: 2),
+          ),
+          disabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: Colors.grey.shade300),
           ),
         ),
       ),
     );
   }
 
-  // 🟣 زر بنفسجي
   Widget _buildPurpleButton({
     IconData? icon,
     Widget? iconWidget,
@@ -419,22 +482,18 @@ class _LoginSettingsScreenState extends State<LoginSettingsScreen> {
       child: ElevatedButton.icon(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.deepPurple,
+          backgroundColor: _mainColor,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
         icon: iconWidget ?? Icon(icon, color: Colors.white),
-        label: Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Cairo',
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+        label: Text(label,
+            style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                color: Colors.white)),
       ),
     );
   }

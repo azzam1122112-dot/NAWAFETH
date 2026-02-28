@@ -6,23 +6,20 @@
 /// - معالجة الأخطاء بشكل موحد
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../config/app_env.dart';
 import 'auth_service.dart';
 
 class ApiClient {
-  // ────────────────────────────────────────────────
-  // ⚙️ Base URL — غيّر هذا القيمة حسب بيئتك
-  // ────────────────────────────────────────────────
-  // للتطوير المحلي (Android Emulator):
-  static const String _baseUrl = 'http://10.0.2.2:8000';
-  // للتطوير المحلي (iOS Simulator أو جهاز حقيقي على نفس الشبكة):
-  // static const String _baseUrl = 'http://192.168.x.x:8000';
-  // للإنتاج:
-  // static const String _baseUrl = 'https://api.nawafeth.com';
+  static String get baseUrl => AppEnv.apiBaseUrl;
 
-  static String get baseUrl => _baseUrl;
+  static Uri _buildUri(String path) {
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    return Uri.parse(baseUrl).resolve(normalizedPath);
+  }
 
   /// GET request مع مصادقة
   static Future<ApiResponse> get(String path) async {
@@ -56,7 +53,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool isRetry = false,
   }) async {
-    final url = Uri.parse('$_baseUrl$path');
+    final url = _buildUri(path);
     final token = await AuthService.getAccessToken();
 
     final headers = <String, String>{
@@ -109,9 +106,17 @@ class ApiClient {
         }
       }
 
-      return _parseResponse(response);
+      return parseResponse(response);
+    } on TimeoutException {
+      return ApiResponse(
+        statusCode: 0,
+        error: 'انتهت مهلة الاتصال بالخادم. تحقق من تشغيل الـ API.',
+      );
     } on SocketException {
-      return ApiResponse(statusCode: 0, error: 'لا يوجد اتصال بالإنترنت');
+      return ApiResponse(
+        statusCode: 0,
+        error: 'تعذر الوصول إلى الخادم. تحقق من عنوان الـ API والشبكة.',
+      );
     } catch (e) {
       return ApiResponse(statusCode: 0, error: 'خطأ في الاتصال: $e');
     }
@@ -123,7 +128,7 @@ class ApiClient {
     if (refreshToken == null || refreshToken.isEmpty) return false;
 
     try {
-      final url = Uri.parse('$_baseUrl/api/accounts/token/refresh/');
+      final url = _buildUri('/api/accounts/token/refresh/');
       final response = await http.post(
         url,
         headers: {
@@ -151,8 +156,8 @@ class ApiClient {
     return false;
   }
 
-  /// تحليل الاستجابة
-  static ApiResponse _parseResponse(http.Response response) {
+  /// تحليل الاستجابة (public for multipart usage)
+  static ApiResponse parseResponse(http.Response response) {
     try {
       final body = utf8.decode(response.bodyBytes);
       final data = body.isNotEmpty ? jsonDecode(body) : null;
@@ -187,7 +192,7 @@ class ApiClient {
   static String? buildMediaUrl(String? path) {
     if (path == null || path.isEmpty) return null;
     if (path.startsWith('http')) return path;
-    return '$_baseUrl$path';
+    return _buildUri(path).toString();
   }
 }
 

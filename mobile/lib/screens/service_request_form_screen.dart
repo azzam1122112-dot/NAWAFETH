@@ -4,9 +4,16 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
+import '../services/marketplace_service.dart';
+
+/// شاشة إنشاء طلب خدمة جديد — مربوطة بالباكند
 class ServiceRequestFormScreen extends StatefulWidget {
+  /// اسم مزود الخدمة (فقط للطلب العادي من صفحة المزود)
   final String? providerName;
+
+  /// معرّف ProviderProfile (للطلب العادي فقط)
   final String? providerId;
 
   const ServiceRequestFormScreen({
@@ -21,33 +28,93 @@ class ServiceRequestFormScreen extends StatefulWidget {
 }
 
 class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
+  static const Color _mainColor = Colors.deepPurple;
+
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _detailsController = TextEditingController();
-  
-  DateTime? _deadline;
+  final _titleController = TextEditingController();
+  final _detailsController = TextEditingController();
+  final _cityController = TextEditingController();
+
+  // ─── نوع الطلب ───
+  String _requestType = 'normal'; // normal | competitive | urgent
+
+  // ─── الأقسام ───
+  List<Map<String, dynamic>> _categories = [];
+  bool _categoriesLoading = true;
+  int? _selectedCategoryId;
+  int? _selectedSubcategoryId;
+
+  // ─── موعد استلام العروض ───
+  DateTime? _quoteDeadline;
+
+  // ─── المرفقات ───
   List<File> _images = [];
   List<File> _videos = [];
   List<File> _files = [];
   String? _audioPath;
   bool _isRecording = false;
-  
+
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   bool _recorderInitialized = false;
+
+  bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
+    // إذا جاء من صفحة مزود → نوع عادي تلقائياً
+    if (widget.providerId != null) _requestType = 'normal';
+    _loadCategories();
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _detailsController.dispose();
-    if (_recorderInitialized) {
-      _recorder.closeRecorder();
-    }
+    _cityController.dispose();
+    if (_recorderInitialized) _recorder.closeRecorder();
     super.dispose();
+  }
+
+  // ─── تحميل الأقسام ───
+  Future<void> _loadCategories() async {
+    final cats = await MarketplaceService.getCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = cats;
+      _categoriesLoading = false;
+    });
+  }
+
+  List<Map<String, dynamic>> get _subcategories {
+    if (_selectedCategoryId == null) return [];
+    final cat = _categories.firstWhere(
+        (c) => c['id'] == _selectedCategoryId,
+        orElse: () => {});
+    final subs = cat['subcategories'];
+    if (subs == null) return [];
+    return (subs as List).cast<Map<String, dynamic>>();
+  }
+
+  // ─── المرفقات ───
+  Future<void> _pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: source);
+    if (picked != null) setState(() => _images.add(File(picked.path)));
+  }
+
+  Future<void> _pickVideo(ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickVideo(source: source);
+    if (picked != null) setState(() => _videos.add(File(picked.path)));
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'xlsx', 'xls'],
+    );
+    if (result != null) setState(() => _files.add(File(result.files.single.path!)));
   }
 
   Future<void> _initRecorder() async {
@@ -55,55 +122,14 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
       final status = await Permission.microphone.request();
       if (status != PermissionStatus.granted) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("يجب السماح بالوصول للميكروفون")),
-        );
+        _snack('يجب السماح بالوصول للميكروفون');
         return;
       }
-
       await _recorder.openRecorder();
       if (!mounted) return;
-      setState(() {
-        _recorderInitialized = true;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("تعذر تهيئة التسجيل الصوتي")),
-      );
-    }
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source);
-    if (pickedFile != null) {
-      setState(() {
-        _images.add(File(pickedFile.path));
-      });
-    }
-  }
-
-  Future<void> _pickVideo(ImageSource source) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickVideo(source: source);
-    if (pickedFile != null) {
-      setState(() {
-        _videos.add(File(pickedFile.path));
-      });
-    }
-  }
-
-  Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'xlsx', 'xls'],
-    );
-
-    if (result != null) {
-      setState(() {
-        _files.add(File(result.files.single.path!));
-      });
+      setState(() => _recorderInitialized = true);
+    } catch (_) {
+      if (mounted) _snack('تعذر تهيئة التسجيل الصوتي');
     }
   }
 
@@ -112,164 +138,192 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
       await _initRecorder();
       if (!_recorderInitialized) return;
     }
-
     if (_isRecording) {
-      // إيقاف التسجيل
       final path = await _recorder.stopRecorder();
       setState(() {
         _isRecording = false;
         _audioPath = path;
       });
     } else {
-      // بدء التسجيل
-      final directory = Directory.systemTemp;
-      final path = '${directory.path}/audio_${DateTime.now().millisecondsSinceEpoch}.aac';
+      final dir = Directory.systemTemp;
+      final path =
+          '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.aac';
       await _recorder.startRecorder(toFile: path);
-      setState(() {
-        _isRecording = true;
-      });
+      setState(() => _isRecording = true);
     }
   }
 
   Future<void> _selectDeadline() async {
-    final DateTime? picked = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now().add(const Duration(days: 7)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       locale: const Locale('ar', 'SA'),
     );
-
-    if (picked != null) {
-      setState(() {
-        _deadline = picked;
-      });
-    }
+    if (picked != null) setState(() => _quoteDeadline = picked);
   }
 
   void _showAttachmentOptions() {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  "إضافة مرفق",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                ListTile(
-                  leading: const Icon(Icons.photo_camera, color: Colors.deepPurple),
-                  title: const Text("تصوير صورة"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickImage(ImageSource.camera);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library, color: Colors.deepPurple),
-                  title: const Text("اختيار صورة من المعرض"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickImage(ImageSource.gallery);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.videocam, color: Colors.deepPurple),
-                  title: const Text("تصوير فيديو"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickVideo(ImageSource.camera);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.video_library, color: Colors.deepPurple),
-                  title: const Text("اختيار فيديو من المعرض"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickVideo(ImageSource.gallery);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.attach_file, color: Colors.deepPurple),
-                  title: const Text("اختيار ملف"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickFile();
-                  },
-                ),
-              ],
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('إضافة مرفق',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.photo_camera, color: _mainColor),
+              title: const Text('تصوير صورة'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
             ),
-          ),
-        );
-      },
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: _mainColor),
+              title: const Text('اختيار صورة من المعرض'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam, color: _mainColor),
+              title: const Text('تصوير فيديو'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickVideo(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library, color: _mainColor),
+              title: const Text('اختيار فيديو من المعرض'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickVideo(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file, color: _mainColor),
+              title: const Text('اختيار ملف'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickFile();
+              },
+            ),
+          ]),
+        ),
+      ),
     );
   }
 
-  void _submitRequest() {
-    if (_formKey.currentState!.validate()) {
-      if (_deadline == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("يرجى تحديد آخر موعد لاستلام العروض")),
-        );
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Cairo'))));
+  }
+
+  // ─── إرسال الطلب ───
+  Future<void> _submitRequest() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // التحقق من الحقول المطلوبة
+    if (_selectedSubcategoryId == null) {
+      _snack('الرجاء اختيار التصنيف الفرعي');
+      return;
+    }
+
+    final city = _cityController.text.trim();
+    // المدينة مطلوبة إلا للعاجل مع dispatch_mode=all
+    final cityRequired = !(_requestType == 'urgent');
+    if (cityRequired && city.isEmpty) {
+      _snack('الرجاء كتابة المدينة');
+      return;
+    }
+
+    // الطلب العادي يحتاج provider
+    int? providerId;
+    if (_requestType == 'normal') {
+      if (widget.providerId == null) {
+        _snack('الطلب العادي يتطلب تحديد مزود خدمة');
         return;
       }
+      providerId = int.tryParse(widget.providerId!);
+    }
 
-      // هنا يتم إرسال البيانات للسيرفر
+    setState(() => _submitting = true);
+
+    final res = await MarketplaceService.createRequest(
+      title: _titleController.text.trim(),
+      description: _detailsController.text.trim(),
+      requestType: _requestType,
+      subcategory: _selectedSubcategoryId!,
+      city: city.isNotEmpty ? city : null,
+      provider: providerId,
+      quoteDeadline: _quoteDeadline != null
+          ? DateFormat('yyyy-MM-dd').format(_quoteDeadline!)
+          : null,
+      images: _images,
+      videos: _videos,
+      files: _files,
+      audio: _audioPath != null ? File(_audioPath!) : null,
+    );
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    if (res.isSuccess) {
       showDialog(
         context: context,
-        builder: (context) => Directionality(
+        builder: (_) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 30),
-                SizedBox(width: 10),
-                Text("تم إرسال الطلب"),
-              ],
-            ),
+            title: const Row(children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 30),
+              SizedBox(width: 10),
+              Text('تم إرسال الطلب'),
+            ]),
             content: const Text(
-              "تم إرسال طلب الخدمة بنجاح. سيتم إشعارك عند استلام العروض من مقدمي الخدمة.",
+              'تم إرسال طلب الخدمة بنجاح. سيتم إشعارك عند استلام العروض من مقدمي الخدمة.',
               style: TextStyle(height: 1.5),
             ),
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(context); // إغلاق الـ dialog
-                  Navigator.pop(context); // العودة للصفحة السابقة
+                  Navigator.pop(context); // close dialog
+                  Navigator.pop(context, true); // back with refresh signal
                 },
-                child: const Text("حسناً"),
+                child: const Text('حسناً'),
               ),
             ],
           ),
         ),
       );
+    } else {
+      _snack(res.error ?? 'فشل إرسال الطلب');
     }
   }
 
+  // ─── Build ───
+
   @override
   Widget build(BuildContext context) {
-    const Color mainColor = Colors.deepPurple;
-
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: AppBar(
-          backgroundColor: mainColor,
+          backgroundColor: _mainColor,
           title: Text(
             widget.providerName != null
-                ? "طلب خدمة من ${widget.providerName}"
-                : "طلب خدمة جديدة",
-            style: const TextStyle(fontFamily: "Cairo"),
+                ? 'طلب خدمة من ${widget.providerName}'
+                : 'طلب خدمة جديدة',
+            style: const TextStyle(fontFamily: 'Cairo'),
           ),
         ),
         body: Form(
@@ -277,382 +331,363 @@ class _ServiceRequestFormScreenState extends State<ServiceRequestFormScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // 🟪 عنوان الطلب
-              const Text(
-                "عنوان الطلب",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: mainColor,
-                ),
-              ),
+              // ─── نوع الطلب ───
+              _label('نوع الطلب'),
+              const SizedBox(height: 8),
+              _requestTypePicker(),
+              const SizedBox(height: 20),
+
+              // ─── التصنيف ───
+              _label('القسم'),
+              const SizedBox(height: 8),
+              _categoryDropdown(),
+              const SizedBox(height: 14),
+
+              _label('التصنيف الفرعي'),
+              const SizedBox(height: 8),
+              _subcategoryDropdown(),
+              const SizedBox(height: 20),
+
+              // ─── المدينة ───
+              _label('المدينة'),
               const SizedBox(height: 8),
               TextFormField(
-                controller: _titleController,
-                maxLength: 50,
-                decoration: InputDecoration(
-                  hintText: "اكتب عنوان الطلب...",
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  counterText: "${_titleController.text.length}/50",
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "يرجى إدخال عنوان الطلب";
+                controller: _cityController,
+                decoration: _inputDeco(hint: 'مثال: الرياض'),
+                validator: (v) {
+                  if (_requestType != 'urgent' &&
+                      (v == null || v.trim().isEmpty)) {
+                    return 'المدينة مطلوبة';
                   }
                   return null;
-                },
-                onChanged: (value) {
-                  setState(() {}); // لتحديث العداد
                 },
               ),
               const SizedBox(height: 20),
 
-              // 🟪 تفاصيل الطلب
-              const Text(
-                "تفاصيل الطلب",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: mainColor,
+              // ─── عنوان الطلب ───
+              _label('عنوان الطلب'),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _titleController,
+                maxLength: 50,
+                decoration: _inputDeco(
+                  hint: 'اكتب عنوان الطلب...',
+                  counter: '${_titleController.text.length}/50',
                 ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'يرجى إدخال عنوان الطلب' : null,
+                onChanged: (_) => setState(() {}),
               ),
+              const SizedBox(height: 20),
+
+              // ─── تفاصيل الطلب ───
+              _label('تفاصيل الطلب'),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _detailsController,
                 maxLength: 500,
                 maxLines: 6,
-                decoration: InputDecoration(
-                  hintText: "اكتب تفاصيل الطلب بشكل دقيق...",
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  counterText: "${_detailsController.text.length}/500",
+                decoration: _inputDeco(
+                  hint: 'اكتب تفاصيل الطلب بشكل دقيق...',
+                  counter: '${_detailsController.text.length}/500',
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "يرجى إدخال تفاصيل الطلب";
-                  }
-                  return null;
-                },
-                onChanged: (value) {
-                  setState(() {}); // لتحديث العداد
-                },
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'يرجى إدخال تفاصيل الطلب' : null,
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 20),
 
-              // 🟪 آخر موعد لاستلام العروض
-              const Text(
-                "آخر موعد لاستلام العروض",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: mainColor,
-                ),
-              ),
+              // ─── آخر موعد لاستلام العروض ───
+              _label('آخر موعد لاستلام العروض (اختياري)'),
               const SizedBox(height: 8),
-              InkWell(
-                onTap: _selectDeadline,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today, color: mainColor),
-                      const SizedBox(width: 12),
-                      Text(
-                        _deadline == null
-                            ? "اضغط لتحديد التاريخ"
-                            : "${_deadline!.day}/${_deadline!.month}/${_deadline!.year}",
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: _deadline == null ? Colors.grey : Colors.black,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _deadlineTile(),
               const SizedBox(height: 20),
 
-              // 🟪 المرفقات
-              const Text(
-                "المرفقات",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: mainColor,
-                ),
-              ),
+              // ─── المرفقات ───
+              _label('المرفقات'),
               const SizedBox(height: 8),
-              
-              // عرض المرفقات المضافة
-              if (_images.isNotEmpty || _videos.isNotEmpty || _files.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // الصور
-                      if (_images.isNotEmpty) ...[
-                        const Text(
-                          "الصور:",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _images.map((image) {
-                            return Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    image,
-                                    width: 80,
-                                    height: 80,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  left: 0,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _images.remove(image);
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-
-                      // الفيديوهات
-                      if (_videos.isNotEmpty) ...[
-                        const Text(
-                          "الفيديوهات:",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        ..._videos.map((video) {
-                          return ListTile(
-                            leading: const Icon(
-                              Icons.video_file,
-                              color: mainColor,
-                            ),
-                            title: Text(
-                              video.path.split('/').last,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _videos.remove(video);
-                                });
-                              },
-                            ),
-                          );
-                        }).toList(),
-                        const SizedBox(height: 12),
-                      ],
-
-                      // الملفات
-                      if (_files.isNotEmpty) ...[
-                        const Text(
-                          "الملفات:",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        ..._files.map((file) {
-                          return ListTile(
-                            leading: const Icon(
-                              Icons.attach_file,
-                              color: mainColor,
-                            ),
-                            title: Text(
-                              file.path.split('/').last,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _files.remove(file);
-                                });
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ],
-                    ],
-                  ),
-                ),
-              
+              _attachmentsPreview(),
               const SizedBox(height: 8),
-              
-              // زر إضافة مرفق
               ElevatedButton.icon(
                 onPressed: _showAttachmentOptions,
                 icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text(
-                  "إضافة مرفق",
-                  style: TextStyle(color: Colors.white),
-                ),
+                label: const Text('إضافة مرفق',
+                    style: TextStyle(color: Colors.white)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: mainColor,
+                  backgroundColor: _mainColor,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // 🟪 تسجيل رسالة صوتية
-              const Text(
-                "رسالة صوتية (اختياري)",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: mainColor,
-                ),
-              ),
+              // ─── رسالة صوتية ───
+              _label('رسالة صوتية (اختياري)'),
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          onPressed: _toggleRecording,
-                          icon: Icon(
-                            _isRecording ? Icons.stop : Icons.mic,
-                            size: 40,
-                          ),
-                          color: _isRecording ? Colors.red : mainColor,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _isRecording
-                              ? "جاري التسجيل... اضغط للإيقاف"
-                              : _audioPath != null
-                                  ? "تم التسجيل ✓"
-                                  : "اضغط للبدء بالتسجيل",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _isRecording ? Colors.red : Colors.grey[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_audioPath != null)
-                      TextButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _audioPath = null;
-                          });
-                        },
-                        icon: const Icon(Icons.delete, size: 18),
-                        label: const Text("حذف التسجيل"),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              _audioPart(),
               const SizedBox(height: 30),
 
-              // 🟪 أزرار التقديم والإلغاء
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _submitRequest,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: mainColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        "تقديم الطلب",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+              // ─── أزرار ───
+              Row(children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _submitting ? null : _submitRequest,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _mainColor,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: _submitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('تقديم الطلب',
+                            style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: const BorderSide(color: mainColor, width: 2),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        "إلغاء",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: mainColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: _mainColor, width: 2),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: const Text('إلغاء',
+                        style: TextStyle(
+                            fontSize: 16,
+                            color: _mainColor,
+                            fontWeight: FontWeight.bold)),
                   ),
-                ],
-              ),
+                ),
+              ]),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ─── Sub-widgets ───
+
+  Widget _label(String text) => Text(
+        text,
+        style: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.bold, color: _mainColor),
+      );
+
+  InputDecoration _inputDeco({String? hint, String? counter}) =>
+      InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.white,
+        counterText: counter,
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none),
+      );
+
+  Widget _requestTypePicker() {
+    // إذا جاء من صفحة مزود محدد → نوع عادي فقط
+    final bool locked = widget.providerId != null;
+    final types = <String, String>{
+      'normal': 'عادي',
+      'competitive': 'تنافسي',
+      'urgent': 'عاجل',
+    };
+    return Wrap(
+      spacing: 8,
+      children: types.entries.map((e) {
+        final selected = _requestType == e.key;
+        return ChoiceChip(
+          label: Text(e.value, style: const TextStyle(fontFamily: 'Cairo')),
+          selected: selected,
+          selectedColor: _mainColor.withAlpha(50),
+          onSelected: locked
+              ? null
+              : (val) {
+                  if (val) setState(() => _requestType = e.key);
+                },
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _categoryDropdown() {
+    if (_categoriesLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return DropdownButtonFormField<int>(
+      value: _selectedCategoryId,
+      decoration: _inputDeco(hint: 'اختر القسم'),
+      items: _categories
+          .map((c) => DropdownMenuItem<int>(
+              value: c['id'] as int,
+              child: Text(c['name'] as String,
+                  style: const TextStyle(fontFamily: 'Cairo'))))
+          .toList(),
+      onChanged: (val) {
+        setState(() {
+          _selectedCategoryId = val;
+          _selectedSubcategoryId = null; // reset sub
+        });
+      },
+      validator: (v) => v == null ? 'اختر القسم' : null,
+    );
+  }
+
+  Widget _subcategoryDropdown() {
+    final subs = _subcategories;
+    return DropdownButtonFormField<int>(
+      value: _selectedSubcategoryId,
+      decoration: _inputDeco(hint: 'اختر التصنيف'),
+      items: subs
+          .map((s) => DropdownMenuItem<int>(
+              value: s['id'] as int,
+              child: Text(s['name'] as String,
+                  style: const TextStyle(fontFamily: 'Cairo'))))
+          .toList(),
+      onChanged: (val) => setState(() => _selectedSubcategoryId = val),
+      validator: (v) => v == null ? 'اختر التصنيف الفرعي' : null,
+    );
+  }
+
+  Widget _deadlineTile() {
+    return InkWell(
+      onTap: _selectDeadline,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          const Icon(Icons.calendar_today, color: _mainColor),
+          const SizedBox(width: 12),
+          Text(
+            _quoteDeadline == null
+                ? 'اضغط لتحديد التاريخ'
+                : DateFormat('dd/MM/yyyy').format(_quoteDeadline!),
+            style: TextStyle(
+                fontSize: 15,
+                color: _quoteDeadline == null ? Colors.grey : Colors.black),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _attachmentsPreview() {
+    if (_images.isEmpty && _videos.isEmpty && _files.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (_images.isNotEmpty) ...[
+          const Text('الصور:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _images
+                .map((img) => Stack(children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(img,
+                            width: 80, height: 80, fit: BoxFit.cover),
+                      ),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _images.remove(img)),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                                color: Colors.red, shape: BoxShape.circle),
+                            child: const Icon(Icons.close,
+                                color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ),
+                    ]))
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_videos.isNotEmpty) ...[
+          const Text('الفيديوهات:',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          ..._videos.map((v) => ListTile(
+                leading: const Icon(Icons.video_file, color: _mainColor),
+                title: Text(v.path.split('/').last,
+                    style: const TextStyle(fontSize: 13)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => setState(() => _videos.remove(v)),
+                ),
+              )),
+          const SizedBox(height: 12),
+        ],
+        if (_files.isNotEmpty) ...[
+          const Text('الملفات:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          ..._files.map((f) => ListTile(
+                leading: const Icon(Icons.attach_file, color: _mainColor),
+                title: Text(f.path.split('/').last,
+                    style: const TextStyle(fontSize: 13)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => setState(() => _files.remove(f)),
+                ),
+              )),
+        ],
+      ]),
+    );
+  }
+
+  Widget _audioPart() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          IconButton(
+            onPressed: _toggleRecording,
+            icon: Icon(_isRecording ? Icons.stop : Icons.mic, size: 40),
+            color: _isRecording ? Colors.red : _mainColor,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _isRecording
+                ? 'جاري التسجيل... اضغط للإيقاف'
+                : _audioPath != null
+                    ? 'تم التسجيل ✓'
+                    : 'اضغط للبدء بالتسجيل',
+            style: TextStyle(
+                fontSize: 14,
+                color: _isRecording ? Colors.red : Colors.grey[700]),
+          ),
+        ]),
+        if (_audioPath != null)
+          TextButton.icon(
+            onPressed: () => setState(() => _audioPath = null),
+            icon: const Icon(Icons.delete, size: 18),
+            label: const Text('حذف التسجيل'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+          ),
+      ]),
     );
   }
 }

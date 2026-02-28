@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nawafeth/services/profile_service.dart';
+import 'package:nawafeth/utils/debounced_save_runner.dart';
 
 class ServiceDetailsStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -16,41 +18,120 @@ class ServiceDetailsStep extends StatefulWidget {
 
 class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
   final List<_ServiceItem> _services = [];
+  final DebouncedSaveRunner _autoSaveRunner = DebouncedSaveRunner();
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isInitialized = false;
+  String? _saveError;
 
   @override
   void initState() {
     super.initState();
-    // ✅ خدمة افتراضية مضافة مسبقًا
-    _services.add(
-      _ServiceItem(
-        initialName: "تصميم واجهات تطبيق خدمات",
-        initialDescription:
-            "تصميم واجهات عصرية لتطبيقات الخدمات:\n"
-            "• واجهة أنيقة متوافقة مع الهوية البصرية\n"
-            "• تجربة مستخدم سلسة ومناسبة للجوال\n"
-            "• تسليم سريع مع إمكانية التعديل",
-        isUrgent: true,
-        isEditing: false, // افتراضيًا ملخّصة، ليست في وضع تحرير
-      ),
-    );
+    _services.add(_ServiceItem(isEditing: true));
+    _attachItemListeners(_services.first);
+    _loadInitialData();
   }
 
   @override
   void dispose() {
     for (final s in _services) {
+      _detachItemListeners(s);
       s.dispose();
     }
+    _autoSaveRunner.dispose();
     super.dispose();
   }
 
-  void _addService() {
+  Future<void> _loadInitialData() async {
+    final result = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      final profile = result.data!;
+      final first = _services.first;
+
+      setState(() {
+        _isInitialized = false;
+        first.name.text = profile.displayName;
+        first.description.text = profile.bio;
+        first.isUrgent = profile.acceptsUrgent;
+        first.isEditing = false;
+        _isLoading = false;
+        _saveError = null;
+        _isInitialized = true;
+      });
+      return;
+    }
+
     setState(() {
-      _services.add(
-        _ServiceItem(
-          isUrgent: false,
-          isEditing: true, // الخدمة الجديدة تُفتح في وضع تعديل مباشرة
-        ),
-      );
+      _isLoading = false;
+      _saveError = result.error ?? 'تعذر تحميل بيانات الخدمة';
+      _isInitialized = true;
+    });
+  }
+
+  void _attachItemListeners(_ServiceItem item) {
+    item.name.addListener(_onItemChanged);
+    item.description.addListener(_onItemChanged);
+  }
+
+  void _detachItemListeners(_ServiceItem item) {
+    item.name.removeListener(_onItemChanged);
+    item.description.removeListener(_onItemChanged);
+  }
+
+  void _onItemChanged() {
+    if (!_isInitialized) return;
+    _queueAutoSave();
+  }
+
+  void _queueAutoSave() {
+    if (!_isInitialized) return;
+    _autoSaveRunner.schedule(_saveToApi);
+  }
+
+  Future<void> _saveToApi() async {
+    final firstValid = _services.firstWhere(
+      (s) => s.name.text.trim().isNotEmpty || s.description.text.trim().isNotEmpty,
+      orElse: () => _services.first,
+    );
+
+    final displayName = firstValid.name.text.trim();
+    final bioRaw = firstValid.description.text.trim();
+    final payload = <String, dynamic>{
+      'accepts_urgent': _services.any((s) => s.isUrgent),
+    };
+
+    if (displayName.isNotEmpty) {
+      payload['display_name'] = displayName;
+    }
+    if (bioRaw.isNotEmpty) {
+      payload['bio'] = bioRaw.length > 300 ? bioRaw.substring(0, 300) : bioRaw;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = true;
+    });
+
+    final result = await ProfileService.updateProviderProfile(payload);
+    if (!mounted) return;
+
+    setState(() {
+      _isSaving = false;
+      _saveError = result.isSuccess ? null : (result.error ?? 'فشل الحفظ');
+    });
+  }
+
+  void _addService() {
+    final item = _ServiceItem(
+      isUrgent: false,
+      isEditing: true, // الخدمة الجديدة تُفتح في وضع تعديل مباشرة
+    );
+    _attachItemListeners(item);
+    setState(() {
+      _services.add(item);
     });
   }
 
@@ -67,9 +148,11 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
     }
     final item = _services[index];
     setState(() {
+      _detachItemListeners(item);
       item.dispose();
       _services.removeAt(index);
     });
+    _queueAutoSave();
     _showSnack("تم حذف الخدمة بنجاح.");
   }
 
@@ -85,11 +168,12 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
     setState(() {
       item.isEditing = false;
     });
+    _queueAutoSave();
 
     _showSnack("تم حفظ بيانات الخدمة ${index + 1}.");
   }
 
-  void _handleNext() {
+  Future<void> _handleNext() async {
     final hasValidService = _services.any((s) => s.name.text.trim().isNotEmpty);
 
     if (!hasValidService) {
@@ -108,6 +192,7 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
     //     })
     //     .toList();
 
+    await _autoSaveRunner.flush();
     widget.onNext();
   }
 
@@ -128,25 +213,35 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
               _buildHeader(),
               const SizedBox(height: 14),
               _buildInfoCard(),
+              const SizedBox(height: 10),
+              _buildSaveStatus(),
               const SizedBox(height: 18),
 
               // ✅ قائمة الكروت (ملخّصة أو تحرير حسب الحالة)
-              ...List.generate(
-                _services.length,
-                (index) => Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == _services.length - 1 ? 0 : 16,
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 30),
+                  child: Center(
+                    child: CircularProgressIndicator(color: Colors.deepPurple),
                   ),
-                  child: _buildServiceCard(index),
                 ),
-              ),
+              if (!_isLoading)
+                ...List.generate(
+                  _services.length,
+                  (index) => Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == _services.length - 1 ? 0 : 16,
+                    ),
+                    child: _buildServiceCard(index),
+                  ),
+                ),
 
               const SizedBox(height: 18),
 
               // ✅ زر إضافة خدمة
               Center(
                 child: OutlinedButton.icon(
-                  onPressed: _addService,
+                  onPressed: _isLoading ? null : _addService,
                   icon: const Icon(
                     Icons.add_circle_outline,
                     color: Colors.deepPurple,
@@ -180,7 +275,10 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: widget.onBack,
+                      onPressed: () async {
+                        await _autoSaveRunner.flush();
+                        widget.onBack();
+                      },
                       icon: const Icon(
                         Icons.arrow_back_ios_new,
                         size: 16,
@@ -208,7 +306,7 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _handleNext,
+                      onPressed: _isLoading ? null : _handleNext,
                       icon: const Icon(
                         Icons.arrow_forward_ios,
                         size: 16,
@@ -238,6 +336,39 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
         ),
       ),
     );
+  }
+
+  /// عنوان + وصف بسيط للخطوة
+  Widget _buildSaveStatus() {
+    if (_isSaving) {
+      return const Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'جاري الحفظ التلقائي...',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      );
+    }
+
+    if (_saveError != null) {
+      return Text(
+        _saveError!,
+        style: const TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 12,
+          color: Colors.redAccent,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   /// عنوان + وصف بسيط للخطوة
@@ -396,6 +527,7 @@ class _ServiceDetailsStepState extends State<ServiceDetailsStep> {
                     setState(() {
                       item.isUrgent = val;
                     });
+                    _queueAutoSave();
                   },
                 ),
                 const SizedBox(width: 4),

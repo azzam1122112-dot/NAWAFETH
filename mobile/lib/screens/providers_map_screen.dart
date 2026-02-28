@@ -129,8 +129,7 @@ class _ProvidersMapScreenState extends State<ProvidersMapScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ChatDetailScreen(
-          name: provider.name,
-          isOnline: true,
+          peerName: provider.name,
         ),
       ),
     );

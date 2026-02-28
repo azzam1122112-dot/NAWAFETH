@@ -3,6 +3,8 @@ from .views import (
     ThrottledTokenObtainPairView,
     ThrottledTokenRefreshView,
     complete_registration,
+    delete_account_view,
+    logout_view,
     me_view,
     otp_send,
     otp_verify,
@@ -19,4 +21,6 @@ urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token"),
     path("token/refresh/", ThrottledTokenRefreshView.as_view(), name="token_refresh"),
     path("me/", me_view, name="me"),
+    path("logout/", logout_view, name="logout"),
+    path("delete/", delete_account_view, name="delete_account"),
 ]

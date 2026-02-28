@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:nawafeth/services/profile_service.dart';
+import 'package:nawafeth/utils/debounced_save_runner.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ContactInfoStep extends StatefulWidget {
@@ -37,6 +39,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   final whatsappController = TextEditingController();
   final mapLocationController = TextEditingController();
   final socialControllers = List.generate(9, (_) => TextEditingController());
+  final DebouncedSaveRunner _autoSaveRunner = DebouncedSaveRunner();
 
   // Logo
   final ImagePicker _picker = ImagePicker();
@@ -75,6 +78,11 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     "Behance",
   ];
 
+  bool _isLoadingProfile = false;
+  bool _isSavingProfile = false;
+  bool _isProfileReady = false;
+  String? _saveError;
+
   Future<void> _pickLocation() async {
     final lat = 24.7136;
     final lng = 46.6753;
@@ -110,11 +118,104 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
   @override
   void initState() {
     super.initState();
-    phoneController.addListener(_validateForm);
-    whatsappController.addListener(_validateForm);
+    phoneController.addListener(_onPhoneChanged);
+    whatsappController.addListener(_onWhatsappChanged);
+    websiteController.addListener(_onProfileFieldChanged);
+    for (final controller in socialControllers) {
+      controller.addListener(_onProfileFieldChanged);
+    }
+
+    if (widget.isInitialRegistration) {
+      _isProfileReady = true;
+    } else {
+      _loadProviderProfile();
+    }
+
     // تأجيل الاستدعاء الأول حتى بعد اكتمال البناء
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _validateForm();
+    });
+  }
+
+  void _onPhoneChanged() {
+    _validateForm();
+  }
+
+  void _onWhatsappChanged() {
+    _validateForm();
+    _queueAutoSave();
+  }
+
+  void _onProfileFieldChanged() {
+    _queueAutoSave();
+  }
+
+  Future<void> _loadProviderProfile() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingProfile = true;
+      _saveError = null;
+    });
+
+    final result = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      final profile = result.data!;
+      final socialLinks = profile.socialLinks
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      setState(() {
+        websiteController.text = profile.website ?? '';
+        whatsappController.text = profile.whatsapp ?? '';
+        for (int i = 0; i < socialControllers.length; i++) {
+          socialControllers[i].text = i < socialLinks.length ? socialLinks[i] : '';
+        }
+        _isLoadingProfile = false;
+        _isProfileReady = true;
+        _saveError = null;
+      });
+      _validateForm();
+      return;
+    }
+
+    setState(() {
+      _isLoadingProfile = false;
+      _isProfileReady = true;
+      _saveError = result.error ?? 'تعذر تحميل بيانات التواصل';
+    });
+  }
+
+  void _queueAutoSave() {
+    if (widget.isInitialRegistration || !_isProfileReady) return;
+    _autoSaveRunner.schedule(_saveProviderProfile);
+  }
+
+  Future<void> _saveProviderProfile() async {
+    if (widget.isInitialRegistration) return;
+
+    final payload = <String, dynamic>{
+      'website': websiteController.text.trim(),
+      'whatsapp': whatsappController.text.trim(),
+      'social_links': socialControllers
+          .map((c) => c.text.trim())
+          .where((v) => v.isNotEmpty)
+          .toList(),
+    };
+
+    if (!mounted) return;
+    setState(() {
+      _isSavingProfile = true;
+    });
+
+    final result = await ProfileService.updateProviderProfile(payload);
+    if (!mounted) return;
+
+    setState(() {
+      _isSavingProfile = false;
+      _saveError = result.isSuccess ? null : (result.error ?? 'فشل الحفظ');
     });
   }
 
@@ -154,6 +255,12 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
 
   @override
   void dispose() {
+    phoneController.removeListener(_onPhoneChanged);
+    whatsappController.removeListener(_onWhatsappChanged);
+    websiteController.removeListener(_onProfileFieldChanged);
+    for (final c in socialControllers) {
+      c.removeListener(_onProfileFieldChanged);
+    }
     websiteController.dispose();
     phoneController.dispose();
     whatsappController.dispose();
@@ -161,6 +268,7 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
     for (final c in socialControllers) {
       c.dispose();
     }
+    _autoSaveRunner.dispose();
     super.dispose();
   }
 
@@ -177,20 +285,32 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 16),
-                _buildLogoHeader(),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child:
-                        isInitial ? _buildInitialForm() : _buildFullAccordion(),
+              child: Column(
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 8),
+                  _buildSaveStatus(),
+                  const SizedBox(height: 16),
+                  _buildLogoHeader(),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: (!isInitial && _isLoadingProfile)
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 30),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.deepPurple,
+                                ),
+                              ),
+                            )
+                          : (isInitial
+                              ? _buildInitialForm()
+                              : _buildFullAccordion()),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildActionButtons(),
+                  const SizedBox(height: 12),
+                  _buildActionButtons(),
               ],
             ),
           ),
@@ -230,6 +350,40 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         ),
       ],
     );
+  }
+
+  Widget _buildSaveStatus() {
+    if (widget.isInitialRegistration) return const SizedBox.shrink();
+
+    if (_isSavingProfile) {
+      return const Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'جاري الحفظ التلقائي...',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      );
+    }
+
+    if (_saveError != null) {
+      return Text(
+        _saveError!,
+        style: const TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 12,
+          color: Colors.redAccent,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   // ---------------- LOGO HEADER ----------------
@@ -667,7 +821,12 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
       children: [
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: widget.onBack,
+            onPressed: () async {
+              if (!widget.isInitialRegistration) {
+                await _autoSaveRunner.flush();
+              }
+              widget.onBack();
+            },
             icon: const Icon(Icons.arrow_back),
             label: const Text("السابق", style: TextStyle(fontFamily: "Cairo")),
             style: OutlinedButton.styleFrom(
@@ -683,7 +842,14 @@ class _ContactInfoStepState extends State<ContactInfoStep> {
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: widget.onNext,
+            onPressed: (!widget.isInitialRegistration && _isLoadingProfile)
+                ? null
+                : () async {
+                    if (!widget.isInitialRegistration) {
+                      await _autoSaveRunner.flush();
+                    }
+                    widget.onNext();
+                  },
             icon: const Icon(Icons.arrow_forward),
             label: Text(
               primaryLabel,

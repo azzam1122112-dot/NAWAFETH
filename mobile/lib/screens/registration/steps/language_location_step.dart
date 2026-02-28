@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:nawafeth/services/profile_service.dart';
+import 'package:nawafeth/utils/debounced_save_runner.dart';
 
 import 'package:latlong2/latlong.dart';
 
@@ -38,6 +40,73 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   };
 
   static const List<int> _distanceOptionsKm = [2, 5, 10, 20, 50];
+  final DebouncedSaveRunner _autoSaveRunner = DebouncedSaveRunner();
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isInitialized = false;
+  String? _saveError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final result = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      final profile = result.data!;
+      final loadedLanguages = profile.languages
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      final loadedSelected = <String>[];
+      final loadedCustom = <String>[];
+      for (final lang in loadedLanguages) {
+        if (predefinedLanguages.contains(lang) && lang != 'أخرى') {
+          loadedSelected.add(lang);
+        } else {
+          loadedCustom.add(lang);
+        }
+      }
+      if (loadedCustom.isNotEmpty && !loadedSelected.contains('أخرى')) {
+        loadedSelected.add('أخرى');
+      }
+
+      final hasLocation = profile.lat != null && profile.lng != null;
+      final radiusKm = profile.coverageRadiusKm > 0 ? profile.coverageRadiusKm : 10;
+
+      setState(() {
+        _isInitialized = false;
+        selectedLanguages
+          ..clear()
+          ..addAll(loadedSelected);
+        customLanguages
+          ..clear()
+          ..addAll(loadedCustom);
+        _selectedDistanceKm = radiusKm;
+        _selectedCenter = hasLocation ? LatLng(profile.lat!, profile.lng!) : null;
+        serviceRange['ضمن نطاق محدد 📍'] = hasLocation;
+        locationController.text = hasLocation
+            ? '(${profile.lat!.toStringAsFixed(5)}, ${profile.lng!.toStringAsFixed(5)}) • $radiusKm كم'
+            : '';
+        _isLoading = false;
+        _saveError = null;
+        _isInitialized = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = false;
+      _saveError = result.error ?? 'تعذر تحميل بيانات اللغة والموقع';
+      _isInitialized = true;
+    });
+  }
 
   void _ensureDefaultDistance() {
     if (_selectedDistanceKm == null) {
@@ -66,6 +135,43 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       _selectedCenter = picked;
       locationController.text =
           '(${picked.latitude.toStringAsFixed(5)}, ${picked.longitude.toStringAsFixed(5)}) • ${_selectedDistanceKm} كم';
+      serviceRange['ضمن نطاق محدد 📍'] = true;
+    });
+    _queueAutoSave();
+  }
+
+  void _queueAutoSave() {
+    if (!_isInitialized) return;
+    _autoSaveRunner.schedule(_saveToApi);
+  }
+
+  Future<void> _saveToApi() async {
+    final combinedLanguages = <String>[
+      ...selectedLanguages.where((lang) => lang != 'أخرى'),
+      ...customLanguages,
+    ].map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+
+    final payload = <String, dynamic>{
+      'languages': combinedLanguages,
+      'coverage_radius_km': _selectedDistanceKm ?? 10,
+    };
+
+    if (_selectedCenter != null) {
+      payload['lat'] = _selectedCenter!.latitude;
+      payload['lng'] = _selectedCenter!.longitude;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = true;
+    });
+
+    final result = await ProfileService.updateProviderProfile(payload);
+    if (!mounted) return;
+
+    setState(() {
+      _isSaving = false;
+      _saveError = result.isSuccess ? null : (result.error ?? 'فشل الحفظ');
     });
   }
 
@@ -73,6 +179,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
   void dispose() {
     customLanguageController.dispose();
     locationController.dispose();
+    _autoSaveRunner.dispose();
     super.dispose();
   }
 
@@ -88,8 +195,23 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
             child: Column(
               children: [
                 _buildHeader(),
+                const SizedBox(height: 8),
+                _buildSaveStatus(),
                 const SizedBox(height: 12),
-                Expanded(child: SingleChildScrollView(child: _buildForm())),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: _isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 30),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.deepPurple,
+                              ),
+                            ),
+                          )
+                        : _buildForm(),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _buildActionButtons(),
               ],
@@ -164,6 +286,38 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
     );
   }
 
+  Widget _buildSaveStatus() {
+    if (_isSaving) {
+      return const Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'جاري الحفظ التلقائي...',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      );
+    }
+
+    if (_saveError != null) {
+      return Text(
+        _saveError!,
+        style: const TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 12,
+          color: Colors.redAccent,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   // ---------------- FORM ----------------
 
   Widget _buildForm() {
@@ -192,6 +346,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                                 ? selectedLanguages.add(lang)
                                 : selectedLanguages.remove(lang);
                           });
+                          _queueAutoSave();
                         },
                         selectedColor: Colors.deepPurple,
                         backgroundColor: Colors.grey.shade200,
@@ -218,6 +373,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                             ),
                             onDeleted: () {
                               setState(() => customLanguages.remove(lang));
+                              _queueAutoSave();
                             },
                           );
                         }).toList(),
@@ -250,7 +406,12 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                         if (entry.key == 'ضمن نطاق محدد 📍' && val) {
                           _ensureDefaultDistance();
                         }
+                        if (entry.key == 'ضمن نطاق محدد 📍' && !val) {
+                          _selectedCenter = null;
+                          locationController.clear();
+                        }
                       });
+                      _queueAutoSave();
                     },
                     selectedColor: Colors.deepPurple,
                     backgroundColor: Colors.grey.shade200,
@@ -290,6 +451,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                                     '(${_selectedCenter!.latitude.toStringAsFixed(5)}, ${_selectedCenter!.longitude.toStringAsFixed(5)}) • $_selectedDistanceKm كم';
                               }
                             });
+                            _queueAutoSave();
                           },
                           selectedColor: Colors.deepPurple,
                           backgroundColor: Colors.grey.shade200,
@@ -384,6 +546,7 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
                   customLanguages.add(lang);
                   customLanguageController.clear();
                 });
+                _queueAutoSave();
               }
             },
             style: ElevatedButton.styleFrom(
@@ -462,7 +625,10 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
       children: [
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: widget.onBack,
+            onPressed: () async {
+              await _autoSaveRunner.flush();
+              widget.onBack();
+            },
             icon: const Icon(Icons.arrow_back),
             label: const Text("السابق", style: TextStyle(fontFamily: "Cairo")),
             style: OutlinedButton.styleFrom(
@@ -478,7 +644,12 @@ class _LanguageLocationStepState extends State<LanguageLocationStep> {
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: widget.onNext,
+            onPressed: _isLoading
+                ? null
+                : () async {
+                    await _autoSaveRunner.flush();
+                    widget.onNext();
+                  },
             icon: const Icon(Icons.arrow_forward),
             label: const Text("التالي", style: TextStyle(fontFamily: "Cairo")),
             style: ElevatedButton.styleFrom(

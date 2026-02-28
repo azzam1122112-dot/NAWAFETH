@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
-import '../models/client_order.dart';
+import '../models/service_request_model.dart';
+import '../services/marketplace_service.dart';
 import 'client_order_details_screen.dart';
 
 class ClientOrdersScreen extends StatefulWidget {
@@ -19,12 +20,14 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'الكل';
 
-  late List<ClientOrder> _orders;
+  List<ServiceRequest> _orders = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _orders = _demoOrdersForCurrentClient();
+    _loadOrders();
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -36,73 +39,60 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     super.dispose();
   }
 
-  List<ClientOrder> _demoOrdersForCurrentClient() {
-    return [
-      ClientOrder(
-        id: 'R055544',
-        serviceCode: '@111222',
-        createdAt: DateTime(2024, 1, 1, 16, 35),
-        status: 'جديد',
-        title: 'تصميم فيلا خاصة',
-        details: 'تفاصيل الطلب هنا (وهمية): تصميم فيلا خاصة مع توزيع الغرف والمساحات وإخراج مبدئي للمخططات.',
-        attachments: const [
-          ClientOrderAttachment(name: 'متطلبات_العميل.pdf', type: 'PDF'),
-          ClientOrderAttachment(name: 'صور_مرجعية.zip', type: 'ZIP'),
-        ],
-      ),
-      ClientOrder(
-        id: 'R055545',
-        serviceCode: '@111223',
-        createdAt: DateTime(2024, 1, 2, 10, 20),
-        status: 'تحت التنفيذ',
-        title: 'إصلاح سيارة',
-        details: 'تفاصيل الطلب هنا (وهمية): فحص شامل وتقدير تكلفة الإصلاح مع تحديد قطع الغيار المطلوبة.',
-        expectedDeliveryAt: DateTime(2024, 1, 10, 18, 0),
-        serviceAmountSR: 1200,
-        receivedAmountSR: 400,
-        remainingAmountSR: 800,
-        attachments: const [
-          ClientOrderAttachment(name: 'صورة_العطل.jpg', type: 'IMG'),
-        ],
-      ),
-      ClientOrder(
-        id: 'R055546',
-        serviceCode: '@111224',
-        createdAt: DateTime(2024, 1, 3, 9, 10),
-        status: 'مكتمل',
-        title: 'تجديد ديكور صالة',
-        details: 'تفاصيل الطلب هنا (وهمية): اقتراح ألوان/أثاث وتوزيع إضاءة وإخراج تصور نهائي.',
-        deliveredAt: DateTime(2024, 1, 8, 13, 0),
-        actualServiceAmountSR: 950,
-        ratingResponseSpeed: 4,
-        ratingCostValue: 4,
-        ratingQuality: 3,
-        ratingCredibility: 4,
-        ratingOnTime: 5,
-        ratingComment: 'تعامل ممتاز وتسليم في الموعد (وهمي).',
-      ),
-      ClientOrder(
-        id: 'R055547',
-        serviceCode: '@111225',
-        createdAt: DateTime(2024, 1, 4, 14, 5),
-        status: 'ملغي',
-        title: 'تصميم شعار',
-        details: 'تفاصيل الطلب هنا (وهمية): تم الإلغاء قبل بدء التنفيذ.',
-        canceledAt: DateTime(2024, 1, 5, 9, 30),
-        cancelReason: 'تغيير المتطلبات من العميل قبل بدء التنفيذ.',
-      ),
-    ];
+  /// ─── تحميل الطلبات من API ───
+  Future<void> _loadOrders() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      // تحويل الفلتر العربي إلى قيمة API
+      String? statusGroup;
+      switch (_selectedFilter) {
+        case 'جديد':
+          statusGroup = 'new';
+          break;
+        case 'تحت التنفيذ':
+          statusGroup = 'in_progress';
+          break;
+        case 'مكتمل':
+          statusGroup = 'completed';
+          break;
+        case 'ملغي':
+          statusGroup = 'cancelled';
+          break;
+      }
+
+      final query = _searchController.text.trim();
+      final orders = await MarketplaceService.getClientRequests(
+        statusGroup: statusGroup,
+        query: query.isNotEmpty ? query : null,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _orders = orders;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'تعذّر تحميل الطلبات';
+        _loading = false;
+      });
+    }
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'مكتمل':
+  Color _statusColor(String statusGroup) {
+    switch (statusGroup) {
+      case 'completed':
         return Colors.green;
-      case 'ملغي':
+      case 'cancelled':
         return Colors.red;
-      case 'تحت التنفيذ':
+      case 'in_progress':
         return Colors.orange;
-      case 'جديد':
+      case 'new':
         return Colors.amber.shade800;
       default:
         return Colors.grey;
@@ -110,28 +100,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   }
 
   String _formatDate(DateTime date) {
-    // dd:MM - HH:mm - dd/MM/yyyy (simple, consistent with mock)
     return DateFormat('HH:mm  dd/MM/yyyy', 'ar').format(date);
-  }
-
-  List<ClientOrder> _filteredOrders(List<ClientOrder> orders) {
-    final query = _searchController.text.trim();
-    Iterable<ClientOrder> result = orders;
-
-    if (_selectedFilter != 'الكل') {
-      result = result.where((o) => o.status == _selectedFilter);
-    }
-
-    if (query.isNotEmpty) {
-      result = result.where(
-        (o) =>
-            o.id.toLowerCase().contains(query.toLowerCase()) ||
-            o.title.toLowerCase().contains(query.toLowerCase()) ||
-            o.serviceCode.toLowerCase().contains(query.toLowerCase()),
-      );
-    }
-
-    return result.toList();
   }
 
   Widget _filterChip({
@@ -146,7 +115,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? _mainColor.withOpacity(0.12) : Colors.transparent,
+          color: selected ? _mainColor.withAlpha(30) : Colors.transparent,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: selected ? _mainColor : Colors.grey.shade300,
@@ -165,30 +134,31 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     );
   }
 
-  Future<void> _openDetails(ClientOrder order) async {
-    final updated = await Navigator.push<ClientOrder>(
+  void _onFilterChanged(String filter) {
+    setState(() => _selectedFilter = filter);
+    _loadOrders();
+  }
+
+  Future<void> _openDetails(ServiceRequest order) async {
+    final refreshed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => ClientOrderDetailsScreen(order: order),
+        builder: (_) => ClientOrderDetailsScreen(requestId: order.id),
       ),
     );
 
-    if (!mounted || updated == null) return;
-    setState(() {
-      final index = _orders.indexWhere((o) => o.id == updated.id);
-      if (index != -1) _orders[index] = updated;
-    });
+    if (!mounted) return;
+    if (refreshed == true) _loadOrders();
   }
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final orders = _filteredOrders(_orders);
 
     if (widget.embedded) {
       return Directionality(
         textDirection: TextDirection.rtl,
-        child: _buildBody(isDark: isDark, orders: orders),
+        child: _buildBody(isDark: isDark),
       );
     }
 
@@ -200,25 +170,23 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           backgroundColor: _mainColor,
           title: const Text(
             'طلباتي',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              color: Colors.white,
-            ),
+            style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
           ),
           iconTheme: const IconThemeData(color: Colors.white),
         ),
-        body: _buildBody(isDark: isDark, orders: orders),
+        body: _buildBody(isDark: isDark),
       ),
     );
   }
 
-  Widget _buildBody({required bool isDark, required List<ClientOrder> orders}) {
+  Widget _buildBody({required bool isDark}) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
           child: Column(
             children: [
+              // حقل البحث
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
@@ -240,11 +208,15 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                           border: InputBorder.none,
                         ),
                         style: const TextStyle(fontFamily: 'Cairo'),
+                        onSubmitted: (_) => _loadOrders(),
                       ),
                     ),
                     if (_searchController.text.trim().isNotEmpty)
                       IconButton(
-                        onPressed: () => _searchController.clear(),
+                        onPressed: () {
+                          _searchController.clear();
+                          _loadOrders();
+                        },
                         icon: const Icon(Icons.close, color: Colors.grey),
                         tooltip: 'مسح',
                       ),
@@ -252,6 +224,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 ),
               ),
               const SizedBox(height: 10),
+              // فلاتر الحالة
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -259,31 +232,31 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                     _filterChip(
                       label: 'الكل',
                       selected: _selectedFilter == 'الكل',
-                      onTap: () => setState(() => _selectedFilter = 'الكل'),
+                      onTap: () => _onFilterChanged('الكل'),
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'جديد',
                       selected: _selectedFilter == 'جديد',
-                      onTap: () => setState(() => _selectedFilter = 'جديد'),
+                      onTap: () => _onFilterChanged('جديد'),
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'تحت التنفيذ',
                       selected: _selectedFilter == 'تحت التنفيذ',
-                      onTap: () => setState(() => _selectedFilter = 'تحت التنفيذ'),
+                      onTap: () => _onFilterChanged('تحت التنفيذ'),
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'مكتمل',
                       selected: _selectedFilter == 'مكتمل',
-                      onTap: () => setState(() => _selectedFilter = 'مكتمل'),
+                      onTap: () => _onFilterChanged('مكتمل'),
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
                       label: 'ملغي',
                       selected: _selectedFilter == 'ملغي',
-                      onTap: () => setState(() => _selectedFilter = 'ملغي'),
+                      onTap: () => _onFilterChanged('ملغي'),
                     ),
                   ],
                 ),
@@ -292,29 +265,53 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           ),
         ),
         Expanded(
-          child: orders.isEmpty
-              ? const Center(
-                  child: Text(
-                    'لا توجد طلبات',
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  itemCount: orders.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (_, index) {
-                    final order = orders[index];
-                    return _orderCard(order: order, isDark: isDark);
-                  },
-                ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _error!,
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _loadOrders,
+                            child: const Text('إعادة المحاولة',
+                                style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _orders.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'لا توجد طلبات',
+                            style: TextStyle(fontFamily: 'Cairo'),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadOrders,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            itemCount: _orders.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, index) {
+                              final order = _orders[index];
+                              return _orderCard(order: order, isDark: isDark);
+                            },
+                          ),
+                        ),
         ),
       ],
     );
   }
 
-  Widget _orderCard({required ClientOrder order, required bool isDark}) {
-    final statusColor = _statusColor(order.status);
+  Widget _orderCard({required ServiceRequest order, required bool isDark}) {
+    final statusColor = _statusColor(order.statusGroup);
 
     return InkWell(
       onTap: () => _openDetails(order),
@@ -334,20 +331,46 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    order.id,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        order.displayId,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // نوع الطلب
+                      if (order.requestType != 'normal')
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: order.requestType == 'urgent'
+                                ? Colors.red.withAlpha(25)
+                                : Colors.blue.withAlpha(25),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            order.requestTypeLabel,
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: order.requestType == 'urgent'
+                                  ? Colors.red
+                                  : Colors.blue,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${order.title} ${order.serviceCode}',
+                    order.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -357,7 +380,18 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                       color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
+                  if (order.providerName != null &&
+                      order.providerName!.isNotEmpty)
+                    Text(
+                      order.providerName!,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
                   Text(
                     _formatDate(order.createdAt),
                     style: TextStyle(
@@ -371,14 +405,17 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
             ),
             const SizedBox(width: 12),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: statusColor.withAlpha(28),
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(color: statusColor.withAlpha(80)),
               ),
               child: Text(
-                order.status,
+                order.statusLabel.isNotEmpty
+                    ? order.statusLabel
+                    : order.statusGroup,
                 style: TextStyle(
                   color: statusColor,
                   fontFamily: 'Cairo',

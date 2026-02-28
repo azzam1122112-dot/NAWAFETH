@@ -754,8 +754,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     MaterialPageRoute(
                       builder:
                           (_) => ChatDetailScreen(
-                            name: c["name"],
-                            isOnline: c["isOnline"] ?? false,
+                            peerName: c["name"] ?? '',
                           ),
                     ),
                   );

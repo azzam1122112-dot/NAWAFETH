@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:nawafeth/services/profile_service.dart';
+import 'package:nawafeth/utils/debounced_save_runner.dart';
 
 class ContentStep extends StatefulWidget {
   final VoidCallback onNext;
@@ -15,19 +17,47 @@ class ContentStep extends StatefulWidget {
 
 class _ContentStepState extends State<ContentStep> {
   final ScrollController _scrollController = ScrollController();
+  final DebouncedSaveRunner _autoSaveRunner = DebouncedSaveRunner();
 
-  final List<SectionContent> sections = [
-    SectionContent(
-      title: 'فيديو تعريفي لخدمة إدارة الاشتراكات',
-      description:
-          'فيديو يشرح آلية إدارة الاشتراكات للعملاء من التسجيل وحتى التجديد بطريقة مبسطة.',
-      mainImage: null,
-      contentVideos: [],
-    ),
-  ];
+  final List<SectionContent> sections = [];
 
   bool _isAddingNew = false;
   int? _editingIndex;
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isInitialized = false;
+  String? _saveError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final result = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      final profile = result.data!;
+      final loadedSections = _deserializeSections(profile.contentSections);
+      setState(() {
+        sections
+          ..clear()
+          ..addAll(loadedSections);
+        _isLoading = false;
+        _saveError = null;
+        _isInitialized = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = false;
+      _saveError = result.error ?? 'تعذر تحميل محتوى الأعمال';
+      _isInitialized = true;
+    });
+  }
 
   void _scrollToEditor() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -63,11 +93,80 @@ class _ContentStepState extends State<ContentStep> {
     });
   }
 
+  List<SectionContent> _deserializeSections(List<dynamic> raw) {
+    final parsed = <SectionContent>[];
+    for (final item in raw) {
+      if (item is Map) {
+        final title = (item['title'] ?? '').toString().trim();
+        final description = (item['description'] ?? '').toString().trim();
+        if (title.isEmpty && description.isEmpty) continue;
+        parsed.add(
+          SectionContent(
+            title: title,
+            description: description,
+            contentImages: [],
+            contentVideos: [],
+          ),
+        );
+      } else if (item is String && item.trim().isNotEmpty) {
+        parsed.add(SectionContent(title: item.trim()));
+      }
+    }
+    return parsed;
+  }
+
+  List<Map<String, dynamic>> _serializeSections() {
+    return sections
+        .where(
+          (s) =>
+              s.title.trim().isNotEmpty ||
+              s.description.trim().isNotEmpty ||
+              s.mainImage != null ||
+              s.contentVideos.isNotEmpty ||
+              s.contentImages.isNotEmpty,
+        )
+        .map(
+          (s) => <String, dynamic>{
+            'title': s.title.trim(),
+            'description': s.description.trim(),
+            'has_main_image': s.mainImage != null,
+            'images_count': s.contentImages.length + (s.mainImage != null ? 1 : 0),
+            'videos_count': s.contentVideos.length,
+          },
+        )
+        .toList();
+  }
+
+  void _queueAutoSave() {
+    if (!_isInitialized) return;
+    _autoSaveRunner.schedule(_saveSectionsToApi);
+  }
+
+  Future<void> _saveSectionsToApi() async {
+    final payload = <String, dynamic>{
+      'content_sections': _serializeSections(),
+    };
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = true;
+    });
+
+    final result = await ProfileService.updateProviderProfile(payload);
+    if (!mounted) return;
+
+    setState(() {
+      _isSaving = false;
+      _saveError = result.isSuccess ? null : (result.error ?? 'فشل الحفظ');
+    });
+  }
+
   void _saveNewSection(SectionContent section) {
     setState(() {
       sections.add(section);
       _isAddingNew = false;
     });
+    _queueAutoSave();
   }
 
   void _saveEditedSection(SectionContent section) {
@@ -78,6 +177,7 @@ class _ContentStepState extends State<ContentStep> {
       sections[index] = section;
       _editingIndex = null;
     });
+    _queueAutoSave();
   }
 
   Future<void> _confirmDeleteSection(int index) async {
@@ -123,19 +223,14 @@ class _ContentStepState extends State<ContentStep> {
   }
 
   void _deleteSection(int index) {
-    if (sections.length == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("يجب أن يبقى قسم واحد على الأقل.")),
-      );
-      return;
-    }
     setState(() {
       sections.removeAt(index);
     });
+    _queueAutoSave();
   }
 
-  void _saveAndContinue() {
-    // لاحقًا: جمع البيانات وإرسالها للباكند
+  Future<void> _saveAndContinue() async {
+    await _autoSaveRunner.flush();
     widget.onNext();
   }
 
@@ -152,7 +247,12 @@ class _ContentStepState extends State<ContentStep> {
           child: Row(
             children: [
               OutlinedButton.icon(
-                onPressed: widget.onBack,
+                onPressed: () async {
+                  if (!_isLoading) {
+                    await _autoSaveRunner.flush();
+                  }
+                  widget.onBack();
+                },
                 icon: const Icon(Icons.arrow_back, color: Colors.deepPurple),
                 label: const Text(
                   "السابق",
@@ -174,7 +274,7 @@ class _ContentStepState extends State<ContentStep> {
               ),
               const Spacer(),
               ElevatedButton.icon(
-                onPressed: _saveAndContinue,
+                onPressed: _isLoading ? null : _saveAndContinue,
                 icon: const Icon(Icons.check, color: Colors.white),
                 label: const Text(
                   "التالي",
@@ -223,27 +323,57 @@ class _ContentStepState extends State<ContentStep> {
                       ),
                     ),
                     const SizedBox(height: 14),
+                    _buildSaveStatus(),
+                    const SizedBox(height: 8),
                     _infoTip(),
                     const SizedBox(height: 18),
 
                     // الكروت المختصرة للأقسام
-                    for (int i = 0; i < sections.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _SectionSummaryCard(
-                          index: i,
-                          section: sections[i],
-                          onTap: () => _startEditSection(i),
-                          onDelete: () => _confirmDeleteSection(i),
+                    if (_isLoading)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 30),
+                        child: Center(
+                          child: CircularProgressIndicator(color: Colors.deepPurple),
                         ),
                       ),
+                    if (!_isLoading && sections.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: const Text(
+                          'لم تضف أي قسم بعد. أضف قسمًا جديدًا ليظهر هنا.',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            color: Colors.black54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    if (!_isLoading)
+                      for (int i = 0; i < sections.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _SectionSummaryCard(
+                            index: i,
+                            section: sections[i],
+                            onTap: () => _startEditSection(i),
+                            onDelete: () => _confirmDeleteSection(i),
+                          ),
+                        ),
 
                     const SizedBox(height: 12),
 
                     // زر إضافة قسم جديد
                     Center(
                       child: ElevatedButton.icon(
-                        onPressed:
+                        onPressed: _isLoading
+                            ? null
+                            :
                             (_isAddingNew || _editingIndex != null)
                                 ? null
                                 : _startAddSection,
@@ -320,8 +450,41 @@ class _ContentStepState extends State<ContentStep> {
     );
   }
 
+  Widget _buildSaveStatus() {
+    if (_isSaving) {
+      return const Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'جاري الحفظ التلقائي...',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      );
+    }
+
+    if (_saveError != null) {
+      return Text(
+        _saveError!,
+        style: const TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 12,
+          color: Colors.redAccent,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   @override
   void dispose() {
+    _autoSaveRunner.dispose();
     _scrollController.dispose();
     super.dispose();
   }

@@ -2,16 +2,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
-import 'registration/register_service_provider.dart';
-import 'provider_dashboard/provider_home_screen.dart';
-import 'provider_dashboard/provider_orders_screen.dart';
-import 'client_orders_screen.dart';
 import '../widgets/custom_drawer.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import '../models/user_profile.dart';
+import 'registration/register_service_provider.dart';
+import 'provider_dashboard/provider_home_screen.dart';
+import 'login_settings_screen.dart';
+import 'plans_screen.dart';
+import 'notifications_screen.dart';
+import 'my_chats_screen.dart';
+import 'client_orders_screen.dart';
+import 'interactive_screen.dart';
 
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
@@ -20,729 +23,619 @@ class MyProfileScreen extends StatefulWidget {
   State<MyProfileScreen> createState() => _MyProfileScreenState();
 }
 
-class _MyProfileScreenState extends State<MyProfileScreen>
-    with SingleTickerProviderStateMixin {
-  final Color mainColor = Colors.deepPurple;
+class _MyProfileScreenState extends State<MyProfileScreen> {
   File? _profileImage;
   File? _coverImage;
-  late AnimationController _controller;
 
-  // ────── حالات التحميل ──────
   bool _isLoading = true;
   String? _errorMessage;
-
-  // ────── بيانات من الـ API ──────
   UserProfile? _userProfile;
-  bool get isProvider => _userProfile?.isProvider ?? false;
+  bool _isProviderMode = false;
   bool get isProviderRegistered => _userProfile?.hasProviderProfile ?? false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
     _loadProfile();
   }
 
-  /// ✅ تحميل بيانات المستخدم من الـ API
   Future<void> _loadProfile() async {
     if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() { _isLoading = true; _errorMessage = null; });
 
-    // التحقق من تسجيل الدخول
     final isLoggedIn = await AuthService.isLoggedIn();
     if (!isLoggedIn) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'يجب تسجيل الدخول أولاً';
-        });
-      }
+      if (mounted) setState(() { _isLoading = false; _errorMessage = 'يجب تسجيل الدخول أولاً'; });
       return;
     }
 
-    // جلب بيانات المستخدم
     final result = await ProfileService.fetchMyProfile();
-
     if (!mounted) return;
 
     if (result.isSuccess && result.data != null) {
       final profile = result.data!;
-
-      // تحديث SharedPreferences للتوافق مع باقي التطبيق
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isProvider', profile.isProvider);
       await prefs.setBool('isProviderRegistered', profile.hasProviderProfile);
 
-      setState(() {
-        _userProfile = profile;
-        _isLoading = false;
-      });
-    } else {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = result.error;
-      });
-    }
-  }
+      final canSwitch = profile.isProvider || profile.hasProviderProfile;
+      final saved = prefs.getBool('isProvider');
+      final effectiveMode = canSwitch ? (saved ?? true) : false;
+      await prefs.setBool('isProvider', effectiveMode);
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+      setState(() { _userProfile = profile; _isProviderMode = effectiveMode; _isLoading = false; });
+    } else {
+      setState(() { _isLoading = false; _errorMessage = result.error; });
+    }
   }
 
   Future<void> _pickImage({required bool isCover}) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      setState(() {
-        isCover
-            ? _coverImage = File(picked.path)
-            : _profileImage = File(picked.path);
-      });
+      setState(() { isCover ? _coverImage = File(picked.path) : _profileImage = File(picked.path); });
     }
   }
 
-  Widget _iconButtonCircle(IconData icon, String label, bool isDark) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isDark ? Colors.grey[850] : Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: isDark ? Colors.black45 : Colors.black12,
-                blurRadius: 4,
-              ),
-            ],
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: isDark ? Colors.deepPurple.shade300 : Colors.deepPurple,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.white70 : Colors.black87,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// ✅ شاشة خطأ مع زر إعادة المحاولة
-  Widget _buildErrorState(ThemeData theme) {
-    final isDark = theme.brightness == Brightness.dark;
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      drawer: const CustomDrawer(),
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(60),
-        child: CustomAppBar(showSearchField: false, title: 'نافذتي'),
-      ),
-      bottomNavigationBar: const CustomBottomNav(currentIndex: 3),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.cloud_off_rounded,
-                size: 64,
-                color: isDark ? Colors.grey[600] : Colors.grey[400],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage ?? 'حدث خطأ',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 16,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _loadProfile,
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                label: const Text(
-                  'إعادة المحاولة',
-                  style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: mainColor,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-              if (_errorMessage == 'يجب تسجيل الدخول أولاً') ...[
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/login'),
-                  child: Text(
-                    'تسجيل الدخول',
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 15,
-                      color: mainColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // =============================================
+  //  BUILD
+  // =============================================
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // ✅ إذا كان مقدم خدمة، عرض لوحة المزود
-    if (!_isLoading && _errorMessage == null && isProvider) {
+    if (!_isLoading && _errorMessage == null && _isProviderMode) {
       return const ProviderHomeScreen();
     }
-    
-    // ✅ إذا كان قيد التحميل، عرض شاشة تحميل
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: const PreferredSize(
-          preferredSize: Size.fromHeight(60),
-          child: CustomAppBar(showSearchField: false),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(
-            color: Colors.deepPurple,
-          ),
-        ),
-        bottomNavigationBar: const CustomBottomNav(currentIndex: 3),
-      );
-    }
 
-    // ✅ إذا كان هناك خطأ
-    if (_errorMessage != null) {
-      return _buildErrorState(theme);
+    if (_isLoading) {
+      return _buildShell(theme, child: const Center(child: CircularProgressIndicator(color: Colors.deepPurple)));
     }
-    
-    // ✅ عرض بروفايل العميل العادي
-    final isDark = theme.brightness == Brightness.dark;
-    final profile = _userProfile!;
-    
+    if (_errorMessage != null) return _buildErrorState(theme);
+
+    return _buildClientProfile(theme);
+  }
+
+  Widget _buildShell(ThemeData theme, {required Widget child}) {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-
-      // ✅ أضف هذا السطر لفتح القائمة من اليسار
       drawer: const CustomDrawer(),
+      bottomNavigationBar: const CustomBottomNav(currentIndex: 3),
+      body: child,
+    );
+  }
 
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(60),
-        child: CustomAppBar(showSearchField: false, title: 'نافذتي'),
-      ),
+  // =============================================
+  //  CLIENT PROFILE  -  2026 Design
+  // =============================================
 
+  Widget _buildClientProfile(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final profile = _userProfile!;
+    const purple = Colors.deepPurple;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5FA),
+      drawer: const CustomDrawer(),
       bottomNavigationBar: const CustomBottomNav(currentIndex: 3),
       body: RefreshIndicator(
         onRefresh: _loadProfile,
-        color: mainColor,
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      height: 190,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient:
-                            _coverImage == null
-                                ? LinearGradient(
-                                  colors: [
-                                    isDark ? Colors.deepPurple.shade800 : mainColor,
-                                    isDark ? Colors.deepPurple.shade900.withOpacity(0.6) : mainColor.withOpacity(0.6),
-                                  ],
-                                  begin: Alignment.topRight,
-                                  end: Alignment.bottomLeft,
-                                )
-                                : null,
-                        image:
-                            _coverImage != null
-                                ? DecorationImage(
-                                  image: FileImage(_coverImage!),
-                                  fit: BoxFit.cover,
-                                )
-                                : null,
-                      ),
-                      child: Stack(
-                        children: [
-                          // ✅ زر تعديل الغلاف
-                          Positioned(
-                            top: 8,
-                            left: 16,
-                            child: SafeArea(
-                              bottom: false,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.black26,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.photo_camera_outlined,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  onPressed: () => _pickImage(isCover: true),
-                                ),
-                              ),
-                            ),
-                          ),
-                          // ✅ زر التبديل إلى وضع مقدم الخدمة (يظهر فقط إذا كان مسجلاً)
-                          if (isProviderRegistered)
-                            Positioned(
-                              top: 8,
-                              right: 16,
-                              child: SafeArea(
-                                bottom: false,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.95),
-                                    borderRadius: BorderRadius.circular(25),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () async {
-                                        final prefs = await SharedPreferences.getInstance();
-                                        await prefs.setBool('isProvider', true);
-                                      
-                                        if (mounted) {
-                                          // إظهار إشعار التبديل
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: const Row(
-                                                children: [
-                                                  Icon(Icons.check_circle, color: Colors.white),
-                                                  SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Text(
-                                                      'تم التبديل إلى حساب مقدم الخدمة بنجاح',
-                                                      style: TextStyle(
-                                                        fontFamily: 'Cairo',
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              backgroundColor: Colors.green,
-                                              duration: const Duration(seconds: 5),
-                                              behavior: SnackBarBehavior.floating,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(10),
-                                              ),
-                                            ),
-                                          );
-                                          
-                                          setState(() {
-                                            _isLoading = true;
-                                          });
-                                          await _loadProfile();
-                                        }
-                                      },
-                                      borderRadius: BorderRadius.circular(25),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Icon(
-                                              Icons.business_center,
-                                              size: 18,
-                                              color: Colors.deepPurple,
-                                            ),
-                                            SizedBox(width: 6),
-                                            Text(
-                                              'مقدم خدمة',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.deepPurple,
-                                                fontFamily: 'Cairo',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Positioned(
-                      top: 130,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: isDark ? Colors.grey[800] : Colors.white,
-                              ),
-                              child: CircleAvatar(
-                                radius: 45,
-                                backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
-                                backgroundImage:
-                                    _profileImage != null
-                                        ? FileImage(_profileImage!)
-                                        : null,
-                                child:
-                                    _profileImage == null
-                                        ? const Icon(
-                                          Icons.person,
-                                          color: Colors.white,
-                                          size: 40,
-                                        )
-                                        : null,
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: GestureDetector(
-                                onTap: () => _pickImage(isCover: false),
-                                child: CircleAvatar(
-                                  radius: 13,
-                                  backgroundColor: mainColor,
-                                  child: const Icon(
-                                    Icons.camera_alt,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 30),
-                // ✅ اسم المستخدم — من الـ API
-                Text(
-                  profile.usernameDisplay,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                // ✅ الاسم الكامل إذا متوفر
-                if (profile.firstName != null || profile.lastName != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    profile.displayName,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                // ✅ إحصائيات المتابعين والمتابعون
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('قائمة المتابعين'),
-                          ),
-                        );
-                      },
-                      child: Column(
-                        children: [
-                          Text(
-                            '${profile.followingCount}',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'متابع',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 40),
-                    GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('قائمة المتابَعون'),
-                          ),
-                        );
-                      },
-                      child: Column(
-                        children: [
-                          Text(
-                            '${profile.likesCount}',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'يتابع',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.list_alt, color: Colors.white),
-                    label: const Text(
-                      "إدارة الطلبات",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onPressed: () {
-                      if (isProvider) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ProviderOrdersScreen(),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ClientOrdersScreen(),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                      backgroundColor: isDark ? Colors.deepPurple.shade700 : mainColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 90,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: 6,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return GestureDetector(
-                          onTap: () {},
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isDark ? Colors.deepPurple.shade300 : mainColor,
-                                width: 2,
-                              ),
-                              color: isDark ? Colors.grey[850] : Colors.white,
-                            ),
-                            child: CircleAvatar(
-                              radius: 32,
-                              backgroundColor: isDark ? Colors.grey[850] : Colors.white,
-                              child: Icon(
-                                Icons.add,
-                                color: isDark ? Colors.deepPurple.shade300 : Colors.deepPurple,
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                        );
-                      } else {
-                        return RotationTransition(
-                          turns: _controller,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: isDark
-                                    ? [Colors.deepPurple.shade700, Colors.orange.shade700]
-                                    : [const Color(0xFFE1BEE7), const Color(0xFFFFB74D)],
-                                begin: Alignment.topRight,
-                                end: Alignment.bottomLeft,
-                              ),
-                            ),
-                            child: CircleAvatar(
-                              radius: 32,
-                              backgroundColor: isDark ? Colors.grey[850] : Colors.white,
-                              child: Icon(
-                                Icons.play_arrow,
-                                color: isDark ? Colors.deepPurple.shade300 : Colors.deepPurple,
-                                size: 26,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 30),
-                // ✅ يظهر زر التسجيل كمقدم خدمة فقط إذا لم يكن مسجلاً بعد
-                if (!isProviderRegistered)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.deepPurple.shade900.withOpacity(0.3)
-                            : mainColor.withOpacity(0.07),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            'انضم الآن وشارك مهاراتك مع الباحثين عنها بسهولة!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => const RegisterServiceProviderPage(),
-                                ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.person_add_alt_1,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'سجل كمقدم خدمة',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark
-                                  ? Colors.deepPurple.shade700
-                                  : mainColor,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 40),
-              ],
+        color: purple,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // -- Header with Cover + Avatar --
+            SliverToBoxAdapter(child: _buildHeader(profile, isDark, purple)),
+
+            // -- Quick Actions Grid --
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+              sliver: SliverToBoxAdapter(child: _buildQuickActions(isDark, purple)),
             ),
-          ),
-          Positioned(
-            top: 190,
-            left: 20,
-            right: 20,
-            child: Row(
-              children: [
-                Row(
-                  children: [
-                    _iconButtonCircle(Icons.qr_code, "QR", isDark),
-                    const SizedBox(width: 16),
-                    _iconButtonCircle(Icons.bookmark_border, '${profile.favoritesMediaCount}', isDark),
-                  ],
-                ),
-                const Spacer(),
-                Row(
-                  children: [
-                    _iconButtonCircle(Icons.person_outline, '${profile.followingCount}', isDark),
-                    const SizedBox(width: 16),
-                    _iconButtonCircle(Icons.thumb_up_alt_outlined, '${profile.likesCount}', isDark),
-                  ],
-                ),
-              ],
+
+            // -- Menu Tiles --
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(child: _buildMenuSection(isDark, purple, profile)),
             ),
-          ),
-        ],
+
+            // -- Register as Provider CTA --
+            if (!isProviderRegistered)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                sliver: SliverToBoxAdapter(child: _buildProviderCTA(isDark, purple)),
+              ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          ],
         ),
       ),
     );
   }
+
+  // -- HEADER --
+  Widget _buildHeader(UserProfile profile, bool isDark, Color purple) {
+    return SizedBox(
+      height: 268,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Cover
+          Container(
+            height: 140,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: _coverImage == null
+                  ? LinearGradient(
+                      colors: isDark
+                          ? [Colors.deepPurple.shade900, Colors.deepPurple.shade800.withValues(alpha: 0.6)]
+                          : [Colors.deepPurple.shade600, Colors.deepPurple.shade400],
+                      begin: Alignment.topRight,
+                      end: Alignment.bottomLeft,
+                    )
+                  : null,
+              image: _coverImage != null
+                  ? DecorationImage(image: FileImage(_coverImage!), fit: BoxFit.cover)
+                  : null,
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _miniIconBtn(Icons.camera_alt_outlined, () => _pickImage(isCover: true)),
+                    if (isProviderRegistered) _switchModeChip(purple),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Avatar + Info
+          Positioned(
+            top: 100,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5FA),
+                      width: 3,
+                    ),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 2)),
+                    ],
+                  ),
+                  child: GestureDetector(
+                    onTap: () => _pickImage(isCover: false),
+                    child: CircleAvatar(
+                      radius: 36,
+                      backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                      backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
+                      child: _profileImage == null
+                          ? Icon(Icons.person, size: 32, color: isDark ? Colors.white54 : Colors.grey)
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  profile.displayName,
+                  style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Cairo',
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                Text(
+                  profile.usernameDisplay,
+                  style: TextStyle(
+                    fontSize: 11.5, fontFamily: 'Cairo',
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _buildStatsRow(profile, isDark, purple),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniIconBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Colors.white, size: 16),
+      ),
+    );
+  }
+
+  Widget _switchModeChip(Color purple) {
+    return GestureDetector(
+      onTap: () async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isProvider', true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('تم التبديل إلى حساب مقدم الخدمة',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+          setState(() => _isLoading = true);
+          await _loadProfile();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 6)],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.swap_horiz_rounded, size: 14, color: purple),
+            const SizedBox(width: 4),
+            Text('مقدم خدمة', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: purple, fontFamily: 'Cairo')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -- STATS ROW --
+  Widget _buildStatsRow(UserProfile profile, bool isDark, Color purple) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: isDark
+            ? null
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _statItem('${profile.followingCount}', 'أتابع', isDark, purple),
+          _dividerVertical(isDark),
+          _statItem('${profile.likesCount}', 'إعجاب', isDark, purple),
+          _dividerVertical(isDark),
+          _statItem('${profile.favoritesMediaCount}', 'مفضلتي', isDark, purple),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(String count, String label, bool isDark, Color purple) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(count, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: purple, fontFamily: 'Cairo')),
+          Text(label, style: TextStyle(fontSize: 10, color: isDark ? Colors.grey.shade500 : Colors.grey.shade600, fontFamily: 'Cairo')),
+        ],
+      ),
+    );
+  }
+
+  Widget _dividerVertical(bool isDark) {
+    return Container(
+      width: 1,
+      height: 24,
+      color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade200,
+    );
+  }
+
+  // -- QUICK ACTIONS --
+  Widget _buildQuickActions(bool isDark, Color purple) {
+    final actions = [
+      _QuickAction(Icons.shopping_bag_outlined, 'طلباتي', () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientOrdersScreen()));
+      }),
+      _QuickAction(Icons.chat_bubble_outline_rounded, 'محادثاتي', () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const MyChatsScreen()));
+      }),
+      _QuickAction(Icons.notifications_none_rounded, 'الإشعارات', () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+      }),
+      _QuickAction(Icons.people_outline_rounded, 'تفاعلي', () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const InteractiveScreen()));
+      }),
+    ];
+
+    return Row(
+      children: actions.map((a) {
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: _quickActionCard(a, isDark, purple),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _quickActionCard(_QuickAction action, bool isDark, Color purple) {
+    return GestureDetector(
+      onTap: action.onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isDark
+              ? null
+              : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: purple.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(action.icon, size: 18, color: purple),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              action.label,
+              style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w600, fontFamily: 'Cairo',
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -- MENU SECTION --
+  Widget _buildMenuSection(bool isDark, Color purple, UserProfile profile) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: isDark
+            ? null
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        children: [
+          _menuTile(
+            icon: Icons.person_outline_rounded,
+            label: 'إعدادات الحساب',
+            subtitle: profile.email ?? profile.phone ?? '',
+            isDark: isDark,
+            purple: purple,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginSettingsScreen())),
+          ),
+          _menuDivider(isDark),
+          _menuTile(
+            icon: Icons.workspace_premium_outlined,
+            label: 'الباقات والاشتراكات',
+            isDark: isDark,
+            purple: purple,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlansScreen())),
+          ),
+          _menuDivider(isDark),
+          _menuTile(
+            icon: Icons.qr_code_rounded,
+            label: 'QR نافذتي',
+            isDark: isDark,
+            purple: purple,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('شاشة QR قريبا', style: TextStyle(fontFamily: 'Cairo', fontSize: 12))),
+              );
+            },
+          ),
+          _menuDivider(isDark),
+          _menuTile(
+            icon: Icons.bookmark_border_rounded,
+            label: 'المحفوظات',
+            trailing: '${profile.favoritesMediaCount}',
+            isDark: isDark,
+            purple: purple,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InteractiveScreen())),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _menuTile({
+    required IconData icon,
+    required String label,
+    String? subtitle,
+    String? trailing,
+    required bool isDark,
+    required Color purple,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: purple.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 16, color: purple),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, fontFamily: 'Cairo', color: isDark ? Colors.white : Colors.black87)),
+                    if (subtitle != null && subtitle.isNotEmpty)
+                      Text(subtitle, style: TextStyle(fontSize: 10, fontFamily: 'Cairo', color: isDark ? Colors.grey.shade600 : Colors.grey.shade500)),
+                  ],
+                ),
+              ),
+              if (trailing != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: purple.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(trailing, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: purple, fontFamily: 'Cairo')),
+                ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_left_rounded, size: 18, color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _menuDivider(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100),
+    );
+  }
+
+  // -- PROVIDER CTA --
+  Widget _buildProviderCTA(bool isDark, Color purple) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? [Colors.deepPurple.shade900.withValues(alpha: 0.4), Colors.deepPurple.shade800.withValues(alpha: 0.2)]
+              : [Colors.deepPurple.shade50, Colors.white],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: purple.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: purple.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.rocket_launch_rounded, size: 22, color: purple),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'انضم كمقدم خدمة',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, fontFamily: 'Cairo', color: isDark ? Colors.white : Colors.black87),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'شارك مهاراتك وابدأ بتلقي الطلبات',
+                  style: TextStyle(fontSize: 10, fontFamily: 'Cairo', color: isDark ? Colors.grey.shade500 : Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterServiceProviderPage())),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: purple,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'سجّل الآن',
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white, fontFamily: 'Cairo'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -- ERROR STATE --
+  Widget _buildErrorState(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return _buildShell(
+      theme,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.cloud_off_rounded, size: 48, color: Colors.grey.shade400),
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage ?? 'حدث خطأ',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: isDark ? Colors.white70 : Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _loadProfile,
+                icon: const Icon(Icons.refresh, color: Colors.white, size: 16),
+                label: const Text('إعادة المحاولة', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (_errorMessage == 'يجب تسجيل الدخول أولاً') ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/login'),
+                  child: const Text('تسجيل الدخول', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.deepPurple, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAction {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _QuickAction(this.icon, this.label, this.onTap);
 }

@@ -399,8 +399,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatDetailScreen(
-          name: providerName,
-          isOnline: true,
+          peerName: providerName,
         ),
       ),
     );
@@ -1292,8 +1291,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ChatDetailScreen(
-                  name: customerName,
-                  isOnline: true,
+                  peerName: customerName,
                 ),
               ),
             );

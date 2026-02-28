@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/notification_model.dart';
+import '../services/notification_service.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -10,74 +12,151 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
-  // ✅ حالة الاشتراك
-  bool basicSubscribed = true;
-  bool proSubscribed = false;
-  bool premiumSubscribed = false; // الاحترافية غير مفعلة
+  List<NotificationPreference> _preferences = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+  final Set<String> _savingKeys = {};
 
-  // ✅ إعدادات الباقات
-  Map<String, bool> basicSettings = {
-    "إشعار طلب جديد": true,
-    "تغير في حالة/بيانات طلب": false,
-    "إشعار طلب خدمة عاجلة": true,
-    "تغير في حالة/بيانات بلاغ": false,
+  // ─── Backend tier names ───
+  static const _tierOrder = ['basic', 'leading', 'professional', 'extra'];
+
+  static const _tierLabels = {
+    'basic': 'الباقة الأساسية',
+    'leading': 'الباقة الرائدة',
+    'professional': 'الباقة الاحترافية',
+    'extra': 'الباقة المميزة',
   };
 
-  Map<String, bool> proSettings = {
-    "إشعار محادثة جديدة": true,
-    "رد على طلب خدمة": false,
-    "توصيات منصة نوافذ": true,
-    "متابعة جديدة لمنصتك": true,
-    "تعليق جديد على خدماتك": false,
+  static const _tierIcons = {
+    'basic': Icons.star,
+    'leading': Icons.rocket_launch,
+    'professional': Icons.auto_awesome,
+    'extra': Icons.diamond,
   };
 
-  Map<String, bool> premiumSettings = {
-    "إشعارات تنافسية ذكية": false,
-    "عروض وخصومات حصرية": false,
-    "أولوية في الدعم الفني": false,
-    "تقارير شهرية متقدمة": false,
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
 
-  // ✅ عنصر إشعار
-  Widget _buildSwitchTile({
-    required String title,
-    required bool value,
-    required Function(bool) onChanged,
-    bool enabled = true,
-  }) {
+  Future<void> _loadPreferences() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final prefs = await NotificationService.fetchPreferences();
+      if (!mounted) return;
+      setState(() {
+        _preferences = prefs;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'فشل تحميل الإعدادات';
+      });
+    }
+  }
+
+  // ─── تحديث تفضيل واحد ───
+  Future<void> _togglePreference(NotificationPreference pref, bool newVal) async {
+    if (pref.locked) {
+      _showUpgradeDialog();
+      return;
+    }
+
+    setState(() => _savingKeys.add(pref.key));
+
+    final result = await NotificationService.updatePreferences([
+      {'key': pref.key, 'enabled': newVal},
+    ]);
+
+    if (!mounted) return;
+    setState(() => _savingKeys.remove(pref.key));
+
+    if (result.success) {
+      // تحديث القيمة محلياً
+      setState(() {
+        final idx = _preferences.indexWhere((p) => p.key == pref.key);
+        if (idx >= 0) {
+          _preferences[idx] = pref.copyWith(enabled: newVal);
+        }
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('فشل حفظ الإعداد', style: TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ─── تجميع التفضيلات حسب الطبقة ───
+  Map<String, List<NotificationPreference>> _groupByTier() {
+    final grouped = <String, List<NotificationPreference>>{};
+    for (final pref in _preferences) {
+      grouped.putIfAbsent(pref.tier, () => []);
+      grouped[pref.tier]!.add(pref);
+    }
+    return grouped;
+  }
+
+  // ─── عنصر إشعار ───
+  Widget _buildSwitchTile(NotificationPreference pref) {
+    final isSaving = _savingKeys.contains(pref.key);
+
     return Opacity(
-      opacity: enabled ? 1 : 0.35,
+      opacity: pref.locked ? 0.35 : 1,
       child: SwitchListTile(
         dense: true,
         activeColor: Colors.deepPurple,
         title: Text(
-          title,
+          pref.title,
           style: TextStyle(
             fontFamily: "Cairo",
             fontSize: 14,
-            color: enabled ? Colors.black87 : Colors.grey,
+            color: pref.locked ? Colors.grey : Colors.black87,
           ),
         ),
-        value: value,
-        onChanged: enabled ? onChanged : null,
+        subtitle: pref.locked
+            ? const Text("يتطلب ترقية الباقة", style: TextStyle(fontFamily: "Cairo", fontSize: 11, color: Colors.orange))
+            : null,
+        secondary: isSaving
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple),
+              )
+            : pref.locked
+                ? const Icon(Icons.lock_outline, color: Colors.grey, size: 18)
+                : null,
+        value: pref.enabled,
+        onChanged: pref.locked
+            ? (_) => _showUpgradeDialog()
+            : isSaving
+                ? null
+                : (val) => _togglePreference(pref, val),
       ),
     );
   }
 
-  // ✅ كارت الباقة
-  Widget _buildPackageCard({
-    required String title,
-    required bool subscribed,
-    required VoidCallback onToggle,
-    required Map<String, bool> settings,
-    required IconData icon,
-    bool isPremium = false,
-  }) {
+  // ─── كارت الباقة ───
+  Widget _buildTierCard(String tier, List<NotificationPreference> prefs) {
+    final label = _tierLabels[tier] ?? tier;
+    final icon = _tierIcons[tier] ?? Icons.notifications;
+    final allLocked = prefs.every((p) => p.locked);
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ExpansionTile(
+        initiallyExpanded: tier == 'basic',
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         collapsedIconColor: Colors.deepPurple,
         iconColor: Colors.deepPurple,
@@ -86,7 +165,7 @@ class _NotificationSettingsScreenState
             Icon(icon, color: Colors.deepPurple, size: 26),
             const SizedBox(width: 10),
             Text(
-              title,
+              label,
               style: const TextStyle(
                 fontFamily: "Cairo",
                 fontWeight: FontWeight.bold,
@@ -95,157 +174,103 @@ class _NotificationSettingsScreenState
               ),
             ),
             const Spacer(),
-            Switch(
-              value: subscribed,
-              activeColor: Colors.deepPurple,
-              onChanged: (_) {
-                if (isPremium) {
-                  _showPremiumDialog(context);
-                } else {
-                  onToggle();
-                }
-              },
+            if (allLocked)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  "مقفلة",
+                  style: TextStyle(fontFamily: "Cairo", fontSize: 11, color: Colors.orange),
+                ),
+              ),
+            Text(
+              '${prefs.where((p) => p.enabled && !p.locked).length}/${prefs.length}',
+              style: const TextStyle(fontFamily: "Cairo", fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
-        children:
-            settings.entries.map((entry) {
-              return _buildSwitchTile(
-                title: entry.key,
-                value: entry.value,
-                enabled: subscribed && !isPremium,
-                onChanged: (val) {
-                  if (isPremium) {
-                    _showPremiumDialog(context);
-                  } else {
-                    setState(() {
-                      settings[entry.key] = val;
-                    });
-                  }
-                },
-              );
-            }).toList(),
+        children: prefs.map((p) => _buildSwitchTile(p)).toList(),
       ),
     );
   }
 
-  // ✅ Dialog منبثق للباقه الاحترافية
-  void _showPremiumDialog(BuildContext context) {
+  // ─── Dialog ترقية ───
+  void _showUpgradeDialog() {
     showDialog(
       context: context,
-      builder:
-          (_) => Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.auto_awesome, color: Colors.deepPurple, size: 50),
+              const SizedBox(height: 12),
+              const Text(
+                "ترقية الباقة",
+                style: TextStyle(
+                  fontFamily: "Cairo",
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.deepPurple,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "للاستفادة من هذه الإشعارات يجب ترقية باقتك الحالية.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: "Cairo",
+                  fontSize: 14,
+                  color: Colors.black87,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
                 children: [
-                  const Icon(
-                    Icons.auto_awesome, // ⚡ أيقونة حديثة وأنيقة
-                    color: Colors.deepPurple,
-                    size: 50,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "الباقة الاحترافية",
-                    style: TextStyle(
-                      fontFamily: "Cairo",
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: Colors.deepPurple,
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        // TODO: الانتقال لصفحة الباقات
+                      },
+                      child: const Text(
+                        "ترقية الآن",
+                        style: TextStyle(fontFamily: "Cairo", fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "للاستفادة من جميع الميزات المتقدمة يجب الاشتراك في الباقة الاحترافية:",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: "Cairo",
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.6,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.deepPurple),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        "إلغاء",
+                        style: TextStyle(fontFamily: "Cairo", fontSize: 14, color: Colors.deepPurple),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "⚡ إشعارات تنافسية ذكية",
-                        style: TextStyle(fontFamily: "Cairo", fontSize: 13),
-                      ),
-                      Text(
-                        "🎁 عروض وخصومات حصرية",
-                        style: TextStyle(fontFamily: "Cairo", fontSize: 13),
-                      ),
-                      Text(
-                        "📞 أولوية في الدعم الفني",
-                        style: TextStyle(fontFamily: "Cairo", fontSize: 13),
-                      ),
-                      Text(
-                        "📊 تقارير شهرية متقدمة",
-                        style: TextStyle(fontFamily: "Cairo", fontSize: 13),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          onPressed: () {
-                            // TODO: الترقية
-                          },
-                          child: const Text(
-                            "ترقية الآن",
-                            style: TextStyle(
-                              fontFamily: "Cairo",
-                              fontSize: 14,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.deepPurple),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          child: const Text(
-                            "إلغاء",
-                            style: TextStyle(
-                              fontFamily: "Cairo",
-                              fontSize: 14,
-                              color: Colors.deepPurple,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
-            ),
+            ],
           ),
+        ),
+      ),
     );
   }
 
@@ -267,38 +292,53 @@ class _NotificationSettingsScreenState
           ),
           iconTheme: const IconThemeData(color: Colors.white),
         ),
-        body: ListView(
-          children: [
-            _buildPackageCard(
-              title: "الباقة الأساسية",
-              subscribed: basicSubscribed,
-              onToggle: () {
-                setState(() => basicSubscribed = !basicSubscribed);
-              },
-              settings: basicSettings,
-              icon: Icons.star,
-            ),
-            _buildPackageCard(
-              title: "الباقة الرائدة",
-              subscribed: proSubscribed,
-              onToggle: () {
-                setState(() => proSubscribed = !proSubscribed);
-              },
-              settings: proSettings,
-              icon: Icons.rocket_launch,
-            ),
-            _buildPackageCard(
-              title: "الباقة الاحترافية",
-              subscribed: premiumSubscribed,
-              onToggle: () {
-                _showPremiumDialog(context); // 🔥 يظهر عند محاولة تفعيل الباقة
-              },
-              settings: premiumSettings,
-              icon: Icons.auto_awesome, // ⚡ أيقونة احترافية
-              isPremium: true,
-            ),
-          ],
-        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
+            : _errorMessage != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                        const SizedBox(height: 12),
+                        Text(_errorMessage!, style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: _loadPreferences,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+                          child: const Text("إعادة المحاولة",
+                              style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadPreferences,
+                    color: Colors.deepPurple,
+                    child: Builder(
+                      builder: (context) {
+                        final grouped = _groupByTier();
+                        final sortedTiers = _tierOrder.where((t) => grouped.containsKey(t)).toList();
+                        // أي طبقة غير معروفة في النهاية
+                        for (final t in grouped.keys) {
+                          if (!sortedTiers.contains(t)) sortedTiers.add(t);
+                        }
+
+                        if (sortedTiers.isEmpty) {
+                          return const Center(
+                            child: Text("لا توجد إعدادات متاحة",
+                                style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
+                          );
+                        }
+
+                        return ListView(
+                          children: sortedTiers
+                              .map((tier) => _buildTierCard(tier, grouped[tier]!))
+                              .toList(),
+                        );
+                      },
+                    ),
+                  ),
       ),
     );
   }

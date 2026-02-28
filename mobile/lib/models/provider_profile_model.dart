@@ -60,6 +60,12 @@ class ProviderProfileModel {
     this.createdAt,
   });
 
+  static const double baseCompletionWeight = 0.30;
+  static const double optionalSectionsWeight = 0.70;
+  static const int optionalSectionsCount = 6;
+  static const double optionalSectionWeight =
+      optionalSectionsWeight / optionalSectionsCount;
+
   /// تحويل من JSON
   factory ProviderProfileModel.fromJson(Map<String, dynamic> json) {
     return ProviderProfileModel(
@@ -96,55 +102,47 @@ class ProviderProfileModel {
 
   /// ─── حساب نسبة إكمال الملف التعريفي ───
   ///
-  /// المعايير:
-  /// 1. بيانات التسجيل الأساسية (30%) — متوفرة دائماً
-  /// 2. تفاصيل الخدمة (10%) — display_name + bio
-  /// 3. معلومات إضافية (10%) — about_details
-  /// 4. معلومات التواصل الكاملة (10%) — whatsapp + website
-  /// 5. اللغة ونطاق الخدمة (10%) — languages + coverage_radius_km
-  /// 6. محتوى أعمالك (15%) — profile_image + cover_image + content_sections
-  /// 7. SEO والكلمات المفتاحية (15%) — seo_keywords
+  /// 30% من التسجيل الأساسي + 70% موزعة بالتساوي على 6 أقسام.
   double get profileCompletion {
-    double completion = 0.0;
+    final completedOptionalSections = [
+      isServiceDetailsComplete,
+      isAdditionalDetailsComplete,
+      isContactInfoComplete,
+      isLanguageLocationComplete,
+      isContentComplete,
+      isSeoComplete,
+    ].where((v) => v).length;
 
-    // 1️⃣ بيانات التسجيل الأساسية (30%)
-    completion += 0.30;
-
-    // 2️⃣ تفاصيل الخدمة (10%)
-    if (displayName.isNotEmpty && bio.isNotEmpty) {
-      completion += 0.10;
-    }
-
-    // 3️⃣ معلومات إضافية (10%)
-    if (aboutDetails != null && aboutDetails!.isNotEmpty) {
-      completion += 0.10;
-    }
-
-    // 4️⃣ معلومات التواصل الكاملة (10%)
-    if ((whatsapp != null && whatsapp!.isNotEmpty) ||
-        (website != null && website!.isNotEmpty)) {
-      completion += 0.10;
-    }
-
-    // 5️⃣ اللغة ونطاق الخدمة (10%)
-    if (languages.isNotEmpty) {
-      completion += 0.10;
-    }
-
-    // 6️⃣ محتوى أعمالك (15%)
-    double contentScore = 0.0;
-    if (profileImage != null && profileImage!.isNotEmpty) contentScore += 0.05;
-    if (coverImage != null && coverImage!.isNotEmpty) contentScore += 0.05;
-    if (contentSections.isNotEmpty) contentScore += 0.05;
-    completion += contentScore;
-
-    // 7️⃣ SEO والكلمات المفتاحية (15%)
-    if (seoKeywords.isNotEmpty) {
-      completion += 0.15;
-    }
-
+    final completion =
+        baseCompletionWeight + (completedOptionalSections * optionalSectionWeight);
     return completion.clamp(0.0, 1.0);
   }
+
+  bool get isServiceDetailsComplete =>
+      _hasText(displayName) && _hasText(bio);
+
+  bool get isAdditionalDetailsComplete =>
+      _hasText(aboutDetails) ||
+      _hasNonEmptyList(qualifications) ||
+      _hasNonEmptyList(experiences);
+
+  bool get isContactInfoComplete =>
+      _hasText(whatsapp) ||
+      _hasText(website) ||
+      _hasNonEmptyList(socialLinks);
+
+  bool get isLanguageLocationComplete =>
+      _hasNonEmptyList(languages) && coverageRadiusKm > 0;
+
+  bool get isContentComplete =>
+      _hasText(profileImage) ||
+      _hasText(coverImage) ||
+      _hasNonEmptyList(contentSections);
+
+  bool get isSeoComplete =>
+      _hasText(seoKeywords) ||
+      _hasText(seoMetaDescription) ||
+      _hasText(seoSlug);
 
   static double? _parseDouble(dynamic value) {
     if (value == null) return null;
@@ -152,5 +150,18 @@ class ProviderProfileModel {
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value);
     return null;
+  }
+
+  static bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
+
+  static bool _hasNonEmptyList(List<dynamic>? value) {
+    if (value == null || value.isEmpty) return false;
+    return value.any((item) {
+      if (item == null) return false;
+      if (item is String) return item.trim().isNotEmpty;
+      if (item is Map) return item.isNotEmpty;
+      if (item is Iterable) return item.isNotEmpty;
+      return true;
+    });
   }
 }

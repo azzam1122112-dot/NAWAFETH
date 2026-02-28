@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import '../../constants/colors.dart';
-
-// ⬇️ استيراد القوالب الموجودة
-import 'package:nawafeth/screens/registration/steps/service_details_step.dart';
+import 'package:nawafeth/models/provider_profile_model.dart';
+import 'package:nawafeth/services/profile_service.dart';
 import 'package:nawafeth/screens/registration/steps/additional_details_step.dart';
 import 'package:nawafeth/screens/registration/steps/contact_info_step.dart';
-import 'package:nawafeth/screens/registration/steps/language_location_step.dart';
 import 'package:nawafeth/screens/registration/steps/content_step.dart';
+import 'package:nawafeth/screens/registration/steps/language_location_step.dart';
 import 'package:nawafeth/screens/registration/steps/seo_step.dart';
+import 'package:nawafeth/screens/registration/steps/service_details_step.dart';
+
+import '../../constants/colors.dart';
 
 class ProviderProfileCompletionScreen extends StatefulWidget {
   const ProviderProfileCompletionScreen({super.key});
@@ -19,146 +20,167 @@ class ProviderProfileCompletionScreen extends StatefulWidget {
 
 class _ProviderProfileCompletionScreenState
     extends State<ProviderProfileCompletionScreen> {
-  // ✅ النسبة الأساسية القادمة من التسجيل الأولي (3 خطوات تسجيل)
-  static const double _baseCompletion = 0.30; // 30%
+  ProviderProfileModel? _profile;
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  // الأقسام الاختيارية (6 أقسام = 70%)
-  final Map<String, bool> _sections = {
-    "service_details": false,
-    "additional": false,
-    "contact_full": false,
-    "lang_loc": false,
-    "content": false,
-    "seo": false,
-  };
-
-  double get _perSectionWeight => 0.70 / _sections.length;
-
-  double get _completionPercent {
-    final done = _sections.values.where((v) => v).length;
-    final dynamicPart = done * _perSectionWeight;
-    return (_baseCompletion + dynamicPart).clamp(0.0, 1.0);
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
   }
 
-  int _sectionPercent() {
-    // كل قسم من الاختياري يمثل نفس النسبة تقريباً
-    return (_perSectionWeight * 100).round();
+  Future<void> _loadProfile({bool silent = false}) async {
+    if (!mounted) return;
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    final result = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      setState(() {
+        _profile = result.data;
+        _isLoading = false;
+        _errorMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = false;
+      _errorMessage = result.error ?? 'تعذر جلب بيانات الملف';
+    });
   }
 
-  // فتح شاشة القسم ثم تحديده كمكتمل إذا رجع بقيمة true
+  double get _completionPercent =>
+      _profile?.profileCompletion ?? ProviderProfileModel.baseCompletionWeight;
+
+  int _sectionPercent() =>
+      (ProviderProfileModel.optionalSectionWeight * 100).round();
+
+  bool _isSectionComplete(String id) {
+    final profile = _profile;
+    if (profile == null) return false;
+
+    switch (id) {
+      case 'service_details':
+        return profile.isServiceDetailsComplete;
+      case 'additional':
+        return profile.isAdditionalDetailsComplete;
+      case 'contact_full':
+        return profile.isContactInfoComplete;
+      case 'lang_loc':
+        return profile.isLanguageLocationComplete;
+      case 'content':
+        return profile.isContentComplete;
+      case 'seo':
+        return profile.isSeoComplete;
+      default:
+        return false;
+    }
+  }
+
   Future<void> _openSection(String id) async {
     bool? result;
 
     switch (id) {
-      case "basic":
-        // عرض البيانات الأساسية (عرض فقط أو تعديل بسيط)
+      case 'basic':
         await Navigator.push<bool>(
           context,
           MaterialPageRoute(
             builder: (_) => const _BasicInfoPlaceholderScreen(),
           ),
         );
-        // قسم الأساسيات دائماً مكتمل (30%) – لا نغير حالة
+        await _loadProfile(silent: true);
         return;
-
-      case "service_details":
-        // هذه خطوة بدون Scaffold، نغلفها بواجهة بسيطة
+      case 'service_details':
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => _SingleStepWrapper(
-                  title: "تفاصيل الخدمة",
-                  child: ServiceDetailsStep(
-                    onBack: () => Navigator.pop(context, false),
-                    onNext: () => Navigator.pop(context, true),
-                  ),
-                ),
+            builder: (_) => _SingleStepWrapper(
+              title: 'تفاصيل الخدمة',
+              child: ServiceDetailsStep(
+                onBack: () => Navigator.pop(context, false),
+                onNext: () => Navigator.pop(context, true),
+              ),
+            ),
           ),
         );
         break;
-
-      case "additional":
+      case 'additional':
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => _SingleStepWrapper(
-                  title: "معلومات إضافية عنك وخدماتك",
-                  child: AdditionalDetailsStep(
-                    onBack: () => Navigator.pop(context, false),
-                    onNext: () => Navigator.pop(context, true),
-                  ),
-                ),
+            builder: (_) => _SingleStepWrapper(
+              title: 'معلومات إضافية عنك وخدماتك',
+              child: AdditionalDetailsStep(
+                onBack: () => Navigator.pop(context, false),
+                onNext: () => Navigator.pop(context, true),
+              ),
+            ),
           ),
         );
         break;
-
-      case "contact_full":
-        // ContactInfoStep عنده Scaffold جاهز
+      case 'contact_full':
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => ContactInfoStep(
-                  isInitialRegistration: false,
-                  isFinalStep: false,
-                  onBack: () => Navigator.pop(context, false),
-                  onNext: () => Navigator.pop(context, true),
-                ),
+            builder: (_) => ContactInfoStep(
+              isInitialRegistration: false,
+              isFinalStep: false,
+              onBack: () => Navigator.pop(context, false),
+              onNext: () => Navigator.pop(context, true),
+            ),
           ),
         );
         break;
-
-      case "lang_loc":
-        // نفس القالب المستخدم في التسجيل ولكن كخطوة مستقلة
+      case 'lang_loc':
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => LanguageLocationStep(
-                  onBack: () => Navigator.pop(context, false),
-                  onNext: () => Navigator.pop(context, true),
-                ),
+            builder: (_) => LanguageLocationStep(
+              onBack: () => Navigator.pop(context, false),
+              onNext: () => Navigator.pop(context, true),
+            ),
           ),
         );
         break;
-
-      case "content":
+      case 'content':
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => ContentStep(
-                  onBack: () => Navigator.pop(context, false),
-                  onNext: () => Navigator.pop(context, true),
-                ),
+            builder: (_) => ContentStep(
+              onBack: () => Navigator.pop(context, false),
+              onNext: () => Navigator.pop(context, true),
+            ),
           ),
         );
         break;
-
-      case "seo":
+      case 'seo':
         result = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => SeoStep(
-                  onBack: () => Navigator.pop(context, false),
-                  onNext: () => Navigator.pop(context, true),
-                ),
+            builder: (_) => SeoStep(
+              onBack: () => Navigator.pop(context, false),
+              onNext: () => Navigator.pop(context, true),
+            ),
           ),
         );
         break;
-
       default:
         result = false;
     }
 
-    // ✅ لا نضع علامة صح إلا إذا رجعت الشاشة بـ true
-    if (result == true && id != "basic") {
-      setState(() {
-        _sections[id] = true;
-      });
+    if (!mounted) return;
+    await _loadProfile(silent: true);
+
+    if (result == true) {
+      setState(() {});
     }
   }
 
@@ -177,163 +199,221 @@ class _ProviderProfileCompletionScreenState
           centerTitle: true,
           iconTheme: const IconThemeData(color: Colors.black87),
           title: const Text(
-            "إكمال الملف التعريفي",
+            'إكمال الملف التعريفي',
             style: TextStyle(
-              fontFamily: "Cairo",
+              fontFamily: 'Cairo',
               fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
           ),
         ),
-        body: SafeArea(
-          child: Column(
-            children: [
-              // 🔹 كرت النسبة العامة
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "نسبة اكتمال الملف",
-                        style: TextStyle(
-                          fontFamily: "Cairo",
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(40),
-                        child: LinearProgressIndicator(
-                          value: _completionPercent,
-                          minHeight: 7,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            AppColors.deepPurple,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Text(
-                            "$percent%",
-                            style: const TextStyle(
-                              fontFamily: "Cairo",
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Expanded(
-                            child: Text(
-                              "حوالي 30٪ من التسجيل الأساسي، والباقي من إكمال الأقسام أدناه.",
-                              style: TextStyle(
-                                fontFamily: "Cairo",
-                                fontSize: 11,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ),
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.deepPurple),
+              )
+            : (_errorMessage != null && _profile == null)
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    onRefresh: () => _loadProfile(silent: true),
+                    color: AppColors.deepPurple,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      children: [
+                        _progressCard(percent: percent),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 10),
+                          _inlineError(),
                         ],
-                      ),
-                    ],
+                        const SizedBox(height: 10),
+                        _basicSectionTile(),
+                        const SizedBox(height: 4),
+                        _sectionTile(
+                          id: 'service_details',
+                          title: 'تفاصيل الخدمة',
+                          subtitle: 'اسم الخدمة ووصف مختصر.',
+                          extra: 'يمثل حوالي $sectionPercent٪ من اكتمال الملف.',
+                          icon: Icons.home_repair_service_outlined,
+                          color: Colors.indigo,
+                        ),
+                        _sectionTile(
+                          id: 'additional',
+                          title: 'معلومات إضافية عنك وخدماتك',
+                          subtitle: 'تفاصيل موسّعة عن خدماتك ومؤهلاتك وخبراتك.',
+                          extra: 'يمثل حوالي $sectionPercent٪ من اكتمال الملف.',
+                          icon: Icons.notes_outlined,
+                          color: Colors.teal,
+                        ),
+                        _sectionTile(
+                          id: 'contact_full',
+                          title: 'معلومات التواصل الكاملة',
+                          subtitle:
+                              'روابط التواصل الاجتماعي، واتساب، موقع إلكتروني.',
+                          extra: 'يمثل حوالي $sectionPercent٪ من اكتمال الملف.',
+                          icon: Icons.call_outlined,
+                          color: Colors.blue,
+                        ),
+                        _sectionTile(
+                          id: 'lang_loc',
+                          title: 'اللغة ونطاق الخدمة',
+                          subtitle: 'اللغات التي تجيدها ونطاق تقديم خدماتك.',
+                          extra: 'يمثل حوالي $sectionPercent٪ من اكتمال الملف.',
+                          icon: Icons.language_outlined,
+                          color: Colors.orange,
+                        ),
+                        _sectionTile(
+                          id: 'content',
+                          title: 'محتوى أعمالك (Portfolio)',
+                          subtitle: 'أضف صوراً أو نماذج من أعمالك السابقة.',
+                          extra: 'يمثل حوالي $sectionPercent٪ من اكتمال الملف.',
+                          icon: Icons.image_outlined,
+                          color: Colors.purple,
+                        ),
+                        _sectionTile(
+                          id: 'seo',
+                          title: 'SEO والكلمات المفتاحية',
+                          subtitle: 'تعريف محركات البحث بنوعية خدمتك.',
+                          extra: 'يمثل حوالي $sectionPercent٪ من اكتمال الملف.',
+                          icon: Icons.search,
+                          color: Colors.blueGrey,
+                        ),
+                      ],
+                    ),
                   ),
+      ),
+    );
+  }
+
+  Widget _progressCard({required int percent}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'نسبة اكتمال الملف',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(40),
+            child: LinearProgressIndicator(
+              value: _completionPercent,
+              minHeight: 7,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                AppColors.deepPurple,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(
+                '$percent%',
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 4),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  '30٪ من التسجيل الأساسي، والباقي من إكمال الأقسام أدناه.',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: Colors.black54,
                   ),
-                  children: [
-                    // ✅ كرت الأساسيات (مكتمل)
-                    _basicSectionTile(),
-                    const SizedBox(height: 4),
-
-                    // ✅ باقي الأقسام
-                    _sectionTile(
-                      id: "service_details",
-                      title: "تفاصيل الخدمة",
-                      subtitle: "اسم الخدمة ووصف مختصر.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
-                      icon: Icons.home_repair_service_outlined,
-                      color: Colors.indigo,
-                    ),
-                    _sectionTile(
-                      id: "additional",
-                      title: "معلومات إضافية عنك وخدماتك",
-                      subtitle: "تفاصيل موسّعة عن خدماتك ومؤهلاتك وخبراتك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
-                      icon: Icons.notes_outlined,
-                      color: Colors.teal,
-                    ),
-                    _sectionTile(
-                      id: "contact_full", // 💡 نستخدم نفس المفتاح الموجود في الماب
-                      title: "معلومات التواصل الكاملة",
-                      subtitle:
-                          "روابط التواصل الاجتماعي، واتساب، موقع إلكتروني، رابط موقعك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
-                      icon: Icons.call_outlined,
-                      color: Colors.blue,
-                    ),
-                    _sectionTile(
-                      id: "lang_loc",
-                      title: "اللغة ونطاق الخدمة",
-                      subtitle: "اللغات التي تجيدها ونطاق تقديم خدماتك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
-                      icon: Icons.language_outlined,
-                      color: Colors.orange,
-                    ),
-                    _sectionTile(
-                      id: "content",
-                      title: "محتوى أعمالك (Portfolio)",
-                      subtitle: "أضف صوراً أو نماذج من أعمالك السابقة.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
-                      icon: Icons.image_outlined,
-                      color: Colors.purple,
-                    ),
-                    _sectionTile(
-                      id: "seo",
-                      title: "SEO والكلمات المفتاحية",
-                      subtitle: "تعريف محركات البحث بنوعية خدمتك.",
-                      extra: "يمثل حوالي $sectionPercent٪ من اكتمال الملف.",
-                      icon: Icons.search,
-                      color: Colors.blueGrey,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
                 ),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inlineError() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _errorMessage ?? '',
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage ?? 'حدث خطأ',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 14,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadProfile,
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              label: const Text(
+                'إعادة المحاولة',
+                style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.deepPurple,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // 🔷 كرت الأساسيات (دايمًا مكتمل – 30%)
   Widget _basicSectionTile() {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -346,7 +426,7 @@ class _ProviderProfileCompletionScreenState
         ),
       ),
       child: ListTile(
-        onTap: () => _openSection("basic"),
+        onTap: () => _openSection('basic'),
         leading: CircleAvatar(
           radius: 20,
           backgroundColor: Colors.white,
@@ -356,17 +436,17 @@ class _ProviderProfileCompletionScreenState
           ),
         ),
         title: const Text(
-          "بيانات التسجيل الأساسية",
+          'بيانات التسجيل الأساسية',
           style: TextStyle(
-            fontFamily: "Cairo",
+            fontFamily: 'Cairo',
             fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
         ),
         subtitle: const Text(
-          "المعلومات الأساسية + تصنيف الاختصاص + بيانات التواصل الأساسية.\nتمت تعبئتها أثناء التسجيل.",
+          'المعلومات الأساسية + تصنيف الاختصاص + بيانات التواصل الأساسية.\nتمت تعبئتها أثناء التسجيل.',
           style: TextStyle(
-            fontFamily: "Cairo",
+            fontFamily: 'Cairo',
             fontSize: 11.5,
             color: Colors.black54,
             height: 1.4,
@@ -377,7 +457,6 @@ class _ProviderProfileCompletionScreenState
     );
   }
 
-  // 🔷 كروت باقي الأقسام
   Widget _sectionTile({
     required String id,
     required String title,
@@ -386,7 +465,7 @@ class _ProviderProfileCompletionScreenState
     required IconData icon,
     required Color color,
   }) {
-    final done = _sections[id] ?? false;
+    final done = _isSectionComplete(id);
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -415,7 +494,7 @@ class _ProviderProfileCompletionScreenState
         title: Text(
           title,
           style: const TextStyle(
-            fontFamily: "Cairo",
+            fontFamily: 'Cairo',
             fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
@@ -426,7 +505,7 @@ class _ProviderProfileCompletionScreenState
             Text(
               subtitle,
               style: const TextStyle(
-                fontFamily: "Cairo",
+                fontFamily: 'Cairo',
                 fontSize: 11.5,
                 color: Colors.black54,
                 height: 1.4,
@@ -436,23 +515,21 @@ class _ProviderProfileCompletionScreenState
             Text(
               extra,
               style: TextStyle(
-                fontFamily: "Cairo",
+                fontFamily: 'Cairo',
                 fontSize: 10.5,
                 color: Colors.grey.shade600,
               ),
             ),
           ],
         ),
-        trailing:
-            done
-                ? const Icon(Icons.check_circle, color: Colors.green, size: 22)
-                : const Icon(Icons.chevron_left, color: Colors.black45),
+        trailing: done
+            ? const Icon(Icons.check_circle, color: Colors.green, size: 22)
+            : const Icon(Icons.chevron_left, color: Colors.black45),
       ),
     );
   }
 }
 
-/// 🔹 شاشة بسيطة لمعاينة/تعديل البيانات الأساسية (محاكاة)
 class _BasicInfoPlaceholderScreen extends StatelessWidget {
   const _BasicInfoPlaceholderScreen();
 
@@ -461,8 +538,8 @@ class _BasicInfoPlaceholderScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "بيانات التسجيل الأساسية",
-          style: TextStyle(fontFamily: "Cairo"),
+          'بيانات التسجيل الأساسية',
+          style: TextStyle(fontFamily: 'Cairo'),
         ),
       ),
       body: Padding(
@@ -471,24 +548,24 @@ class _BasicInfoPlaceholderScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
             Text(
-              "هذه البيانات تم إدخالها أثناء التسجيل الأولي.",
-              style: TextStyle(fontFamily: "Cairo", color: Colors.black54),
+              'هذه البيانات تم إدخالها أثناء التسجيل الأولي.',
+              style: TextStyle(fontFamily: 'Cairo', color: Colors.black54),
             ),
             SizedBox(height: 12),
             ListTile(
               leading: Icon(Icons.person),
-              title: Text("الاسم / اسم الحساب"),
-              subtitle: Text("سيتم جلبه من قاعدة البيانات لاحقاً."),
+              title: Text('الاسم / اسم الحساب'),
+              subtitle: Text('سيتم جلبه من قاعدة البيانات لاحقاً.'),
             ),
             ListTile(
               leading: Icon(Icons.category_outlined),
-              title: Text("تصنيف الاختصاص"),
-              subtitle: Text("يُعرض هنا التصنيف الرئيسي والتخصصات."),
+              title: Text('تصنيف الاختصاص'),
+              subtitle: Text('يُعرض هنا التصنيف الرئيسي والتخصصات.'),
             ),
             ListTile(
               leading: Icon(Icons.phone),
-              title: Text("بيانات التواصل الأساسية"),
-              subtitle: Text("رقم الجوال / واتساب الأساسي."),
+              title: Text('بيانات التواصل الأساسية'),
+              subtitle: Text('رقم الجوال / واتساب الأساسي.'),
             ),
           ],
         ),
@@ -497,18 +574,20 @@ class _BasicInfoPlaceholderScreen extends StatelessWidget {
   }
 }
 
-/// 🔹 شاشة تغلّف بعض القوالب التي ليست Scaffold
 class _SingleStepWrapper extends StatelessWidget {
   final String title;
   final Widget child;
 
-  const _SingleStepWrapper({required this.title, required this.child});
+  const _SingleStepWrapper({
+    required this.title,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(title, style: const TextStyle(fontFamily: "Cairo")),
+        title: Text(title, style: const TextStyle(fontFamily: 'Cairo')),
       ),
       body: child,
     );

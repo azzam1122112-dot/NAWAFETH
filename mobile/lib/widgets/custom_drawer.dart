@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../constants/colors.dart';
 import '../constants/app_texts.dart';
-import '../screens/provider_dashboard/provider_home_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_settings_screen.dart';
 import '../screens/terms_screen.dart';
 import '../screens/about_screen.dart';
 import '../screens/contact_screen.dart';
+import '../screens/login_screen.dart';
 import '../main.dart';
+import '../services/auth_service.dart';
+import '../services/profile_service.dart';
+import '../services/api_client.dart';
+import '../models/user_profile.dart';
 
 class CustomDrawer extends StatefulWidget {
   const CustomDrawer({super.key});
@@ -19,6 +23,120 @@ class CustomDrawer extends StatefulWidget {
 
 class _CustomDrawerState extends State<CustomDrawer> {
   String selectedLanguage = "ar";
+
+  // ── بيانات المستخدم من API ──
+  bool _isLoading = true;
+  bool _isLoggedIn = false;
+  UserProfile? _userProfile;
+
+  // ── حالة العمليات ──
+  bool _isLoggingOut = false;
+  bool _isDeleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final loggedIn = await AuthService.isLoggedIn();
+    if (!loggedIn) {
+      if (mounted) setState(() { _isLoading = false; _isLoggedIn = false; });
+      return;
+    }
+
+    final result = await ProfileService.fetchMyProfile();
+    if (!mounted) return;
+
+    if (result.isSuccess && result.data != null) {
+      setState(() {
+        _isLoggedIn = true;
+        _userProfile = result.data!;
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _isLoggedIn = true; // عنده توكن لكن ما جا البروفايل
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// تسجيل خروج حقيقي — يحذف التوكنات محلياً + يعطّل الـ refresh بالسيرفر
+  Future<void> _performLogout() async {
+    if (_isLoggingOut) return;
+    setState(() => _isLoggingOut = true);
+
+    try {
+      // إرسال refresh token للـ backend لتعطيله
+      final refreshToken = await AuthService.getRefreshToken();
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await ApiClient.post('/api/accounts/logout/', body: {
+          'refresh': refreshToken,
+        });
+      }
+    } catch (_) {
+      // حتى لو فشل — نمسح محلياً
+    }
+
+    // مسح التوكنات من الجهاز
+    await AuthService.logout();
+
+    if (!mounted) return;
+
+    // الانتقال لشاشة تسجيل الدخول
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
+  /// حذف الحساب — يعطّل الحساب بالسيرفر ثم يسجل خروج
+  Future<void> _performDeleteAccount() async {
+    if (_isDeleting) return;
+    setState(() => _isDeleting = true);
+
+    try {
+      final result = await ApiClient.delete('/api/accounts/delete/');
+
+      if (result.isSuccess) {
+        await AuthService.logout();
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم حذف الحساب بنجاح', style: TextStyle(fontFamily: 'Cairo')),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (_) => false,
+        );
+      } else {
+        if (!mounted) return;
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.error ?? 'حدث خطأ أثناء حذف الحساب',
+                style: const TextStyle(fontFamily: 'Cairo')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('حدث خطأ في الاتصال', style: TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +150,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
       backgroundColor: theme.scaffoldBackgroundColor,
       child: Column(
         children: [
-          // ✅ رأس القائمة
+          // ✅ رأس القائمة — بيانات حقيقية من API
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(
@@ -44,41 +162,73 @@ class _CustomDrawerState extends State<CustomDrawer> {
             decoration: BoxDecoration(
               color:
                   isDark
-                      ? Colors.deepPurple.withOpacity(0.15)
-                      : Colors.deepPurple.withOpacity(0.05),
+                      ? Colors.deepPurple.withValues(alpha: 0.15)
+                      : Colors.deepPurple.withValues(alpha: 0.05),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // 👤 معلومات
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "أهلاً عبدالسلام",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Cairo',
-                        color: isDark ? Colors.white : AppColors.primaryDark,
+                // 👤 معلومات المستخدم
+                Expanded(
+                  child: _isLoading
+                    ? const Center(
+                        child: SizedBox(
+                          width: 24, height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _isLoggedIn
+                              ? "أهلاً ${_userProfile?.firstName ?? _userProfile?.username ?? 'مستخدم'}"
+                              : "مرحباً بك",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Cairo',
+                              color: isDark ? Colors.white : AppColors.primaryDark,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isLoggedIn
+                              ? (_userProfile?.phone ?? '')
+                              : "سجّل الدخول للمتابعة",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Cairo',
+                              color: isDark ? Colors.grey[300] : Colors.black54,
+                            ),
+                          ),
+                          if (_isLoggedIn && _userProfile?.isProvider == true)
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.deepPurple.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                '⭐ مقدّم خدمة',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.deepPurple,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "0505111111",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Cairo',
-                        color: isDark ? Colors.grey[300] : Colors.black54,
-                      ),
-                    ),
-                  ],
                 ),
                 Column(
                   children: [
                     Switch(
                       value: isDarkMode,
-                      activeColor: AppColors.primaryDark,
+                      activeThumbColor: AppColors.primaryDark,
                       onChanged: (val) {
                         final mode = val ? ThemeMode.dark : ThemeMode.light;
                         themeController?.changeTheme(mode);
@@ -145,14 +295,14 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   icon: FontAwesomeIcons.qrcode,
                   label: AppTexts.getText(context, "qr"),
                   onTap: () {
-                    Navigator.pop(context); // إغلاق الـ Drawer
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ProviderHomeScreen(),
-                        ),
-                      );
-                    });
+                    Navigator.pop(context);
+                    // TODO: ربط بشاشة QR مخصصة عند إنشائها
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('شاشة QR نافذتي — قريباً',
+                            style: TextStyle(fontFamily: 'Cairo')),
+                      ),
+                    );
                   },
                   isDark: isDark,
                 ),
@@ -207,21 +357,35 @@ class _CustomDrawerState extends State<CustomDrawer> {
           // ✅ أزرار أسفل
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              children: [
-                _buildActionBtn(
-                  text: AppTexts.getText(context, "logout"),
+            child: _isLoggedIn
+              ? Column(
+                  children: [
+                    _buildActionBtn(
+                      text: _isLoggingOut ? 'جارٍ تسجيل الخروج...' : AppTexts.getText(context, "logout"),
+                      color: AppColors.primaryDark,
+                      onPressed: _isLoggingOut ? () {} : () {
+                        _showLogoutConfirmDialog(context);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    _buildActionBtn(
+                      text: _isDeleting ? 'جارٍ الحذف...' : AppTexts.getText(context, "delete"),
+                      color: Colors.red.shade600,
+                      onPressed: _isDeleting ? () {} : () => _showDeleteConfirmDialog(context),
+                    ),
+                  ],
+                )
+              : _buildActionBtn(
+                  text: 'تسجيل الدخول',
                   color: AppColors.primaryDark,
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    );
+                  },
                 ),
-                const SizedBox(height: 10),
-                _buildActionBtn(
-                  text: AppTexts.getText(context, "delete"),
-                  color: Colors.red.shade600,
-                  onPressed: () => _showDeleteConfirmDialog(context),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -255,11 +419,53 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
+  /// ✅ نافذة تأكيد تسجيل الخروج
+  void _showLogoutConfirmDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            "تسجيل الخروج",
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: const Text(
+            "هل تريد تسجيل الخروج من حسابك؟",
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              child: const Text("إلغاء", style: TextStyle(fontFamily: 'Cairo')),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryDark),
+              child: const Text(
+                "تسجيل الخروج",
+                style: TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _performLogout();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// ✅ نافذة تأكيد الحذف
   void _showDeleteConfirmDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (ctx) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -280,7 +486,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
           actions: [
             TextButton(
               child: const Text("إلغاء", style: TextStyle(fontFamily: 'Cairo')),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(ctx),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -289,66 +495,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 style: TextStyle(color: Colors.white, fontFamily: 'Cairo'),
               ),
               onPressed: () {
-                Navigator.pop(context);
-                _showVerifyCodeDialog(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// ✅ نافذة إدخال رمز تحقق
-  void _showVerifyCodeDialog(BuildContext context) {
-    TextEditingController codeController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            "🔑 رمز التحقق",
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                "أدخل رمز التحقق المرسل إلى جوالك لمتابعة الحذف.",
-                style: TextStyle(fontFamily: 'Cairo'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: codeController,
-                decoration: InputDecoration(
-                  labelText: "رمز التحقق",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              child: const Text("إلغاء", style: TextStyle(fontFamily: 'Cairo')),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text(
-                "تأكيد",
-                style: TextStyle(color: Colors.white, fontFamily: 'Cairo'),
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("✅ تم حذف الحساب (وهمياً)")),
-                );
+                Navigator.pop(ctx);
+                _performDeleteAccount();
               },
             ),
           ],
@@ -409,7 +557,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
       ),
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      hoverColor: AppColors.primaryDark.withOpacity(0.08),
+      hoverColor: AppColors.primaryDark.withValues(alpha: 0.08),
     );
   }
 

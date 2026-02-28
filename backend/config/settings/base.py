@@ -11,6 +11,11 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if h.strip()]
+if DEBUG:
+    # Local development defaults (Android emulator uses 10.0.2.2)
+    for host in ("127.0.0.1", "localhost", "10.0.2.2", "0.0.0.0", "::1"):
+        if host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host)
 
 INSTALLED_APPS = [
     # Django

@@ -554,6 +554,30 @@ def complete_registration(request):
     return Response({"ok": True, "role_state": user.role_state}, status=status.HTTP_200_OK)
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """Blacklist the refresh token so it can't be reused."""
+    refresh = request.data.get("refresh")
+    if refresh:
+        try:
+            token = RefreshToken(refresh)
+            token.blacklist()
+        except Exception:
+            pass  # token may already be blacklisted or invalid
+    return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_account_view(request):
+    """Soft-delete the user account (deactivate)."""
+    user: User = request.user
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    return Response({"ok": True, "detail": "تم حذف الحساب بنجاح"}, status=status.HTTP_200_OK)
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAtLeastPhoneOnly])
 def wallet_view(request):

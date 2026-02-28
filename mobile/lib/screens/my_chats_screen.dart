@@ -3,6 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/custom_drawer.dart';
+import '../models/chat_thread_model.dart';
+import '../services/messaging_service.dart';
+import '../services/auth_service.dart';
 import 'chat_detail_screen.dart';
 
 class MyChatsScreen extends StatefulWidget {
@@ -17,168 +20,177 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   String searchQuery = "";
 
   bool _isProviderAccount = false;
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  Future<void> _loadAccountType() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isProvider = prefs.getBool('isProvider') ?? false;
-    if (!mounted) return;
-    setState(() {
-      _isProviderAccount = isProvider;
-      if (!_isProviderAccount && selectedFilter == 'عملاء') {
-        selectedFilter = 'الكل';
-      }
-    });
-  }
+  List<ChatThread> _threads = [];
+  int? _myUserId;
 
   @override
   void initState() {
     super.initState();
-    _loadAccountType();
+    _loadData();
   }
 
-  List<Map<String, dynamic>> chats = [
-    {
-      "name": "أحمد الزهراني",
-      "lastMessage": "شكرًا لك على المساعدة 🙏",
-      "time": "10:45 ص",
-      "timestamp": DateTime(2025, 8, 20, 10, 45),
-      "unread": 2,
-      "isOnline": true,
-      "favorite": false,
-    },
-    {
-      "name": "ريم العتيبي",
-      "lastMessage": "تم إرسال المستند المطلوب ✔️",
-      "time": "الأمس",
-      "timestamp": DateTime(2025, 8, 22, 21, 30),
-      "unread": 0,
-      "isOnline": false,
-      "favorite": true,
-    },
-    {
-      "name": "خالد الحربي",
-      "lastMessage": "سأراجع العقد وأرد عليك لاحقًا",
-      "time": "الإثنين",
-      "timestamp": DateTime(2025, 8, 18, 16, 20),
-      "unread": 5,
-      "isOnline": true,
-      "favorite": false,
-    },
-    {
-      "name": "سارة القحطاني",
-      "lastMessage": "بالتوفيق في القضية 🌟",
-      "time": "الأحد",
-      "timestamp": DateTime(2025, 8, 17, 13, 15),
-      "unread": 0,
-      "isOnline": false,
-      "favorite": false,
-    },
-  ];
+  Future<void> _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isProvider = prefs.getBool('isProvider') ?? false;
+    _myUserId = await AuthService.getUserId();
+
+    if (mounted) {
+      setState(() {
+        _isProviderAccount = isProvider;
+        if (!_isProviderAccount && selectedFilter == 'عملاء') {
+          selectedFilter = 'الكل';
+        }
+      });
+    }
+
+    await _fetchThreads();
+  }
+
+  Future<void> _fetchThreads() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final threads = await MessagingService.fetchThreads(
+        mode: _isProviderAccount ? 'provider' : 'client',
+      );
+      if (!mounted) return;
+      setState(() {
+        _threads = threads;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'فشل تحميل المحادثات';
+      });
+    }
+  }
 
   // ✅ فلترة المحادثات
-  List<Map<String, dynamic>> getFilteredChats() {
-    List<Map<String, dynamic>> filtered = [...chats];
+  List<ChatThread> getFilteredChats() {
+    List<ChatThread> filtered = [..._threads];
+
+    // استبعاد المحظورة والمؤرشفة
+    filtered = filtered.where((t) => !t.isBlocked && !t.isArchived).toList();
 
     if (searchQuery.isNotEmpty) {
-      filtered =
-          filtered
-              .where((c) => c["name"].toString().contains(searchQuery))
-              .toList();
+      filtered = filtered
+          .where((t) => t.peerName.contains(searchQuery) || t.peerPhone.contains(searchQuery))
+          .toList();
     }
 
     if (selectedFilter == "غير مقروءة") {
-      filtered = filtered.where((c) => c["unread"] > 0).toList();
+      filtered = filtered.where((t) => t.unreadCount > 0).toList();
     } else if (selectedFilter == "مفضلة") {
-      filtered = filtered.where((c) => c["favorite"] == true).toList();
+      filtered = filtered.where((t) => t.isFavorite).toList();
     } else if (selectedFilter == "عملاء") {
       if (_isProviderAccount) {
-        filtered = filtered.where((c) => c["name"].contains("أحمد")).toList();
+        filtered = filtered.where((t) => t.clientLabel?.isNotEmpty == true).toList();
       }
     } else if (selectedFilter == "الأحدث") {
-      filtered.sort((a, b) => b["timestamp"].compareTo(a["timestamp"]));
+      filtered.sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
       return filtered;
     }
 
     // ✅ الغير مقروءة دائمًا بالأعلى (باستثناء فلتر الأحدث)
     filtered.sort((a, b) {
-      if (a["unread"] > 0 && b["unread"] == 0) return -1;
-      if (a["unread"] == 0 && b["unread"] > 0) return 1;
-      return 0;
+      if (a.unreadCount > 0 && b.unreadCount == 0) return -1;
+      if (a.unreadCount == 0 && b.unreadCount > 0) return 1;
+      return b.lastMessageAt.compareTo(a.lastMessageAt);
     });
 
     return filtered;
   }
 
   // ✅ خيارات المحادثة
-  void _showChatOptions(Map<String, dynamic> chat) {
-    final isUnread = chat["unread"] > 0;
+  void _showChatOptions(ChatThread thread) {
+    final isUnread = thread.unreadCount > 0;
 
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder:
-          (_) => Wrap(
-            children: [
-              ListTile(
-                leading: Icon(
-                  isUnread ? Icons.mark_email_read : Icons.mark_chat_unread,
-                  color: Colors.deepPurple,
-                ),
-                title: Text(isUnread ? "اجعلها مقروءة" : "اجعلها غير مقروءة"),
-                onTap: () {
-                  setState(() {
-                    chat["unread"] = isUnread ? 0 : 1;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.star, color: Colors.deepPurple),
-                title: Text(
-                  chat["favorite"] ? "إزالة من المفضلة" : "إضافة للمفضلة",
-                ),
-                onTap: () {
-                  setState(() => chat["favorite"] = !chat["favorite"]);
-                  Navigator.pop(context);
-                },
-              ),
-              const Divider(height: 0),
-              ListTile(
-                leading: const Icon(Icons.block, color: Colors.red),
-                title: const Text("حظر"),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.report, color: Colors.orange),
-                title: const Text("إبلاغ"),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showReportDialog(chat);
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.black54,
-                ),
-                title: const Text("حذف"),
-                onTap: () {
-                  setState(() => chats.remove(chat));
-                  Navigator.pop(context);
-                },
-              ),
-            ],
+      builder: (_) => Wrap(
+        children: [
+          ListTile(
+            leading: Icon(
+              isUnread ? Icons.mark_email_read : Icons.mark_chat_unread,
+              color: Colors.deepPurple,
+            ),
+            title: Text(isUnread ? "اجعلها مقروءة" : "اجعلها غير مقروءة"),
+            onTap: () async {
+              Navigator.pop(context);
+              if (isUnread) {
+                await MessagingService.markRead(thread.threadId);
+              } else {
+                await MessagingService.markUnread(thread.threadId);
+              }
+              _fetchThreads();
+            },
           ),
+          ListTile(
+            leading: const Icon(Icons.star, color: Colors.deepPurple),
+            title: Text(
+              thread.isFavorite ? "إزالة من المفضلة" : "إضافة للمفضلة",
+            ),
+            onTap: () async {
+              Navigator.pop(context);
+              await MessagingService.toggleFavorite(
+                thread.threadId,
+                remove: thread.isFavorite,
+              );
+              _fetchThreads();
+            },
+          ),
+          const Divider(height: 0),
+          ListTile(
+            leading: const Icon(Icons.block, color: Colors.red),
+            title: Text(thread.isBlocked ? "إلغاء الحظر" : "حظر"),
+            onTap: () async {
+              Navigator.pop(context);
+              await MessagingService.toggleBlock(
+                thread.threadId,
+                remove: thread.isBlocked,
+              );
+              _fetchThreads();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.report, color: Colors.orange),
+            title: const Text("إبلاغ"),
+            onTap: () {
+              Navigator.pop(context);
+              _showReportDialog(thread);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.archive_outlined, color: Colors.black54),
+            title: const Text("أرشفة"),
+            onTap: () async {
+              Navigator.pop(context);
+              await MessagingService.toggleArchive(thread.threadId);
+              _fetchThreads();
+            },
+          ),
+        ],
+      ),
     );
   }
 
   // ✅ نموذج الإبلاغ عن المحادثة
-  void _showReportDialog(Map<String, dynamic> chat) {
+  void _showReportDialog(ChatThread thread) {
     final TextEditingController reasonController = TextEditingController();
     String selectedReason = "محتوى غير لائق";
-    
+    bool isSending = false;
+
     final reasons = [
       "محتوى غير لائق",
       "احتيال أو نصب",
@@ -205,11 +217,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                     color: Colors.orange.shade50,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.report,
-                    color: Colors.orange,
-                    size: 28,
-                  ),
+                  child: const Icon(Icons.report, color: Colors.orange, size: 28),
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -227,80 +235,30 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // معلومات المرسل
+                  // معلومات الطرف الآخر
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        const Text(
-                          "بيانات المبلغ عنه:",
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
+                        const Icon(Icons.person, size: 16, color: Colors.deepPurple),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            thread.peerName,
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 14),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.person,
-                              size: 16,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              chat["name"],
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.message,
-                              size: 16,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                chat["lastMessage"],
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 12,
-                                  color: Colors.black54,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
-                  // سبب الإبلاغ
                   const Text(
                     "سبب الإبلاغ:",
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -313,37 +271,20 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                       child: DropdownButton<String>(
                         value: selectedReason,
                         isExpanded: true,
-                        items: reasons.map((reason) {
-                          return DropdownMenuItem(
-                            value: reason,
-                            child: Text(
-                              reason,
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 14,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            selectedReason = value!;
-                          });
-                        },
+                        items: reasons
+                            .map((r) => DropdownMenuItem(
+                                  value: r,
+                                  child: Text(r, style: const TextStyle(fontFamily: 'Cairo', fontSize: 14)),
+                                ))
+                            .toList(),
+                        onChanged: (v) => setDialogState(() => selectedReason = v!),
                       ),
                     ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
-                  // تفاصيل إضافية
                   const Text(
                     "تفاصيل إضافية (اختياري):",
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -352,13 +293,8 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                     maxLength: 500,
                     decoration: InputDecoration(
                       hintText: "اكتب التفاصيل هنا...",
-                      hintStyle: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 13,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
@@ -368,38 +304,45 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  "إلغاء",
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    color: Colors.grey,
-                  ),
-                ),
+                child: const Text("إلغاء", style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
               ),
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "تم إرسال البلاغ للإدارة. شكراً لك",
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
+                onPressed: isSending
+                    ? null
+                    : () async {
+                        setDialogState(() => isSending = true);
+                        final result = await MessagingService.report(
+                          thread.threadId,
+                          reason: selectedReason,
+                          details: reasonController.text.trim().isNotEmpty
+                              ? reasonController.text.trim()
+                              : null,
+                        );
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              result.success
+                                  ? "تم إرسال البلاغ للإدارة. شكراً لك"
+                                  : result.error ?? "فشل إرسال البلاغ",
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            backgroundColor: result.success ? Colors.green : Colors.red,
+                          ),
+                        );
+                      },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text(
-                  "إرسال البلاغ",
-                  style: TextStyle(fontFamily: 'Cairo'),
-                ),
+                child: isSending
+                    ? const SizedBox(
+                        height: 16, width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text("إرسال البلاغ", style: TextStyle(fontFamily: 'Cairo')),
               ),
             ],
           ),
@@ -408,15 +351,33 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     );
   }
 
+  /// تنسيق وقت آخر رسالة
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+
+    if (diff.inMinutes < 1) return 'الآن';
+    if (diff.inHours < 1) return 'منذ ${diff.inMinutes} د';
+    if (diff.inDays < 1) {
+      final h = dt.hour > 12 ? dt.hour - 12 : dt.hour;
+      final amPm = dt.hour >= 12 ? 'م' : 'ص';
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '$h:$m $amPm';
+    }
+    if (diff.inDays == 1) return 'الأمس';
+    if (diff.inDays < 7) {
+      const days = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+      return days[dt.weekday - 1];
+    }
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final sortedChats = getFilteredChats();
 
     // ✅ مجموع جميع الرسائل غير المقروءة
-    final int totalUnread = chats.fold<int>(
-      0,
-      (sum, c) => sum + (c["unread"] as int),
-    );
+    final int totalUnread = _threads.fold<int>(0, (sum, t) => sum + t.unreadCount);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -470,199 +431,62 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
               ),
             ),
 
-            // ✅ قائمة المحادثات
+            // ✅ محتوى المحادثات
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(12),
-                itemCount: sortedChats.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 6),
-                itemBuilder: (context, index) {
-                  final chat = sortedChats[index];
-                  final bool isUnread = chat["unread"] > 0;
-                  final bool isFavorite = chat["favorite"] == true;
-
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => ChatDetailScreen(
-                                name: chat["name"],
-                                isOnline: chat["isOnline"],
-                              ),
-                        ),
-                      );
-                    },
-                    onLongPress: () => _showChatOptions(chat),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            isUnread
-                                ? Colors.deepPurple.withOpacity(0.04)
-                                : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color:
-                              isUnread
-                                  ? Colors.deepPurple.withOpacity(0.4)
-                                  : Colors.grey.shade200,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          // ✅ صورة + حالة الاتصال
-                          Stack(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
+                  : _errorMessage != null
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircleAvatar(
-                                radius: 26,
-                                backgroundColor: Colors.deepPurple.shade100,
-                                child: Text(
-                                  chat["name"].substring(0, 1),
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    color: Colors.deepPurple,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              if (chat["isOnline"] == true)
-                                Positioned(
-                                  bottom: 0,
-                                  right: 0,
-                                  child: Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(width: 12),
-
-                          // ✅ تفاصيل المحادثة
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        chat["name"],
-                                        style: TextStyle(
-                                          fontFamily: "Cairo",
-                                          fontWeight:
-                                              isUnread
-                                                  ? FontWeight.w700
-                                                  : FontWeight.w600,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                    ),
-                                    if (isFavorite)
-                                      const Icon(
-                                        Icons.star,
-                                        size: 18,
-                                        color: Colors.amber,
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  chat["lastMessage"],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontFamily: "Cairo",
-                                    fontSize: 13,
-                                    color:
-                                        isUnread
-                                            ? Colors.black87
-                                            : Colors.black54,
-                                    fontWeight:
-                                        isUnread
-                                            ? FontWeight.w600
-                                            : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(width: 8),
-
-                          // ✅ الوقت + بادج غير مقروء
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
+                              const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                              const SizedBox(height: 12),
                               Text(
-                                chat["time"],
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black45,
-                                  fontFamily: "Cairo",
-                                ),
+                                _errorMessage!,
+                                style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
                               ),
-                              if (isUnread)
-                                Container(
-                                  margin: const EdgeInsets.only(top: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.deepPurple,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    "${chat["unread"]}",
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontFamily: "Cairo",
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: _fetchThreads,
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+                                child: const Text("إعادة المحاولة",
+                                    style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                              ),
                             ],
                           ),
-
-                          // ✅ زر الخيارات
-                          const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () => _showChatOptions(chat),
-                            child: const Icon(
-                              Icons.more_vert,
-                              color: Colors.black54,
+                        )
+                      : sortedChats.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey.shade300),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    "لا توجد محادثات",
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 16,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _fetchThreads,
+                              color: Colors.deepPurple,
+                              child: ListView.separated(
+                                padding: const EdgeInsets.all(12),
+                                itemCount: sortedChats.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                                itemBuilder: (context, index) {
+                                  final thread = sortedChats[index];
+                                  return _buildChatTile(thread);
+                                },
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -671,11 +495,149 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     );
   }
 
+  Widget _buildChatTile(ChatThread thread) {
+    final bool isUnread = thread.unreadCount > 0;
+    final bool isFavorite = thread.isFavorite;
+
+    return InkWell(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatDetailScreen(
+              threadId: thread.threadId,
+              peerName: thread.peerName,
+              peerId: thread.peerId,
+              peerProviderId: thread.peerProviderId,
+            ),
+          ),
+        );
+        // تحديث عند العودة
+        _fetchThreads();
+      },
+      onLongPress: () => _showChatOptions(thread),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isUnread
+              ? Colors.deepPurple.withValues(alpha: 0.04)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isUnread
+                ? Colors.deepPurple.withValues(alpha: 0.4)
+                : Colors.grey.shade200,
+          ),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Row(
+          children: [
+            // ✅ صورة + حالة الاتصال
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Colors.deepPurple.shade100,
+                  child: Text(
+                    thread.peerName.isNotEmpty ? thread.peerName[0] : '?',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      color: Colors.deepPurple,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+
+            // ✅ التفاصيل
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          thread.peerName,
+                          style: TextStyle(
+                            fontFamily: "Cairo",
+                            fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      if (isFavorite) const Icon(Icons.star, size: 18, color: Colors.amber),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    thread.lastMessage.isNotEmpty ? thread.lastMessage : "لا توجد رسائل بعد",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: "Cairo",
+                      fontSize: 13,
+                      color: isUnread ? Colors.black87 : Colors.black54,
+                      fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            // ✅ الوقت + عدد غير المقروءة
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _formatTime(thread.lastMessageAt),
+                  style: const TextStyle(fontSize: 12, color: Colors.black45, fontFamily: "Cairo"),
+                ),
+                if (isUnread)
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      "${thread.unreadCount}",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontFamily: "Cairo",
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+
+            // ✅ زر الخيارات
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => _showChatOptions(thread),
+              child: const Icon(Icons.more_vert, color: Colors.black54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ✅ ويدجت الفلاتر مع دعم عدّاد للغير مقروءة
   Widget _buildFilterChip(String label, {int? unreadCount}) {
     final isSelected = selectedFilter == label;
-    final bool showUnreadBadge =
-        label == "غير مقروءة" && (unreadCount ?? 0) > 0;
+    final bool showUnreadBadge = label == "غير مقروءة" && (unreadCount ?? 0) > 0;
 
     return GestureDetector(
       onTap: () => setState(() => selectedFilter = label),
@@ -686,11 +648,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.deepPurple),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 3,
-              offset: Offset(0, 2),
-            ),
+            BoxShadow(color: Colors.black12, blurRadius: 3, offset: Offset(0, 2)),
           ],
         ),
         child: Row(
