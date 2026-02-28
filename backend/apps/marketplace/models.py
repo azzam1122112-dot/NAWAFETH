@@ -69,21 +69,15 @@ class ServiceRequest(models.Model):
 	provider_inputs_decided_at = models.DateTimeField(null=True, blank=True)
 	provider_inputs_decision_note = models.CharField(max_length=255, blank=True)
 
-	def mark_sent(self) -> None:
-		if self.status != RequestStatus.NEW:
-			raise ValidationError("لا يمكن تنفيذ الإجراء في هذه الحالة")
-		# حالة "جديد" هي الحالة الرسمية الأولى ولا توجد خطوة "إرسال" مستقلة.
-		return
-
 	def accept(self, provider: ProviderProfile) -> None:
-		if self.status not in (RequestStatus.NEW, "sent"):
+		if self.status != RequestStatus.NEW:
 			raise ValidationError("لا يمكن قبول الطلب الآن")
 		self.provider = provider
 		self.status = RequestStatus.IN_PROGRESS
 		self.save(update_fields=["provider", "status"])
 
 	def start(self) -> None:
-		if self.status not in (RequestStatus.NEW, RequestStatus.IN_PROGRESS, "sent", "accepted"):
+		if self.status not in (RequestStatus.NEW, RequestStatus.IN_PROGRESS):
 			raise ValidationError("لا يمكن بدء التنفيذ في هذه الحالة")
 		self.status = RequestStatus.IN_PROGRESS
 		self.save(update_fields=["status"])
@@ -94,11 +88,22 @@ class ServiceRequest(models.Model):
 		self.status = RequestStatus.COMPLETED
 		self.save(update_fields=["status"])
 
-	def cancel(self) -> None:
-		if self.status in [RequestStatus.COMPLETED, RequestStatus.CANCELLED]:
+	def cancel(self, *, allowed_statuses: list[str] | None = None) -> None:
+		"""Cancel a request. ``allowed_statuses`` lets the service layer
+		restrict which statuses the caller may cancel from."""
+		if allowed_statuses is None:
+			allowed_statuses = [RequestStatus.NEW, RequestStatus.IN_PROGRESS]
+		if self.status not in allowed_statuses:
 			raise ValidationError("لا يمكن إلغاء الطلب في هذه الحالة")
 		self.status = RequestStatus.CANCELLED
 		self.save(update_fields=["status"])
+
+	def reopen(self) -> None:
+		if self.status != RequestStatus.CANCELLED:
+			raise ValidationError("لا يمكن إعادة فتح الطلب في هذه الحالة")
+		self.status = RequestStatus.NEW
+		self.provider = None
+		self.save(update_fields=["status", "provider"])
 
 	def __str__(self) -> str:
 		return f"{self.title} ({self.get_status_display()})"

@@ -3,8 +3,9 @@ from dataclasses import dataclass
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.utils import timezone
 
-from apps.marketplace.models import RequestStatus, ServiceRequest
+from apps.marketplace.models import RequestStatus, RequestStatusLog, ServiceRequest
 from apps.providers.models import ProviderProfile
 
 logger = logging.getLogger(__name__)
@@ -28,24 +29,28 @@ def _role_flags(user, sr: ServiceRequest):
 def allowed_actions(user, sr: ServiceRequest, *, has_provider_profile: bool | None = None) -> list[str]:
     """
     Returns actions allowed for a given user and service request.
-
-    Perf note:
-    - If you are calling this for many objects (list page), pass has_provider_profile to avoid extra queries.
     """
     is_staff, is_client, is_provider = _role_flags(user, sr)
     acts: list[str] = []
 
     if is_staff:
-        # staff can do everything operationally (you can tighten later)
-        return ["send", "cancel", "accept", "start", "complete"]
+        base = ["cancel", "accept", "start", "complete"]
+        if sr.status == RequestStatus.CANCELLED:
+            base.append("reopen")
+        return base
 
     if is_client:
         if sr.status == RequestStatus.NEW:
-            acts.extend(["send", "cancel"])
+            acts.append("cancel")
+        if sr.status == RequestStatus.IN_PROGRESS:
+            if sr.provider_inputs_approved is None:
+                acts.extend(["approve_inputs", "reject_inputs"])
+        if sr.status == RequestStatus.CANCELLED:
+            acts.append("reopen")
         return acts
 
     # Provider (even if not assigned yet) may accept when NEW.
-    if sr.status in (RequestStatus.NEW, "sent"):
+    if sr.status == RequestStatus.NEW:
         user_id = getattr(user, "id", None)
         if user_id:
             if has_provider_profile is None:
@@ -81,33 +86,27 @@ def execute_action(
 
     is_staff, is_client, is_provider = _role_flags(user, sr)
 
-    # send (compatibility no-op on unified lifecycle)
-    if action == "send":
-        if not (is_staff or is_client):
-            raise PermissionDenied("غير مصرح")
-        sr.mark_sent()
-        return ActionResult(True, "تم تحديث الطلب", sr.status)
-
-    # cancel
+    # cancel — client: NEW only; provider: NEW+IN_PROGRESS; staff: NEW+IN_PROGRESS
     if action == "cancel":
         if not (is_staff or is_provider or is_client):
             raise PermissionDenied("غير مصرح")
-        sr.cancel()
+        if is_client and not is_staff:
+            sr.cancel(allowed_statuses=[RequestStatus.NEW])
+        else:
+            sr.cancel(allowed_statuses=[RequestStatus.NEW, RequestStatus.IN_PROGRESS])
         return ActionResult(True, "تم إلغاء الطلب", sr.status)
 
     # accept
     if action == "accept":
-        if sr.status not in (RequestStatus.NEW, "sent"):
+        if sr.status != RequestStatus.NEW:
             raise ValidationError("لا يمكن قبول الطلب الآن")
 
-        # staff must choose provider (avoid ACCEPTED with no provider)
         if is_staff:
             if not provider_profile:
                 raise ValidationError("اختر مزودًا لقبول الطلب")
             sr.accept(provider_profile)
             return ActionResult(True, "تم بدء التنفيذ وإسناده", sr.status)
 
-        # provider must accept with their provider_profile
         if not provider_profile:
             raise ValidationError("لا يوجد ملف مزود مرتبط بهذا الحساب")
 
@@ -127,5 +126,59 @@ def execute_action(
             raise PermissionDenied("غير مصرح")
         sr.complete()
         return ActionResult(True, "تم إكمال الطلب", sr.status)
+
+    # reopen — client + staff only, CANCELLED → NEW
+    if action == "reopen":
+        if not (is_staff or is_client):
+            raise PermissionDenied("غير مصرح")
+        sr.reopen()
+        RequestStatusLog.objects.create(
+            request=sr,
+            actor=user,
+            from_status=RequestStatus.CANCELLED,
+            to_status=RequestStatus.NEW,
+            note="إعادة فتح الطلب",
+        )
+        return ActionResult(True, "تم إعادة فتح الطلب", sr.status)
+
+    # approve_inputs — client only, IN_PROGRESS + inputs not yet decided
+    if action == "approve_inputs":
+        if not (is_staff or is_client):
+            raise PermissionDenied("غير مصرح")
+        if sr.status != RequestStatus.IN_PROGRESS:
+            raise ValidationError("لا يمكن اتخاذ قرار بشأن المدخلات في هذه الحالة")
+        if sr.provider_inputs_approved is not None:
+            raise ValidationError("تم اتخاذ قرار مسبقًا بشأن المدخلات")
+        sr.provider_inputs_approved = True
+        sr.provider_inputs_decided_at = timezone.now()
+        sr.save(update_fields=["provider_inputs_approved", "provider_inputs_decided_at"])
+        RequestStatusLog.objects.create(
+            request=sr,
+            actor=user,
+            from_status=sr.status,
+            to_status=sr.status,
+            note="العميل وافق على مدخلات المزود",
+        )
+        return ActionResult(True, "تم اعتماد المدخلات", sr.status)
+
+    # reject_inputs — client only, IN_PROGRESS + inputs not yet decided
+    if action == "reject_inputs":
+        if not (is_staff or is_client):
+            raise PermissionDenied("غير مصرح")
+        if sr.status != RequestStatus.IN_PROGRESS:
+            raise ValidationError("لا يمكن اتخاذ قرار بشأن المدخلات في هذه الحالة")
+        if sr.provider_inputs_approved is not None:
+            raise ValidationError("تم اتخاذ قرار مسبقًا بشأن المدخلات")
+        sr.provider_inputs_approved = False
+        sr.provider_inputs_decided_at = timezone.now()
+        sr.save(update_fields=["provider_inputs_approved", "provider_inputs_decided_at"])
+        RequestStatusLog.objects.create(
+            request=sr,
+            actor=user,
+            from_status=sr.status,
+            to_status=sr.status,
+            note="العميل رفض مدخلات المزود",
+        )
+        return ActionResult(True, "تم رفض المدخلات", sr.status)
 
     raise ValidationError("إجراء غير معروف")

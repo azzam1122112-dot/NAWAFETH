@@ -161,13 +161,13 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
 
     def _status_group_value(self, raw: str) -> str:
         s = (raw or "").strip().lower()
-        if s in ("new", "sent"):
+        if s == "new":
             return "new"
-        if s in ("accepted", "in_progress"):
+        if s == "in_progress":
             return "in_progress"
         if s == "completed":
             return "completed"
-        if s in ("cancelled", "canceled", "expired"):
+        if s in ("cancelled", "canceled"):
             return "cancelled"
         return "new"
 

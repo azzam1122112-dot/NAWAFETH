@@ -57,10 +57,10 @@ def _normalize_status_group(value: str) -> Optional[str]:
 def _status_group_to_statuses(group: str) -> list[str]:
 	# Map unified user-facing groups to internal statuses.
 	return {
-		"new": [RequestStatus.NEW, "sent"],
-		"in_progress": [RequestStatus.IN_PROGRESS, "accepted"],
+		"new": [RequestStatus.NEW],
+		"in_progress": [RequestStatus.IN_PROGRESS],
 		"completed": [RequestStatus.COMPLETED],
-		"cancelled": [RequestStatus.CANCELLED, "expired"],
+		"cancelled": [RequestStatus.CANCELLED],
 	}[group]
 
 
@@ -68,7 +68,7 @@ def _expire_urgent_requests() -> None:
 	now = timezone.now()
 	ServiceRequest.objects.filter(
 		request_type=RequestType.URGENT,
-		status__in=[RequestStatus.NEW, "sent"],
+		status=RequestStatus.NEW,
 		expires_at__isnull=False,
 		expires_at__lt=now,
 	).update(status=RequestStatus.CANCELLED)
@@ -99,11 +99,11 @@ def request_detail(request, request_id: int):
 
 	context = {
 		"obj": obj,
-		"can_send": "send" in acts,
 		"can_cancel": "cancel" in acts,
 		"can_accept": "accept" in acts,
 		"can_start": "start" in acts,
 		"can_complete": "complete" in acts,
+		"can_reopen": "reopen" in acts,
 	}
 	return render(request, "marketplace/request_detail.html", context)
 
@@ -182,7 +182,7 @@ def provider_requests(request):
 				qs = qs.filter(provider__isnull=False)
 		else:
 			# available
-			qs = qs.filter(status__in=[RequestStatus.NEW, "sent"], provider__isnull=True)
+			qs = qs.filter(status=RequestStatus.NEW, provider__isnull=True)
 
 			# فلترة حسب subcategories المزود عبر ProviderCategory
 			if provider:

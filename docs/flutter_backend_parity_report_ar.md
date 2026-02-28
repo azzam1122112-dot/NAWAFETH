@@ -1,21 +1,20 @@
-# تقرير المطابقة والتوافق (Flutter Mobile/Web ↔ Django Backend)
+# تقرير المطابقة والتوافق (Flutter Mobile ↔ Django Backend)
 
-تاريخ التقرير: 2026-02-25
+تاريخ التقرير: 2026-02-25  
+آخر تحديث: 2026-02-28
 
 ## 1) صورة عامة سريعة
 ### مكونات المشروع
 - **Backend (Django + DRF)**: واجهات REST تحت `/api/*` + صفحات منصة HTML تحت `/dashboard/` + بوابة خدمات إضافية تحت `/portal/extras/`.
 - **Flutter Mobile**: تطبيق موبايل رئيسي (routes في `mobile/lib/main.dart`).
-- **Flutter Web**: واجهة ويب من نفس كود Flutter (routes في `mobile/lib/main_web.dart`) ومخصصة للمستخدمين فقط (العميل + مقدم الخدمة):
-  - `/client_dashboard/*`
-  - `/provider_dashboard/*`
+- **Flutter Web**: تم إيقافه وحذف ملفاته من المستودع بتاريخ **2026-02-28** تمهيدًا للاستبدال مستقبلاً بصفحات HTML.
 
 ### ملاحظة مهمة عن "الويب"
-عندك نوعين ويب مختلفين:
+حاليًا عندك ويب تشغيلي واحد داخل هذا المستودع:
 1) **Django Web Dashboard**: صفحات HTML للمنصة (إدارية/تشغيلية) تحت `/dashboard/`.
-2) **Flutter Web**: تطبيق ويب مبني بفلتر، يعتمد على REST APIs.
+2) **بوابة Extras HTML** تحت `/portal/extras/`.
 
-وبحسب قرار النطاق الحالي: **Flutter Web للمستخدمين (Client/Provider) فقط**، و**لوحة المنصة/التشغيل تبقى في Django Dashboard**.
+أما واجهة Flutter Web السابقة فقد تم حذفها بالكامل.
 
 ---
 
@@ -29,13 +28,13 @@
 
 ---
 
-## 3) CORS (أهم نقطة لنجاح Flutter Web)
+## 3) CORS (للواجهات الويب HTML الحالية/القادمة)
 - الباكند يستخدم `django-cors-headers`.
 - في `backend/config/settings/base.py` يوجد `CORS_ALLOW_ALL_ORIGINS` مبني على env (`CORS_ALLOW_ALL`)، وفي `prod.py` يتم جعله `False` مع `CORS_ALLOWED_ORIGINS`.
 
 **النتيجة العملية**:
 - Flutter Mobile عادة لا يتأثر بـ CORS.
-- Flutter Web سيتأثر مباشرة: يجب ضبط `DJANGO_CORS_ALLOWED_ORIGINS` (أو `CORS_ALLOWED_ORIGINS` حسب إعداداتك) ليشمل دومين Flutter Web.
+- أي واجهة HTML/JS على دومين منفصل ستتأثر مباشرة: يجب ضبط `DJANGO_CORS_ALLOWED_ORIGINS` (أو `CORS_ALLOWED_ORIGINS`) لتشمل دومين الواجهة.
 
 ---
 
@@ -43,7 +42,6 @@
 
 ### أ) العميل (Client)
 - Flutter Mobile: موجود (Home/Orders/Profile/Notifications/Chat…)
-- Flutter Web: موجود تحت `/client_dashboard/*`
 - Backend API: موجود تحت `/api/marketplace/*`, `/api/messaging/*`, `/api/support/*`, `/api/promo/*`…
 
 **ملاحظات**:
@@ -52,67 +50,47 @@
 
 ### ب) مقدم الخدمة (Provider)
 - Flutter Mobile: موجود
-- Flutter Web: موجود تحت `/provider_dashboard/*` (طلبات/خدمات/تقييمات/إشعارات/ملف)
 - Backend API: موجود تحت `/api/providers/*`, `/api/reviews/*`, `/api/marketplace/*`…
 
 ### ج) التشغيل (Operations / Staff)
 - Django Dashboard: تغطية واسعة جدًا (Support, Promo, Verification, Subscriptions, Billing, Content, Categories…)
-- Flutter Web: **غير مستهدف في هذا النطاق** للتشغيل/الموظفين (لا يتم تعريض مسارات Operations على الويب).
 
 ### د) لوحة المنصة (Admin Dashboard)
 - Django Dashboard تحت `/dashboard/` يحتوي مسارات كثيرة جدًا (راجع `backend/apps/dashboard/urls.py`).
-- Flutter Web لا يغطي غالب هذه المسارات حتى الآن.
 
 ---
 
 ## 5) فجوات مطابقة واضحة (Backlog مرتب)
 
-### فجوة 1: تغطية وحدات المنصة (Dashboard) داخل Flutter Web
-بناءً على قرار النطاق الحالي: **هذه ليست فجوة مطلوبة الآن** لأن التشغيل/المنصة على الويب يتم عبر Django Dashboard تحت `/dashboard/`.
+### فجوة 1: واجهة HTML بديلة للمستخدمين
+بعد حذف Flutter Web، إذا كان المطلوب واجهة ويب للمستخدمين (عميل/مزود)، فيلزم تنفيذ واجهة HTML جديدة وربطها بالـ APIs الحالية.
 
 ### فجوة 2: Status labels/filters في Promotions
 في الباكند statuses للترويج:
 - `new`, `in_review`, `quoted`, `pending_payment`, `active`, `rejected`, ...
 
-في Flutter Web كانت فلترة UI تستخدم مفاهيم مثل `approved/pending/rejected`.
+في الواجهات العميلية السابقة كانت الفلاتر تستخدم مفاهيم مثل `approved/pending/rejected`.
 - تم توسيع المطابقة بالمنطق (بدون تغيير مسميات الواجهة) لتشمل `active/in_review/new/...`.
 - قد تحتاج لاحقًا توحيد مسميات الفلاتر لتكون 1:1 مع `PromoRequestStatus`.
 
-### فجوة 3: الربط بين Flutter و Django Dashboard
-في Flutter يوجد فتح خارجي لـ `${ApiConfig.baseUrl}/dashboard/` بدل دمج/استبدال.
-- هذا لا يعتبر "تكامل" بقدر ما هو "تحويل لصفحات خارجية".
+### فجوة 3: الربط بين واجهة المستخدم الجديدة و Django Dashboard
+أي واجهة HTML جديدة يجب أن تحدد بوضوح حدودها مقابل لوحة Django حتى لا يحدث تداخل صلاحيات.
 
 ---
 
-## 6) تغييرات تم تطبيقها لتحسين التوافق (بدون تغيير UX)
+## 6) الوضع بعد إزالة Flutter Web
 
-> ملاحظة: التغييرات التالية تم تطبيقها لدعم تكامل backoffice داخل Flutter (تحضيرًا/للاستخدام الداخلي)، لكن **مسارات Operations غير مفعلة على Flutter Web** بحسب قرار النطاق الحالي.
-
-### 6.1 Operations Support (Flutter Web)
-- تم تحويل مصدر البيانات من:
-  - `/api/support/tickets/my/`
-- إلى:
-  - `/api/support/backoffice/tickets/`
-
-### 6.2 Operations Promotions (Flutter Web)
-- تم تحويل مصدر البيانات من:
-  - `/api/promo/requests/my/`
-- إلى:
-  - `/api/promo/backoffice/requests/`
-
-### 6.3 إضافة backoffice methods في Flutter services
-تم إضافة/توسيع خدمات API التالية لتدعم backoffice endpoints:
-- `SupportApi`: list backoffice + assign + status
-- `PromoApi`: list backoffice + assign + quote + reject
-- `VerificationApi`: list backoffice + assign + finalize (تهيئة للمستقبل)
+- تم حذف أصول الويب الخاصة بفلتر (`mobile/web`) وملفات البناء المرتبطة بها.
+- التطبيق العميلي الفعّال داخل Flutter هو الموبايل فقط.
+- واجهات الويب الفعالة في المنصة حاليًا هي HTML ضمن Django.
 
 ---
 
 ## 7) توصيات تنفيذية سريعة (أعلى عائد بأقل مخاطرة)
-1) **تثبيت نطاق الويب**: Flutter Web للمستخدمين (Client/Provider) فقط، وعمليات المنصة عبر Django Dashboard.
-2) **تثبيت CORS للـ Flutter Web** في بيئة الإنتاج عبر `DJANGO_CORS_ALLOWED_ORIGINS`.
-3) **تقليل التداخل**: أي روابط/تحويلات تخص `/dashboard/` تبقى للأدوار الداخلية فقط.
-4) **توحيد statuses/filters** عبر enums أو mapping موحد في Flutter لتفادي اختلاف الفلاتر مع قيم الباكند.
+1) **تثبيت نطاق الويب الجديد**: تعريف واضح لما سيبقى في Django Dashboard وما سينتقل لواجهة HTML الجديدة.
+2) **تثبيت CORS** للواجهة الويب الجديدة في بيئة الإنتاج عبر `DJANGO_CORS_ALLOWED_ORIGINS`.
+3) **تقليل التداخل**: أي روابط تخص `/dashboard/` تبقى للأدوار الداخلية فقط.
+4) **توحيد statuses/filters** عبر enums أو mapping موحد بين الواجهة والباكند.
 
 ---
 
@@ -121,6 +99,6 @@
 - Backend routes: `backend/config/urls.py`
 - Dashboard routes: `backend/apps/dashboard/urls.py`
 - Flutter Mobile routes: `mobile/lib/main.dart`
-- Flutter Web routes: `mobile/lib/main_web.dart`
-- Flutter API configs: `mobile/lib/services/api_config.dart`
+- Flutter API config: `mobile/lib/config/app_env.dart`
+- Flutter HTTP client: `mobile/lib/services/api_client.dart`
 

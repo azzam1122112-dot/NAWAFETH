@@ -15,13 +15,13 @@ from .services import create_notification
 
 def _status_label(raw: str) -> str:
     s = (raw or "").strip().lower()
-    if s in {"new", "sent"}:
+    if s == "new":
         return "جديد"
-    if s in {"accepted", "in_progress"}:
+    if s == "in_progress":
         return "تحت التنفيذ"
     if s == "completed":
         return "مكتمل"
-    if s in {"cancelled", "canceled", "expired"}:
+    if s in {"cancelled", "canceled"}:
         return "ملغي"
     return raw or "-"
 
@@ -155,7 +155,7 @@ def notify_request_status_changed(sender, instance: RequestStatusLog, created, *
 
     status_label = _status_label(instance.to_status)
     note = (instance.note or "").strip()
-    if instance.to_status == "sent" and "اختيار عرض" in note:
+    if instance.to_status == "new" and "اختيار عرض" in note:
         # Offer selection already emits OFFER_SELECTED notification.
         return
     body = f"تم تحديث حالة طلبك ({sr.title}) إلى: {status_label}"

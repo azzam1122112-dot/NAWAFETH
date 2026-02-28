@@ -28,8 +28,7 @@
            class="rounded-xl border border-gray-200 px-3 py-2" />
     <select name="status" class="rounded-xl border border-gray-200 px-3 py-2">
       <option value="">كل الحالات</option>
-      <option value="sent" {% if status == 'sent' %}selected{% endif %}>أُرسل</option>
-      <option value="accepted" {% if status == 'accepted' %}selected{% endif %}>مقبول</option>
+      <option value="new" {% if status == 'new' %}selected{% endif %}>جديد</option>
       <option value="in_progress" {% if status == 'in_progress' %}selected{% endif %}>قيد التنفيذ</option>
       <option value="completed" {% if status == 'completed' %}selected{% endif %}>مكتمل</option>
       <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>ملغي</option>

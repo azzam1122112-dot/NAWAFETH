@@ -35,6 +35,7 @@ from .serializers import (
 	ClientRequestUpdateSerializer,
 	OfferCreateSerializer,
 	OfferListSerializer,
+	ProviderInputsDecisionSerializer,
 	ProviderProgressUpdateSerializer,
 	ProviderRejectSerializer,
 	RequestCompleteSerializer,
@@ -44,6 +45,8 @@ from .serializers import (
 	ServiceRequestListSerializer,
 	UrgentRequestAcceptSerializer,
 )
+
+from .services.actions import execute_action
 
 from .views import (
 	_normalize_status_group,
@@ -222,8 +225,6 @@ class MyClientRequestDetailView(generics.RetrieveUpdateAPIView):
 			RequestStatus.IN_PROGRESS,
 			RequestStatus.COMPLETED,
 			RequestStatus.CANCELLED,
-			"accepted",
-			"expired",
 		):
 			return Response(
 				{"detail": "لا يمكن تعديل الطلب في هذه الحالة"},
@@ -306,7 +307,7 @@ class UrgentRequestAcceptView(APIView):
 					status=status.HTTP_400_BAD_REQUEST,
 				)
 
-			if service_request.status not in (RequestStatus.NEW, "sent"):
+			if service_request.status != RequestStatus.NEW:
 				return Response(
 					{"detail": "لا يمكن قبول الطلب في هذه الحالة"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -377,7 +378,7 @@ class AvailableUrgentRequestsView(generics.ListAPIView):
 			.filter(
 				request_type=RequestType.URGENT,
 				provider__isnull=True,
-				status__in=[RequestStatus.NEW, "sent"],
+				status=RequestStatus.NEW,
 				subcategory_id__in=provider_subcats,
 			)
 			.filter(Q(city=provider.city) | Q(city=""))
@@ -408,7 +409,7 @@ class AvailableCompetitiveRequestsView(generics.ListAPIView):
 			.filter(
 				request_type=RequestType.COMPETITIVE,
 				provider__isnull=True,
-				status__in=[RequestStatus.NEW, "sent"],
+				status=RequestStatus.NEW,
 				city=provider.city,
 				subcategory_id__in=provider_subcats,
 			)
@@ -469,7 +470,7 @@ class ProviderRequestDetailView(generics.RetrieveAPIView):
 		if obj.provider_id is not None:
 			raise PermissionDenied("غير مصرح")
 
-		if obj.status not in (RequestStatus.NEW, "sent"):
+		if obj.status != RequestStatus.NEW:
 			raise PermissionDenied("غير مصرح")
 
 		if obj.request_type == RequestType.NORMAL:
@@ -515,7 +516,7 @@ class ProviderAssignedRequestAcceptView(APIView):
 				if sr.request_type == RequestType.COMPETITIVE:
 					return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
 
-				if sr.status not in (RequestStatus.NEW, "sent"):
+				if sr.status != RequestStatus.NEW:
 					return Response({"detail": "لا يمكن قبول الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
 
 				old = sr.status
@@ -567,7 +568,7 @@ class ProviderAssignedRequestRejectView(APIView):
 			if sr.request_type == RequestType.COMPETITIVE:
 				return Response({"detail": "هذا الطلب تنافسي ويتم التعامل معه عبر العروض"}, status=status.HTTP_400_BAD_REQUEST)
 
-			if sr.status not in (RequestStatus.NEW, "sent"):
+			if sr.status != RequestStatus.NEW:
 				return Response({"detail": "لا يمكن رفض الطلب في هذه الحالة"}, status=status.HTTP_400_BAD_REQUEST)
 
 			old = sr.status
@@ -610,7 +611,7 @@ class ProviderProgressUpdateView(APIView):
 			if sr.provider_id != provider.id:
 				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
-			if sr.status not in ("accepted", RequestStatus.IN_PROGRESS):
+			if sr.status != RequestStatus.IN_PROGRESS:
 				return Response(
 					{"detail": "لا يمكن تحديث التنفيذ في هذه الحالة"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -654,9 +655,30 @@ class ProviderInputsDecisionView(APIView):
 	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
+		s = ProviderInputsDecisionSerializer(data=request.data)
+		s.is_valid(raise_exception=True)
+		approved = s.validated_data["approved"]
+		note = (s.validated_data.get("note") or "").strip()
+
+		action = "approve_inputs" if approved else "reject_inputs"
+		try:
+			result = execute_action(
+				user=request.user,
+				request_id=request_id,
+				action=action,
+			)
+		except Exception as e:
+			return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+		# Save optional decision note
+		if note:
+			ServiceRequest.objects.filter(id=request_id).update(
+				provider_inputs_decision_note=note,
+			)
+
 		return Response(
-			{"detail": "هذا الإجراء غير متاح. التحكم بالحالة لدى المزود فقط"},
-			status=status.HTTP_403_FORBIDDEN,
+			{"ok": True, "request_id": request_id, "approved": approved},
+			status=status.HTTP_200_OK,
 		)
 
 
@@ -677,7 +699,7 @@ class CreateOfferView(APIView):
 				status=status.HTTP_400_BAD_REQUEST,
 			)
 
-		if service_request.status not in (RequestStatus.NEW, "sent"):
+		if service_request.status != RequestStatus.NEW:
 			return Response(
 				{"detail": "لا يمكن إرسال عرض في هذه الحالة"},
 				status=status.HTTP_400_BAD_REQUEST,
@@ -747,7 +769,7 @@ class AcceptOfferView(APIView):
 					status=status.HTTP_403_FORBIDDEN,
 				)
 
-			if service_request.status not in (RequestStatus.NEW, "sent"):
+			if service_request.status != RequestStatus.NEW:
 				return Response(
 					{"detail": "لا يمكن اختيار عرض الآن"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -805,7 +827,7 @@ class RequestStartView(APIView):
 			if sr.provider_id != provider.id:
 				return Response({"detail": "غير مصرح"}, status=status.HTTP_403_FORBIDDEN)
 
-			if sr.status not in (RequestStatus.NEW, "sent", "accepted"):
+			if sr.status not in (RequestStatus.NEW, RequestStatus.IN_PROGRESS):
 				return Response(
 					{"detail": "لا يمكن بدء التنفيذ في هذه الحالة"},
 					status=status.HTTP_400_BAD_REQUEST,
@@ -901,9 +923,23 @@ class RequestCancelView(APIView):
 	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
+		try:
+			result = execute_action(
+				user=request.user,
+				request_id=request_id,
+				action="cancel",
+			)
+		except PermissionDenied:
+			return Response(
+				{"detail": "غير مصرح بإلغاء الطلب"},
+				status=status.HTTP_403_FORBIDDEN,
+			)
+		except Exception as e:
+			return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 		return Response(
-			{"detail": "إلغاء الطلب متاح للمزوّد فقط"},
-			status=status.HTTP_403_FORBIDDEN,
+			{"ok": True, "request_id": request_id, "status": result.new_status},
+			status=status.HTTP_200_OK,
 		)
 
 
@@ -911,7 +947,21 @@ class RequestReopenView(APIView):
 	permission_classes = [IsAtLeastClient]
 
 	def post(self, request, request_id):
+		try:
+			result = execute_action(
+				user=request.user,
+				request_id=request_id,
+				action="reopen",
+			)
+		except PermissionDenied:
+			return Response(
+				{"detail": "غير مصرح بإعادة فتح الطلب"},
+				status=status.HTTP_403_FORBIDDEN,
+			)
+		except Exception as e:
+			return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 		return Response(
-			{"detail": "إعادة فتح الطلب غير مدعومة ضمن الدورة الرسمية الحالية"},
-			status=status.HTTP_403_FORBIDDEN,
+			{"ok": True, "request_id": request_id, "status": result.new_status},
+			status=status.HTTP_200_OK,
 		)
