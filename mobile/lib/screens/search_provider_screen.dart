@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../widgets/app_bar.dart';
+import '../services/api_client.dart';
+import '../services/home_service.dart';
+import '../models/category_model.dart';
+import '../models/provider_public_model.dart';
 import '../widgets/bottom_nav.dart';
-import 'provider_profile_screen.dart';
 import '../widgets/custom_drawer.dart';
+import 'provider_profile_screen.dart';
 
 class SearchProviderScreen extends StatefulWidget {
   const SearchProviderScreen({super.key});
@@ -12,158 +16,317 @@ class SearchProviderScreen extends StatefulWidget {
 }
 
 class _SearchProviderScreenState extends State<SearchProviderScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  String selectedCategory = 'الكل';
-  String selectedSort = 'الكل';
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
 
-  final List<String> categories = [
-    'الكل',
-    'محاماة',
-    'صيانة منازل',
-    'تصميم داخلي',
-    'برمجة',
-    'تصوير',
-    'استشارات مالية',
-  ];
+  // ── API data ──
+  List<CategoryModel> _categories = [];
+  List<ProviderPublicModel> _providers = [];
+  bool _loadingCats = true;
+  bool _loadingProviders = false;
+  bool _initialLoad = true;
 
-  final List<String> sortOptions = [
-    'الكل',
-    'أعلى تقييم',
-    'الأكثر طلبات مكتملة',
-    'الأكثر إضافة',
-    'الأقرب',
-  ];
+  // ── Filters ──
+  int? _selectedCatId;
+  String _selectedSort = 'default';
 
-  final List<Map<String, dynamic>> providers = [
-    {
-      'name': 'خالد الحربي',
-      'job': 'محامي',
-      'rating': 4.8,
-      'verified': true,
-      'operations': 120,
-      'distance': 2.5, // بالكيلومتر
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/1.png',
-      'avatar': 'assets/images/1.png',
-      'addedRank': 2,
-    },
-    {
-      'name': 'سارة المهندسة',
-      'job': 'تصميم داخلي',
-      'rating': 4.3,
-      'verified': false,
-      'operations': 85,
-      'distance': 5.8,
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/gfo.png',
-      'avatar': 'assets/images/gfo.png',
-      'addedRank': 4,
-    },
-    {
-      'name': 'عبدالله الفني',
-      'job': 'صيانة منازل',
-      'rating': 4.9,
-      'verified': true,
-      'operations': 190,
-      'distance': 1.2,
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/1.png',
-      'avatar': 'assets/images/1.png',
-      'addedRank': 1,
-    },
-    {
-      'name': 'نوف المبرمجة',
-      'job': 'برمجة',
-      'rating': 4.7,
-      'verified': false,
-      'operations': 72,
-      'distance': 3.4,
-      'handle': '@xxxyyy',
-      'windowLogo': 'assets/images/gfo.png',
-      'avatar': 'assets/images/gfo.png',
-      'addedRank': 3,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadInitial();
+  }
+
+  Future<void> _loadInitial() async {
+    await Future.wait([_loadCategories(), _searchProviders()]);
+    if (mounted) setState(() => _initialLoad = false);
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final cats = await HomeService.fetchCategories();
+      if (mounted) setState(() { _categories = cats; _loadingCats = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingCats = false);
+    }
+  }
+
+  Future<void> _searchProviders() async {
+    if (mounted) setState(() => _loadingProviders = true);
+    try {
+      final q = _searchCtrl.text.trim();
+      var url = '/api/providers/list/?page_size=30';
+      if (q.isNotEmpty) url += '&q=$q';
+      if (_selectedCatId != null) url += '&category_id=$_selectedCatId';
+
+      final res = await ApiClient.get(url);
+      if (res.isSuccess && res.data != null) {
+        final list = res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
+        final providers = list.map((e) => ProviderPublicModel.fromJson(e as Map<String, dynamic>)).toList();
+        // Client-side sort
+        _sortProviders(providers);
+        if (mounted) setState(() => _providers = providers);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loadingProviders = false);
+  }
+
+  void _sortProviders(List<ProviderPublicModel> list) {
+    switch (_selectedSort) {
+      case 'rating':
+        list.sort((a, b) => b.ratingAvg.compareTo(a.ratingAvg));
+      case 'completed':
+        list.sort((a, b) => b.completedRequests.compareTo(a.completedRequests));
+      case 'followers':
+        list.sort((a, b) => b.followersCount.compareTo(a.followersCount));
+      default:
+        break;
+    }
+  }
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _searchProviders);
+  }
+
+  void _onCategorySelected(int? catId) {
+    setState(() => _selectedCatId = catId);
+    _searchProviders();
+  }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchCtrl.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  void _openSortSheet() {
+  // ═══════════════════════════════════════
+  //  BUILD
+  // ═══════════════════════════════════════
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const purple = Colors.deepPurple;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5FA),
+        drawer: const CustomDrawer(),
+        bottomNavigationBar: const CustomBottomNav(currentIndex: 2),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // ── Header + Search ──
+              _buildSearchHeader(isDark, purple),
+
+              // ── Category chips ──
+              if (!_loadingCats && _categories.isNotEmpty)
+                _buildCategoryChips(isDark, purple),
+
+              // ── Sort bar ──
+              _buildSortBar(isDark, purple),
+
+              // ── Results ──
+              Expanded(child: _buildResults(isDark, purple)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  //  SEARCH HEADER
+  // ═══════════════════════════════════════
+
+  Widget _buildSearchHeader(bool isDark, Color purple) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Top bar
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.08) : purple.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: isDark ? Colors.white70 : purple),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('البحث عن مزود خدمة',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, fontFamily: 'Cairo',
+                        color: isDark ? Colors.white : Colors.black87)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Search field
+          Container(
+            height: 38,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF2F2F7),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: _onSearchChanged,
+              textAlignVertical: TextAlignVertical.center,
+              style: TextStyle(fontSize: 12, fontFamily: 'Cairo',
+                  color: isDark ? Colors.white : Colors.black87),
+              decoration: InputDecoration(
+                hintText: 'ابحث بالاسم أو التخصص...',
+                hintStyle: TextStyle(fontSize: 11, fontFamily: 'Cairo',
+                    color: isDark ? Colors.white38 : Colors.grey.shade400),
+                prefixIcon: Icon(Icons.search_rounded, size: 18,
+                    color: isDark ? Colors.white38 : Colors.grey.shade400),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                isDense: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  //  CATEGORY CHIPS
+  // ═══════════════════════════════════════
+
+  Widget _buildCategoryChips(bool isDark, Color purple) {
+    return SizedBox(
+      height: 38,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        itemCount: _categories.length + 1, // +1 for "الكل"
+        itemBuilder: (_, i) {
+          final isAll = i == 0;
+          final selected = isAll ? _selectedCatId == null : _selectedCatId == _categories[i - 1].id;
+          final label = isAll ? 'الكل' : _categories[i - 1].name;
+
+          return GestureDetector(
+            onTap: () => _onCategorySelected(isAll ? null : _categories[i - 1].id),
+            child: Container(
+              margin: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: selected
+                    ? purple
+                    : isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected ? purple : (isDark ? Colors.white12 : Colors.grey.shade300),
+                ),
+              ),
+              child: Center(
+                child: Text(label,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, fontFamily: 'Cairo',
+                        color: selected ? Colors.white : (isDark ? Colors.white60 : Colors.black54))),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  //  SORT BAR
+  // ═══════════════════════════════════════
+
+  Widget _buildSortBar(bool isDark, Color purple) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Text('${_providers.length} نتيجة',
+              style: TextStyle(fontSize: 10, fontFamily: 'Cairo',
+                  color: isDark ? Colors.white38 : Colors.grey.shade500)),
+          const Spacer(),
+          GestureDetector(
+            onTap: () => _openSortSheet(isDark, purple),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.tune_rounded, size: 14, color: purple),
+                const SizedBox(width: 4),
+                Text('فرز', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                    fontFamily: 'Cairo', color: purple)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openSortSheet(bool isDark, Color purple) {
+    final opts = <Map<String, String>>[
+      {'key': 'default', 'label': 'الافتراضي'},
+      {'key': 'rating', 'label': 'أعلى تقييم'},
+      {'key': 'completed', 'label': 'الأكثر طلبات مكتملة'},
+      {'key': 'followers', 'label': 'الأكثر متابعة'},
+    ];
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (sheetContext) {
+      builder: (_) {
         return Directionality(
           textDirection: TextDirection.rtl,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Row(
-                  children: [
-                    Icon(Icons.tune, color: Colors.deepPurple, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'فرز حسب:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        fontFamily: 'Cairo',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ...sortOptions.map((opt) {
-                  final isSelected = selectedSort == opt;
+                Container(width: 36, height: 4,
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(99))),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Icon(Icons.tune_rounded, size: 16, color: purple),
+                  const SizedBox(width: 6),
+                  Text('فرز حسب:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                      fontFamily: 'Cairo', color: isDark ? Colors.white : Colors.black87)),
+                ]),
+                const SizedBox(height: 8),
+                ...opts.map((o) {
+                  final sel = _selectedSort == o['key'];
                   return InkWell(
                     onTap: () {
-                      setState(() => selectedSort = opt);
-                      Navigator.pop(sheetContext);
+                      setState(() => _selectedSort = o['key']!);
+                      _searchProviders();
+                      Navigator.pop(context);
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isSelected
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked,
-                            color: isSelected ? Colors.deepPurple : Colors.black45,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              opt,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 14,
-                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(children: [
+                        Icon(sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                            size: 16, color: sel ? purple : Colors.grey),
+                        const SizedBox(width: 8),
+                        Text(o['label']!, style: TextStyle(fontSize: 11, fontFamily: 'Cairo',
+                            fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                            color: isDark ? Colors.white70 : Colors.black87)),
+                      ]),
                     ),
                   );
                 }),
@@ -175,431 +338,179 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
     );
   }
 
-  List<String> _buildSuggestions(String query) {
-    final q = query.trim();
-    if (q.isEmpty) return const [];
+  // ═══════════════════════════════════════
+  //  RESULTS
+  // ═══════════════════════════════════════
 
-    final results = <String>[];
-
-    for (final c in categories) {
-      if (c != 'الكل' && c.contains(q)) results.add(c);
+  Widget _buildResults(bool isDark, Color purple) {
+    if (_initialLoad || _loadingProviders) {
+      return const Center(child: CircularProgressIndicator(color: Colors.deepPurple, strokeWidth: 2));
     }
-    for (final p in providers) {
-      final name = (p['name'] ?? '').toString();
-      final job = (p['job'] ?? '').toString();
-      if (name.contains(q) || job.contains(q)) {
-        final display = '$job ${p['handle'] ?? ''}'.trim();
-        if (!results.contains(display)) results.add(display);
-      }
-    }
-
-    return results.take(6).toList();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final query = _searchController.text;
-    final suggestions = _buildSuggestions(query);
-
-    final filteredProviders = providers.where((provider) {
-      final text = query.trim();
-      final name = provider['name'].toString();
-      final job = provider['job'].toString();
-      final nameOrJobMatch = text.isEmpty || name.contains(text) || job.contains(text);
-      final categoryMatch = selectedCategory == 'الكل' || provider['job'] == selectedCategory;
-      return nameOrJobMatch && categoryMatch;
-    }).toList()
-      ..sort((a, b) {
-        switch (selectedSort) {
-          case 'الأقرب':
-            final distanceA = (a['distance'] as num?)?.toDouble() ?? double.infinity;
-            final distanceB = (b['distance'] as num?)?.toDouble() ?? double.infinity;
-            return distanceA.compareTo(distanceB);
-          case 'أعلى تقييم':
-            final ratingA = (a['rating'] as num?)?.toDouble() ?? 0.0;
-            final ratingB = (b['rating'] as num?)?.toDouble() ?? 0.0;
-            return ratingB.compareTo(ratingA);
-          case 'الأكثر طلبات مكتملة':
-            final opsA = (a['operations'] as num?)?.toInt() ?? 0;
-            final opsB = (b['operations'] as num?)?.toInt() ?? 0;
-            return opsB.compareTo(opsA);
-          case 'الأكثر إضافة':
-            final rankA = (a['addedRank'] as num?)?.toInt() ?? 9999;
-            final rankB = (b['addedRank'] as num?)?.toInt() ?? 9999;
-            return rankA.compareTo(rankB);
-          default:
-            return 0;
-        }
-      });
-
-    final List<Map<String, dynamic>> listItems = [];
-    if (filteredProviders.isNotEmpty) {
-      listItems.add({
-        'isAd': true,
-        'name': 'خدمة مروّجة',
-        'job': selectedCategory == 'الكل' ? 'إصلاح سيارات' : selectedCategory,
-        'rating': 5.0,
-        'verified': true,
-        'operations': 33,
-        'distance': 1.5,
-        'handle': '@xxxyyy',
-        'windowLogo': 'assets/images/1.png',
-        'avatar': 'assets/images/1.png',
-      });
-    }
-    listItems.addAll(filteredProviders);
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: const CustomAppBar(title: "البحث عن مزود خدمة"),
-        bottomNavigationBar: const CustomBottomNav(currentIndex: 2),
-        drawer: const CustomDrawer(),
-
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // 🔍 حقل البحث + زر الفلاتر
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'بحث',
-                          prefixIcon: Icon(Icons.search),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  InkWell(
-                    onTap: _openSortSheet,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: Colors.deepPurple.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.deepPurple.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: const Icon(Icons.tune, color: Colors.deepPurple),
-                    ),
-                  ),
-                ],
-              ),
-
-              // اقتراحات سريعة
-              if (suggestions.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    children: [
-                      for (final s in suggestions)
-                        InkWell(
-                          onTap: () {
-                            _searchController.text = s;
-                            _searchController.selection = TextSelection.fromPosition(
-                              TextPosition(offset: _searchController.text.length),
-                            );
-                            setState(() {});
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.search, size: 18, color: Colors.deepPurple),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    s,
-                                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 12),
-              Expanded(
-                child:
-                    listItems.isEmpty
-                        ? const Center(child: Text("لا توجد نتائج مطابقة"))
-                        : ListView.builder(
-                          itemCount: listItems.length,
-                          itemBuilder: (_, index) {
-                            final provider = listItems[index];
-                            return _buildProviderCard(provider);
-                          },
-                        ),
-              ),
-            ],
-          ),
+    if (_providers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
+            const SizedBox(height: 8),
+            Text('لا توجد نتائج', style: TextStyle(fontSize: 12, fontFamily: 'Cairo',
+                color: isDark ? Colors.white38 : Colors.grey.shade500)),
+          ],
         ),
-      ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      itemCount: _providers.length,
+      itemBuilder: (_, i) => _providerCard(_providers[i], isDark, purple),
     );
   }
 
-  // 🧾 بطاقة مزود الخدمة
-  Widget _buildProviderCard(Map<String, dynamic> provider) {
-    final bool isAd = provider['isAd'] == true;
-    final String windowLogo = (provider['windowLogo'] ?? '').toString();
-    final String avatar = (provider['avatar'] ?? '').toString();
-    final double rating = (provider['rating'] as num?)?.toDouble() ?? 0.0;
-    final int operations = (provider['operations'] as num?)?.toInt() ?? 0;
-    final double? distance = (provider['distance'] as num?)?.toDouble();
-    final String job = (provider['job'] ?? '').toString();
-    final String handle = (provider['handle'] ?? '').toString();
+  Widget _providerCard(ProviderPublicModel p, bool isDark, Color purple) {
+    final profileUrl = ApiClient.buildMediaUrl(p.profileImage);
+    final coverUrl = ApiClient.buildMediaUrl(p.coverImage);
 
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ProviderProfileScreen()),
-        );
-      },
-      borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ProviderProfileScreen(
+          providerId: p.id.toString(),
+          providerName: p.displayName,
+          providerImage: profileUrl,
+          providerRating: p.ratingAvg,
+          providerVerified: p.isVerified,
+          providerPhone: p.phone,
+          providerLat: p.lat,
+          providerLng: p.lng,
+        ),
+      )),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(10),
+        margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
+          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
-          border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12.withValues(alpha: 0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          border: Border.all(color: isDark ? Colors.white10 : Colors.grey.shade200),
         ),
         child: Row(
           children: [
-            // شريط الشعار (يسار)
+            // ── Cover / Avatar section ──
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                width: 74,
-                height: 86,
-                color: Colors.deepPurple.withValues(alpha: 0.12),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+              child: SizedBox(
+                width: 80, height: 88,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    if (windowLogo.isNotEmpty)
-                      Image.asset(
-                        windowLogo,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.storefront,
-                          color: Colors.deepPurple,
-                          size: 28,
+                    coverUrl != null
+                        ? Image.network(coverUrl, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _gradientBox(purple))
+                        : _gradientBox(purple),
+                    // Gradient overlay
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.black.withValues(alpha: 0.3), Colors.transparent],
+                          begin: Alignment.bottomCenter, end: Alignment.topCenter,
                         ),
-                      )
-                    else
-                      const Icon(
-                        Icons.storefront,
-                        color: Colors.deepPurple,
-                        size: 28,
                       ),
-                    const SizedBox(height: 8),
-                    Text(
-                      isAd ? 'AD' : 'شعار نافذة\nمقدم الخدمة',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color:
-                            isAd ? Colors.orange.shade800 : Colors.deepPurple,
+                    ),
+                    // Avatar
+                    Center(
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.white,
+                        child: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: purple.withValues(alpha: 0.1),
+                          backgroundImage: profileUrl != null ? NetworkImage(profileUrl) : null,
+                          child: profileUrl == null
+                              ? Text(p.displayName.isNotEmpty ? p.displayName[0] : '؟',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: purple))
+                              : null,
+                        ),
                       ),
+                    ),
+                    // Verified badge
+                    if (p.isVerified)
+                      Positioned(
+                        top: 6, left: 6,
+                        child: Icon(Icons.verified, size: 14,
+                            color: p.isVerifiedBlue ? Colors.blue : Colors.green),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Info ──
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Name
+                    Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, fontFamily: 'Cairo',
+                            color: isDark ? Colors.white : Colors.black87)),
+                    if (p.city != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 11,
+                              color: isDark ? Colors.white38 : Colors.grey.shade500),
+                          const SizedBox(width: 2),
+                          Text(p.city!, style: TextStyle(fontSize: 9.5, fontFamily: 'Cairo',
+                              color: isDark ? Colors.white38 : Colors.grey.shade500)),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    // Stats
+                    Row(
+                      children: [
+                        _statChip(Icons.star_rounded, p.ratingAvg > 0 ? p.ratingAvg.toStringAsFixed(1) : '-', Colors.amber),
+                        const SizedBox(width: 8),
+                        _statChip(Icons.people_outline_rounded, '${p.followersCount}',
+                            isDark ? Colors.white38 : Colors.grey.shade500),
+                        const SizedBox(width: 8),
+                        _statChip(Icons.check_circle_outline_rounded, '${p.completedRequests}', Colors.green.shade400),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 10),
 
-            // الوسط: أرقام/تفاصيل
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            rating.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.star,
-                            size: 18,
-                            color: Colors.amber,
-                          ),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.deepPurple.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: Colors.deepPurple.withValues(alpha: 0.18),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.receipt_long,
-                              size: 16,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '$operations',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.deepPurple,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (distance != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.location_on,
-                              size: 18,
-                              color: Colors.deepPurple,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${distance.toStringAsFixed(1)} كم',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '$job $handle',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.deepPurple,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    provider['name'] ?? '',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-
-            // اليمين: صورة المزود + توثيق + حالة
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage:
-                      avatar.isNotEmpty ? AssetImage(avatar) : null,
-                  child: avatar.isEmpty
-                      ? const Icon(Icons.person, color: Colors.black45)
-                      : null,
-                ),
-                if (provider['verified'] == true)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Colors.lightBlue,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: const Icon(
-                        Icons.check,
-                        size: 11,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                Positioned(
-                  bottom: 0,
-                  left: 2,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                  ),
-                ),
-              ],
+            // Arrow
+            Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Icon(Icons.arrow_back_ios_new_rounded, size: 12,
+                  color: isDark ? Colors.white24 : Colors.grey.shade400),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statChip(IconData icon, String val, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 2),
+        Text(val, style: TextStyle(fontSize: 9.5, fontFamily: 'Cairo', fontWeight: FontWeight.w600, color: color)),
+      ],
+    );
+  }
+
+  Widget _gradientBox(Color purple) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFFB39DDB), const Color(0xFFD1C4E9)],
+          begin: Alignment.topRight, end: Alignment.bottomLeft,
         ),
       ),
     );
