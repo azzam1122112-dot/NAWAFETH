@@ -9,7 +9,8 @@ import '../widgets/custom_drawer.dart';
 import 'provider_profile_screen.dart';
 
 class SearchProviderScreen extends StatefulWidget {
-  const SearchProviderScreen({super.key});
+  final int? initialCategoryId;
+  const SearchProviderScreen({super.key, this.initialCategoryId});
 
   @override
   State<SearchProviderScreen> createState() => _SearchProviderScreenState();
@@ -25,6 +26,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   bool _loadingCats = true;
   bool _loadingProviders = false;
   bool _initialLoad = true;
+  String? _loadError;
 
   // ── Filters ──
   int? _selectedCatId;
@@ -33,6 +35,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedCatId = widget.initialCategoryId;
     _loadInitial();
   }
 
@@ -64,9 +67,13 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
         final providers = list.map((e) => ProviderPublicModel.fromJson(e as Map<String, dynamic>)).toList();
         // Client-side sort
         _sortProviders(providers);
-        if (mounted) setState(() => _providers = providers);
+        if (mounted) setState(() { _providers = providers; _loadError = null; });
+      } else {
+        if (mounted) setState(() => _loadError = res.error ?? 'فشل تحميل البيانات');
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) setState(() => _loadError = 'خطأ: $e');
+    }
     if (mounted) setState(() => _loadingProviders = false);
   }
 
@@ -351,10 +358,19 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
+            Icon(_loadError != null ? Icons.cloud_off_rounded : Icons.search_off_rounded,
+                size: 40, color: Colors.grey.shade400),
             const SizedBox(height: 8),
-            Text('لا توجد نتائج', style: TextStyle(fontSize: 12, fontFamily: 'Cairo',
+            Text(_loadError ?? 'لا توجد نتائج', style: TextStyle(fontSize: 12, fontFamily: 'Cairo',
                 color: isDark ? Colors.white38 : Colors.grey.shade500)),
+            if (_loadError != null) ...[
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _searchProviders,
+                child: Text('إعادة المحاولة', style: TextStyle(fontSize: 11, fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w700, color: purple)),
+              ),
+            ],
           ],
         ),
       );
@@ -382,6 +398,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
           providerPhone: p.phone,
           providerLat: p.lat,
           providerLng: p.lng,
+          providerOperations: p.completedRequests,
         ),
       )),
       child: Container(

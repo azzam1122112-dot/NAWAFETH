@@ -144,8 +144,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             SliverToBoxAdapter(child: _buildCategories(isDark, purple)),
 
             // -- Featured providers --
-            if (_providers.isNotEmpty || _isLoading)
-              SliverToBoxAdapter(child: _buildProviders(isDark, purple)),
+            SliverToBoxAdapter(child: _buildProviders(isDark, purple)),
 
             // -- Promo banners --
             if (_banners.isNotEmpty)
@@ -263,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'أكثر من ${_providers.length > 0 ? _providers.length : "100"} مقدم خدمة بين يديك',
+                    'أكثر من ${_providers.isNotEmpty ? _providers.length : "100"} مقدم خدمة بين يديك',
                     style: TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Colors.white.withValues(alpha: 0.85)),
                   ),
                   const SizedBox(height: 12),
@@ -392,7 +391,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 final icon = _categoryIcon(cat.name);
                 return GestureDetector(
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchProviderScreen()));
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => SearchProviderScreen(initialCategoryId: cat.id > 0 ? cat.id : null),
+                    ));
                   },
                   child: Container(
                     width: 76,
@@ -452,6 +453,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 10),
           if (_isLoading)
             const SizedBox(height: 160, child: Center(child: CircularProgressIndicator(color: Colors.deepPurple)))
+          else if (_providers.isEmpty)
+            SizedBox(
+              height: 80,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 20, color: isDark ? Colors.white24 : Colors.grey.shade300),
+                    const SizedBox(height: 4),
+                    Text('لا يوجد مزودو خدمة حالياً', style: TextStyle(fontSize: 10, fontFamily: 'Cairo',
+                        color: isDark ? Colors.white30 : Colors.grey.shade400)),
+                  ],
+                ),
+              ),
+            )
           else
             SizedBox(
               height: 180,
@@ -480,6 +496,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         providerPhone: p.phone,
         providerLat: p.lat,
         providerLng: p.lng,
+        providerOperations: p.completedRequests,
       ))),
       child: Container(
         width: 150,
@@ -609,7 +626,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               itemBuilder: (context, index) {
                 final b = _banners[index];
                 final url = ApiClient.buildMediaUrl(b.fileUrl);
-                return Container(
+                return GestureDetector(
+                  onTap: () {
+                    if (b.providerId != null && b.providerId! > 0) {
+                      Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => ProviderProfileScreen(
+                          providerId: b.providerId.toString(),
+                          providerName: b.providerDisplayName,
+                        ),
+                      ));
+                    }
+                  },
+                  child: Container(
                   width: 220,
                   margin: const EdgeInsets.only(left: 10),
                   child: ClipRRect(
@@ -648,6 +676,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
+                  ),
                   ),
                 );
               },

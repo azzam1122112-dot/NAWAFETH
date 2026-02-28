@@ -100,10 +100,10 @@ class ApiClient {
 
       // ✅ محاولة تجديد التوكن إذا انتهت صلاحيته
       if (response.statusCode == 401 && !isRetry) {
-        final refreshed = await _tryRefreshToken();
-        if (refreshed) {
-          return _request(method, path, body: body, isRetry: true);
-        }
+        await _tryRefreshToken();
+        // إعادة المحاولة: بتوكن جديد إذا نجح التجديد، أو بدون توكن
+        // (logout يمسح التوكنات) لتمرير AllowAny endpoints
+        return _request(method, path, body: body, isRetry: true);
       }
 
       return parseResponse(response);
