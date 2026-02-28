@@ -55,30 +55,76 @@ class ProviderPublicModel {
 
   factory ProviderPublicModel.fromJson(Map<String, dynamic> json) {
     return ProviderPublicModel(
-      id: json['id'] as int? ?? 0,
-      displayName: json['display_name'] as String? ?? '',
-      profileImage: json['profile_image'] as String?,
-      coverImage: json['cover_image'] as String?,
-      bio: json['bio'] as String?,
-      yearsExperience: json['years_experience'] as int?,
-      phone: json['phone'] as String?,
-      whatsapp: json['whatsapp'] as String?,
-      city: json['city'] as String?,
-      lat: (json['lat'] as num?)?.toDouble(),
-      lng: (json['lng'] as num?)?.toDouble(),
-      acceptsUrgent: json['accepts_urgent'] as bool? ?? false,
-      isVerifiedBlue: json['is_verified_blue'] as bool? ?? false,
-      isVerifiedGreen: json['is_verified_green'] as bool? ?? false,
-      ratingAvg: (json['rating_avg'] as num?)?.toDouble() ?? 0.0,
-      ratingCount: json['rating_count'] as int? ?? 0,
-      createdAt: json['created_at'] as String?,
-      followersCount: json['followers_count'] as int? ?? 0,
-      likesCount: json['likes_count'] as int? ?? 0,
-      followingCount: json['following_count'] as int? ?? 0,
-      completedRequests: json['completed_requests'] as int? ?? 0,
+      id: _parseInt(json['id']) ?? 0,
+      displayName: _parseString(json['display_name']) ?? '',
+      profileImage: _parseString(json['profile_image']),
+      coverImage: _parseString(json['cover_image']),
+      bio: _parseString(json['bio']),
+      yearsExperience: _parseInt(json['years_experience']),
+      phone: _parseString(json['phone']),
+      whatsapp: _parseString(json['whatsapp']),
+      city: _parseString(json['city']),
+      lat: _parseDouble(json['lat']),
+      lng: _parseDouble(json['lng']),
+      acceptsUrgent: _parseBool(json['accepts_urgent']),
+      isVerifiedBlue: _parseBool(json['is_verified_blue']),
+      isVerifiedGreen: _parseBool(json['is_verified_green']),
+      ratingAvg: _parseDouble(json['rating_avg']) ?? 0.0,
+      ratingCount: _parseInt(json['rating_count']) ?? 0,
+      createdAt: _parseString(json['created_at']),
+      followersCount: _parseInt(json['followers_count']) ?? 0,
+      likesCount: _parseInt(json['likes_count']) ?? 0,
+      followingCount: _parseInt(json['following_count']) ?? 0,
+      completedRequests: _parseInt(json['completed_requests']) ?? 0,
     );
   }
 
   /// هل المزود مُوثق (أزرق أو أخضر)
   bool get isVerified => isVerifiedBlue || isVerifiedGreen;
+
+  static String? _parseString(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final text = value.trim();
+      if (text.isEmpty) return null;
+      return int.tryParse(text) ?? double.tryParse(text)?.toInt();
+    }
+    return null;
+  }
+
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final text = value.trim();
+      if (text.isEmpty) return null;
+      return double.tryParse(text);
+    }
+    return null;
+  }
+
+  static bool _parseBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final text = value.trim().toLowerCase();
+      if (text == 'true' || text == '1' || text == 'yes' || text == 'y' || text == 'on') {
+        return true;
+      }
+      if (text == 'false' || text == '0' || text == 'no' || text == 'n' || text == 'off' || text.isEmpty) {
+        return false;
+      }
+    }
+    return false;
+  }
 }

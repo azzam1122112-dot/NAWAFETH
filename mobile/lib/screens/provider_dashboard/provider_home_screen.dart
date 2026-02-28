@@ -21,6 +21,7 @@ import 'package:nawafeth/screens/verification_screen.dart';
 import 'package:nawafeth/screens/plans_screen.dart';
 import 'package:nawafeth/screens/additional_services_screen.dart';
 import 'package:nawafeth/screens/registration/steps/content_step.dart';
+import 'package:nawafeth/screens/provider_dashboard/promotion_screen.dart';
 
 // ✅ شاشة إكمال الملف التعريفي (تكون موجودة عندك وتستدعي فيها القوالب)
 import 'package:nawafeth/screens/provider_dashboard/provider_profile_completion_screen.dart';
@@ -882,9 +883,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen>
                   "ترويج",
                   Colors.green,
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("خدمة الترويج قيد التطوير 🚀"),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PromotionScreen(),
                       ),
                     );
                   },

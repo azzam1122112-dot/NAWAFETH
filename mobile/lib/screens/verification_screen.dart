@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../constants/colors.dart';
+import '../services/verification_service.dart';
 
 class VerificationScreen extends StatefulWidget {
   const VerificationScreen({super.key});
@@ -30,6 +31,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   final ImagePicker _picker = ImagePicker();
   String _selectedPaymentMethod = "apple"; // apple / card
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -129,7 +131,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      _showSuccess();
+      _submitRequest();
     }
   }
 
@@ -142,6 +144,93 @@ class _VerificationScreenState extends State<VerificationScreen> {
         curve: Curves.easeInOutCubic,
       );
     }
+  }
+
+  /// إرسال طلب التوثيق الفعلي عبر API
+  Future<void> _submitRequest() async {
+    if (_isSending) return;
+    setState(() => _isSending = true);
+
+    // تحديد badge_type و requirements
+    String? badgeType = selectedType == 'blue' ? 'blue' : 'green';
+    List<Map<String, String>> requirements = [];
+
+    if (selectedType == 'blue' && blueOption != null) {
+      String code;
+      switch (blueOption) {
+        case 'person':
+          code = 'B1';
+          break;
+        case 'company':
+          code = 'B1';
+          break;
+        default:
+          code = 'B1';
+      }
+      requirements.add({
+        'badge_type': 'blue',
+        'code': code,
+      });
+    } else if (selectedType == 'green') {
+      final codeMap = {
+        'توثيق الاعتماد المهني': 'G1',
+        'توثيق الرخص التنظيمية': 'G2',
+        'توثيق الخبرات العملية': 'G3',
+        'توثيق الدرجة العلمية والأكاديمية': 'G4',
+        'توثيق الشهادات الاحترافية': 'G5',
+        'توثيق كفو': 'G6',
+      };
+      for (final opt in greenOptions) {
+        requirements.add({
+          'badge_type': 'green',
+          'code': codeMap[opt] ?? 'G1',
+        });
+      }
+    }
+
+    // 1) إنشاء الطلب
+    final createRes = await VerificationService.createRequest(
+      badgeType: badgeType,
+      requirements: requirements,
+    );
+
+    if (!mounted) return;
+
+    if (!createRes.isSuccess) {
+      setState(() => _isSending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(createRes.error ?? 'فشل في إنشاء الطلب'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final requestId = createRes.dataAsMap?['id'] as int?;
+
+    // 2) رفع المستندات
+    if (requestId != null && uploadedFiles.isNotEmpty) {
+      String docType;
+      if (selectedType == 'blue') {
+        docType = blueOption == 'company' ? 'cr' : 'national_id';
+      } else {
+        docType = 'certificate';
+      }
+
+      for (final file in uploadedFiles) {
+        await VerificationService.uploadDocument(
+          requestId: requestId,
+          file: file,
+          docType: docType,
+        );
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _isSending = false);
+
+    _showSuccess();
   }
 
   void _showSuccess() {
@@ -310,7 +399,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         children: [
           if (_currentStep > 0)
             OutlinedButton.icon(
-              onPressed: _prevStep,
+              onPressed: _isSending ? null : _prevStep,
               icon: const Icon(Icons.arrow_back_ios, size: 16),
               label: const Text("السابق"),
               style: OutlinedButton.styleFrom(
@@ -325,7 +414,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           if (_currentStep > 0) const SizedBox(width: 12),
           Expanded(
             child: ElevatedButton(
-              onPressed: canNext ? _nextStep : null,
+              onPressed: (canNext && !_isSending) ? _nextStep : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.deepPurple,
                 disabledBackgroundColor: AppColors.deepPurple.withOpacity(0.25),
@@ -337,23 +426,34 @@ class _VerificationScreenState extends State<VerificationScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    _currentStep == 2 ? "تأكيد الدفع" : "التالي",
-                    style: const TextStyle(
-                      fontFamily: "Cairo",
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                  if (_isSending && _currentStep == 2)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else ...[
+                    Text(
+                      _currentStep == 2 ? "تأكيد الدفع" : "التالي",
+                      style: const TextStyle(
+                        fontFamily: "Cairo",
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      _currentStep == 2
+                          ? Icons.check_circle_outline
+                          : Icons.arrow_forward_ios_rounded,
+                      size: 18,
                       color: Colors.white,
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    _currentStep == 2
-                        ? Icons.check_circle_outline
-                        : Icons.arrow_forward_ios_rounded,
-                    size: 18,
-                    color: Colors.white,
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -974,8 +1074,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
           const SizedBox(height: 18),
           if (_selectedPaymentMethod == "apple") ...[
             ElevatedButton.icon(
-              onPressed: _showSuccess,
-              icon: const Icon(Icons.phone_iphone),
+              onPressed: _isSending ? null : _submitRequest,
+              icon: _isSending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.phone_iphone),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 minimumSize: const Size(double.infinity, 55),
@@ -994,8 +1103,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
           ] else ...[
             OutlinedButton.icon(
-              onPressed: _showSuccess,
-              icon: const Icon(Icons.credit_card_outlined),
+              onPressed: _isSending ? null : _submitRequest,
+              icon: _isSending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.credit_card_outlined),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 55),
                 side: BorderSide(color: Colors.grey.shade300),

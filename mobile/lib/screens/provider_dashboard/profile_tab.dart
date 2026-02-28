@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:nawafeth/models/provider_profile_model.dart';
+import 'package:nawafeth/models/user_profile.dart';
+import 'package:nawafeth/services/profile_service.dart';
 import 'package:nawafeth/screens/registration/steps/content_step.dart';
 
 class ProfileTab extends StatefulWidget {
@@ -13,36 +16,44 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
   final Color mainColor = Colors.deepPurple;
   late TabController _tabController;
 
-  final Map<String, String> data = {
-    "fullName": "عبدالله محمد",
-    "englishName": "Abdullah Mohammed",
-    "accountType": "مؤسسة",
-    "about": "نقدم خدمات برمجية احترافية للمؤسسات.",
-    "specialization": "تطوير برمجيات",
-    "experience": "5 سنوات",
-    "languages": "العربية، الإنجليزية",
-    "location": "الرياض",
-    "map": "https://maps.google.com",
-    "details": "نوفر حلول برمجية متقدمة ومتكاملة",
-    "qualification": "بكالوريوس علوم حاسب",
-    "website": "https://example.com",
-    "social": "@example",
-    "phone": "0551234567",
-    "keywords": "برمجة، تطبيقات، مواقع",
-  };
+  // ────── حالة التحميل ──────
+  bool _isLoading = true;
+  bool _isSaving = false;
+  String? _errorMessage;
 
+  UserProfile? _userProfile;
+  ProviderProfileModel? _providerProfile;
+
+  // ────── بيانات قابلة للتعديل ──────
+  final Map<String, String> data = {};
   final Map<String, bool> isEditing = {};
   final Map<String, TextEditingController> controllers = {};
+
+  // ────── ربط مفاتيح الحقول بحقول الـ API ──────
+  static const Map<String, String> _fieldToApiKey = {
+    'fullName': 'display_name',
+    'accountType': 'provider_type',
+    'about': 'bio',
+    'specialization': 'about_details',
+    'experience': 'years_experience',
+    'languages': 'languages',
+    'location': 'city',
+    'details': 'about_details',
+    'qualification': 'qualifications',
+    'website': 'website',
+    'social': 'social_links',
+    'phone': 'whatsapp',
+    'keywords': 'seo_keywords',
+  };
 
   void _openPortfolio() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder:
-            (_) => ContentStep(
-              onBack: () => Navigator.pop(context),
-              onNext: () => Navigator.pop(context),
-            ),
+        builder: (_) => ContentStep(
+          onBack: () => Navigator.pop(context),
+          onNext: () => Navigator.pop(context),
+        ),
       ),
     );
   }
@@ -51,10 +62,198 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    data.forEach((key, value) {
-      controllers[key] = TextEditingController(text: value);
-      isEditing[key] = false;
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    for (final c in controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  /// جلب بيانات المزود من الـ API
+  Future<void> _loadProfile({bool silent = false}) async {
+    if (!mounted) return;
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    // جلب بيانات المستخدم
+    final meResult = await ProfileService.fetchMyProfile();
+    if (!mounted) return;
+
+    if (meResult.isSuccess && meResult.data != null) {
+      _userProfile = meResult.data;
+    }
+
+    // جلب بيانات ملف المزود
+    final providerResult = await ProfileService.fetchProviderProfile();
+    if (!mounted) return;
+
+    if (providerResult.isSuccess && providerResult.data != null) {
+      _providerProfile = providerResult.data;
+      _populateFields();
+    } else if (!silent) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = providerResult.error ?? 'تعذر جلب بيانات الملف الشخصي';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = false;
     });
+  }
+
+  /// تعبئة الحقول من بيانات الـ API
+  void _populateFields() {
+    final p = _providerProfile;
+    if (p == null) return;
+
+    final raw = <String, String>{
+      'fullName': p.displayName,
+      'accountType': _providerTypeLabel(p.providerType),
+      'about': p.bio,
+      'specialization': p.aboutDetails ?? '',
+      'experience': p.yearsExperience > 0 ? '${p.yearsExperience} سنوات' : '',
+      'languages': p.languages.isNotEmpty
+          ? p.languages
+              .map((e) => e is Map ? (e['name'] ?? e.toString()) : e.toString())
+              .join('، ')
+          : '',
+      'location': p.city,
+      'details': p.aboutDetails ?? '',
+      'qualification': p.qualifications.isNotEmpty
+          ? p.qualifications
+              .map((e) => e is Map ? (e['title'] ?? e.toString()) : e.toString())
+              .join('، ')
+          : '',
+      'website': p.website ?? '',
+      'social': p.socialLinks.isNotEmpty
+          ? p.socialLinks
+              .map((e) => e is Map ? (e['url'] ?? e.toString()) : e.toString())
+              .join('\n')
+          : '',
+      'phone': p.whatsapp ?? _userProfile?.phone ?? '',
+      'keywords': p.seoKeywords,
+    };
+
+    data.clear();
+    for (final entry in raw.entries) {
+      data[entry.key] = entry.value;
+      if (controllers.containsKey(entry.key)) {
+        controllers[entry.key]!.text = entry.value;
+      } else {
+        controllers[entry.key] = TextEditingController(text: entry.value);
+      }
+      isEditing[entry.key] = false;
+    }
+  }
+
+  String _providerTypeLabel(String type) {
+    switch (type) {
+      case 'individual':
+        return 'فرد';
+      case 'company':
+        return 'مؤسسة';
+      case 'freelancer':
+        return 'مستقل';
+      default:
+        return type;
+    }
+  }
+
+  /// حفظ حقل واحد عبر PATCH
+  Future<void> _saveField(String key) async {
+    final apiKey = _fieldToApiKey[key];
+    if (apiKey == null) return;
+
+    final value = controllers[key]?.text.trim() ?? '';
+
+    Map<String, dynamic> payload = {};
+    switch (apiKey) {
+      case 'years_experience':
+        final parsed = int.tryParse(value.replaceAll(RegExp(r'[^\d]'), ''));
+        if (parsed != null) {
+          payload[apiKey] = parsed;
+        } else {
+          _showSnack('أدخل رقمًا صحيحًا لسنوات الخبرة', isError: true);
+          return;
+        }
+        break;
+      case 'languages':
+        payload[apiKey] = value
+            .split(RegExp(r'[،,]'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .map((s) => {'name': s})
+            .toList();
+        break;
+      case 'qualifications':
+        payload[apiKey] = value
+            .split(RegExp(r'[،,]'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .map((s) => {'title': s})
+            .toList();
+        break;
+      case 'social_links':
+        payload[apiKey] = value
+            .split('\n')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .map((s) => {'url': s})
+            .toList();
+        break;
+      default:
+        payload[apiKey] = value;
+    }
+
+    setState(() => _isSaving = true);
+
+    final result = await ProfileService.updateProviderProfile(payload);
+
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+
+    if (result.isSuccess && result.data != null) {
+      _providerProfile = result.data;
+      _populateFields();
+      _showSnack('تم الحفظ بنجاح');
+    } else {
+      _showSnack(result.error ?? 'فشل في الحفظ', isError: true);
+    }
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Widget buildField(
@@ -62,8 +261,9 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
     String label,
     IconData icon, {
     int maxLines = 1,
+    bool readOnly = false,
   }) {
-    final editing = isEditing[key]!;
+    final editing = isEditing[key] ?? false;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
@@ -95,46 +295,60 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(
-                    editing ? Icons.check_circle : Icons.edit,
-                    color: editing ? Colors.green : mainColor,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      if (editing) data[key] = controllers[key]!.text;
-                      isEditing[key] = !editing;
-                    });
-                  },
-                ),
+                if (!readOnly)
+                  _isSaving && editing
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          icon: Icon(
+                            editing ? Icons.check_circle : Icons.edit,
+                            color: editing ? Colors.green : mainColor,
+                          ),
+                          onPressed: () {
+                            if (editing) {
+                              data[key] = controllers[key]!.text;
+                              _saveField(key);
+                            }
+                            setState(() {
+                              isEditing[key] = !editing;
+                            });
+                          },
+                        ),
               ],
             ),
             const SizedBox(height: 12),
             editing
                 ? TextField(
-                  controller: controllers[key],
-                  maxLines: maxLines,
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                  decoration: InputDecoration(
-                    hintText: 'أدخل $label',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: mainColor),
+                    controller: controllers[key],
+                    maxLines: maxLines,
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                    decoration: InputDecoration(
+                      hintText: 'أدخل $label',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: mainColor),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      isDense: true,
+                      contentPadding: const EdgeInsets.all(12),
                     ),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    isDense: true,
-                    contentPadding: const EdgeInsets.all(12),
-                  ),
-                )
+                  )
                 : Text(
-                  controllers[key]!.text,
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    color: Colors.black87,
+                    (controllers[key]?.text ?? '').isEmpty
+                        ? '—'
+                        : controllers[key]!.text,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 14,
+                      color: (controllers[key]?.text ?? '').isEmpty
+                          ? Colors.black38
+                          : Colors.black87,
+                    ),
                   ),
-                ),
           ],
         ),
       ),
@@ -205,10 +419,50 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
                 field['label'],
                 field['icon'],
                 maxLines: field['multiline'] == true ? 3 : 1,
+                readOnly: field['readOnly'] == true,
               ),
             )
             .toList(),
       ],
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage ?? 'حدث خطأ',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 14,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadProfile,
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              label: const Text(
+                'إعادة المحاولة',
+                style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: mainColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -218,7 +472,7 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          iconTheme: IconThemeData(color: Colors.white),
+          iconTheme: const IconThemeData(color: Colors.white),
           backgroundColor: mainColor,
           title: const Text(
             "الملف الشخصي",
@@ -247,7 +501,7 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
               fontSize: 12,
             ),
             controller: _tabController,
-            tabs: [
+            tabs: const [
               Tab(text: "معلومات الحساب"),
               Tab(text: "معلومات عامة"),
               Tab(text: "معلومات إضافية"),
@@ -255,95 +509,98 @@ class _ProfileTabState extends State<ProfileTab> with TickerProviderStateMixin {
           ),
         ),
         backgroundColor: const Color(0xFFF4F4F4),
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            buildSection([
-              {
-                "key": "fullName",
-                "label": "الاسم الكامل",
-                "icon": Icons.person,
-              },
-              {
-                "key": "englishName",
-                "label": "الاسم بالإنجليزية",
-                "icon": Icons.translate,
-              },
-              {
-                "key": "accountType",
-                "label": "صفة الحساب",
-                "icon": Icons.badge_outlined,
-              },
-              {
-                "key": "about",
-                "label": "نبذة عنك",
-                "icon": Icons.info_outline,
-                "multiline": true,
-              },
-              {
-                "key": "specialization",
-                "label": "التخصص",
-                "icon": Icons.category,
-              },
-            ]),
-            buildSection([
-              {
-                "key": "experience",
-                "label": "سنوات الخبرة",
-                "icon": Icons.work_history,
-              },
-              {
-                "key": "languages",
-                "label": "لغات التواصل",
-                "icon": Icons.language,
-              },
-              {
-                "key": "location",
-                "label": "النطاق الجغرافي",
-                "icon": Icons.location_on_outlined,
-              },
-              {
-                "key": "map",
-                "label": "الموقع على الخريطة",
-                "icon": Icons.map_outlined,
-              },
-            ]),
-            buildSection([
-              {
-                "key": "details",
-                "label": "شرح تفصيلي",
-                "icon": Icons.notes,
-                "multiline": true,
-              },
-              {
-                "key": "qualification",
-                "label": "المؤهلات",
-                "icon": Icons.school,
-              },
-              {
-                "key": "website",
-                "label": "الموقع الإلكتروني",
-                "icon": Icons.link,
-              },
-              {
-                "key": "social",
-                "label": "روابط التواصل",
-                "icon": Icons.share_outlined,
-              },
-              {
-                "key": "phone",
-                "label": "رقم الجوال",
-                "icon": Icons.phone_android,
-              },
-              {
-                "key": "keywords",
-                "label": "الكلمات المفتاحية",
-                "icon": Icons.label_outline,
-                "multiline": true,
-              },
-            ]),
-          ],
-        ),
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: Colors.deepPurple),
+              )
+            : (_errorMessage != null && _providerProfile == null)
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    onRefresh: () => _loadProfile(silent: true),
+                    color: mainColor,
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        buildSection([
+                          {
+                            "key": "fullName",
+                            "label": "اسم العرض",
+                            "icon": Icons.person,
+                          },
+                          {
+                            "key": "accountType",
+                            "label": "صفة الحساب",
+                            "icon": Icons.badge_outlined,
+                            "readOnly": true,
+                          },
+                          {
+                            "key": "about",
+                            "label": "نبذة عنك",
+                            "icon": Icons.info_outline,
+                            "multiline": true,
+                          },
+                          {
+                            "key": "specialization",
+                            "label": "تفاصيل إضافية",
+                            "icon": Icons.category,
+                            "multiline": true,
+                          },
+                        ]),
+                        buildSection([
+                          {
+                            "key": "experience",
+                            "label": "سنوات الخبرة",
+                            "icon": Icons.work_history,
+                          },
+                          {
+                            "key": "languages",
+                            "label": "لغات التواصل",
+                            "icon": Icons.language,
+                          },
+                          {
+                            "key": "location",
+                            "label": "المدينة",
+                            "icon": Icons.location_on_outlined,
+                          },
+                        ]),
+                        buildSection([
+                          {
+                            "key": "details",
+                            "label": "شرح تفصيلي",
+                            "icon": Icons.notes,
+                            "multiline": true,
+                          },
+                          {
+                            "key": "qualification",
+                            "label": "المؤهلات",
+                            "icon": Icons.school,
+                          },
+                          {
+                            "key": "website",
+                            "label": "الموقع الإلكتروني",
+                            "icon": Icons.link,
+                          },
+                          {
+                            "key": "social",
+                            "label": "روابط التواصل",
+                            "icon": Icons.share_outlined,
+                            "multiline": true,
+                          },
+                          {
+                            "key": "phone",
+                            "label": "واتساب",
+                            "icon": Icons.phone_android,
+                          },
+                          {
+                            "key": "keywords",
+                            "label": "الكلمات المفتاحية (SEO)",
+                            "icon": Icons.label_outline,
+                            "multiline": true,
+                          },
+                        ]),
+                      ],
+                    ),
+                  ),
       ),
     );
   }
